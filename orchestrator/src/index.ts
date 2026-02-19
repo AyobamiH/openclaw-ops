@@ -10,6 +10,7 @@ import { dirname } from "node:path";
 const DOC_SYNC_INTERVAL_MS = 60_000;
 const HEARTBEAT_INTERVAL_MS = 5 * 60_000;
 const REDDIT_SWEEP_INTERVAL_MS = 10 * 60_000;
+const RSS_SWEEP_INTERVAL_MS = 15 * 60_000;
 
 async function bootstrap() {
   const config = await loadConfig();
@@ -86,6 +87,10 @@ async function bootstrap() {
   setInterval(() => {
     queue.enqueue("reddit-response", { reason: "reddit-queue-sweep", responder: "reddit-helper", postImmediately: false });
   }, REDDIT_SWEEP_INTERVAL_MS);
+
+  setInterval(() => {
+    queue.enqueue("rss-sweep", { reason: "rss-monitor" });
+  }, RSS_SWEEP_INTERVAL_MS);
 
   queue.enqueue("startup", { reason: "orchestrator boot" });
 }

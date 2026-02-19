@@ -3,6 +3,8 @@ export interface OrchestratorConfig {
   logsDir: string;
   stateFile: string;
   deployBaseDir?: string;
+  rssConfigPath?: string;
+  redditDraftsPath?: string;
   notes?: string;
 }
 
@@ -71,6 +73,24 @@ export interface AgentDeploymentRecord {
   notes?: string;
 }
 
+export interface RssDraftRecord {
+  draftId: string;
+  pillar: string;
+  feedId: string;
+  subreddit: string;
+  title: string;
+  content: string;
+  link: string;
+  author?: string;
+  matchedKeywords: string[];
+  scoreBreakdown: Record<string, number>;
+  totalScore: number;
+  suggestedReply: string;
+  ctaVariant: string;
+  tag: "draft" | "priority" | "manual-review";
+  queuedAt: string;
+}
+
 export interface OrchestratorState {
   lastStartedAt: string | null;
   updatedAt: string | null;
@@ -82,9 +102,12 @@ export interface OrchestratorState {
   redditQueue: RedditQueueItem[];
   redditResponses: RedditReplyRecord[];
   agentDeployments: AgentDeploymentRecord[];
+  rssDrafts: RssDraftRecord[];
+  rssSeenIds: string[];
   lastDriftRepairAt: string | null;
   lastRedditResponseAt: string | null;
   lastAgentDeployAt: string | null;
+  lastRssSweepAt: string | null;
 }
 
 export interface TaskHandlerContext {

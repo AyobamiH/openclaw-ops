@@ -1,0 +1,346 @@
+{
+  "version": "1.0.0",
+  "purpose": "rss_filter_draft_queue",
+  "pillars": {
+    "lovable": {
+      "label": "Lovable (Cash Velocity)",
+      "feeds": [
+        {
+          "id": "r_lovable",
+          "type": "subreddit_rss",
+          "subreddit": "lovable",
+          "url": "https://www.reddit.com/r/lovable/.rss",
+          "priority": "high"
+        },
+        {
+          "id": "r_supabase",
+          "type": "subreddit_rss",
+          "subreddit": "Supabase",
+          "url": "https://www.reddit.com/r/Supabase/.rss",
+          "priority": "high"
+        },
+        {
+          "id": "r_stripe",
+          "type": "subreddit_rss",
+          "subreddit": "Stripe",
+          "url": "https://www.reddit.com/r/Stripe/.rss",
+          "priority": "high"
+        },
+        {
+          "id": "r_webdev",
+          "type": "subreddit_rss",
+          "subreddit": "webdev",
+          "url": "https://www.reddit.com/r/webdev/.rss",
+          "priority": "medium"
+        },
+        {
+          "id": "r_entrepreneur",
+          "type": "subreddit_rss",
+          "subreddit": "Entrepreneur",
+          "url": "https://www.reddit.com/r/Entrepreneur/.rss",
+          "priority": "low"
+        },
+        {
+          "id": "r_startups",
+          "type": "subreddit_rss",
+          "subreddit": "startups",
+          "url": "https://www.reddit.com/r/startups/.rss",
+          "priority": "low"
+        }
+      ],
+      "keyword_clusters": {
+        "emotional_identity_pain": [
+          "i'm scared to touch",
+          "scared to touch",
+          "afraid to refactor",
+          "i don't trust it anymore",
+          "it technically works",
+          "last time i changed one thing",
+          "it said it fixed it",
+          "i keep rephrasing prompts",
+          "babysitting the ai",
+          "i feel stupid",
+          "maybe i'm doing it wrong",
+          "lost confidence",
+          "i stopped opening the project",
+          "not fun anymore"
+        ],
+        "preview_vs_production": [
+          "preview not updating",
+          "publish not reflecting",
+          "production not updating",
+          "preview looked fine",
+          "preview ≠ production",
+          "production is different",
+          "serving old versions",
+          "live app not updated",
+          "cache serving old"
+        ],
+        "core_instability": [
+          "random break",
+          "everything broke",
+          "small change broke",
+          "ui drift",
+          "styles reset",
+          "components duplicated",
+          "components disappeared",
+          "state bug",
+          "unrelated breakage",
+          "behaves differently",
+          "between sessions"
+        ],
+        "debug_blindness": [
+          "no logs",
+          "no stack trace",
+          "can't tell what broke",
+          "no idea why it broke",
+          "hallucination",
+          "infinite fix loop",
+          "keeps making new bugs",
+          "plausible explanation wrong"
+        ],
+        "payments_and_backend": [
+          "supabase",
+          "rls",
+          "row level security",
+          "auth not working",
+          "stripe",
+          "price id",
+          "webhook",
+          "signature verification",
+          "checkout",
+          "subscription",
+          "access control",
+          "env vars",
+          "environment variables",
+          "migrations",
+          "schema"
+        ],
+        "export_quality_shock": [
+          "export",
+          "vs code",
+          "lint",
+          "typescript errors",
+          "type errors",
+          "messy code",
+          "over abstracted",
+          "inconsistent patterns",
+          "technical debt",
+          "rewrite",
+          "refactor broke"
+        ]
+      }
+    },
+    "openclaw": {
+      "label": "OpenClaw (High Ticket Hardening)",
+      "feeds": [
+        {
+          "id": "r_openclaw",
+          "type": "subreddit_rss",
+          "subreddit": "openclaw",
+          "url": "https://www.reddit.com/r/openclaw/.rss",
+          "priority": "high"
+        },
+        {
+          "id": "r_clawdbot",
+          "type": "subreddit_rss",
+          "subreddit": "clawdbot",
+          "url": "https://www.reddit.com/r/clawdbot/.rss",
+          "priority": "high"
+        },
+        {
+          "id": "r_moltbot",
+          "type": "subreddit_rss",
+          "subreddit": "moltbot",
+          "url": "https://www.reddit.com/r/moltbot/.rss",
+          "priority": "high"
+        },
+        {
+          "id": "r_localllm",
+          "type": "subreddit_rss",
+          "subreddit": "LocalLLM",
+          "url": "https://www.reddit.com/r/LocalLLM/.rss",
+          "priority": "high"
+        },
+        {
+          "id": "r_selfhosted",
+          "type": "subreddit_rss",
+          "subreddit": "selfhosted",
+          "url": "https://www.reddit.com/r/selfhosted/.rss",
+          "priority": "medium"
+        },
+        {
+          "id": "r_localllama",
+          "type": "subreddit_rss",
+          "subreddit": "LocalLLaMA",
+          "url": "https://www.reddit.com/r/LocalLLaMA/.rss",
+          "priority": "medium"
+        },
+        {
+          "id": "r_cybersecurity",
+          "type": "subreddit_rss",
+          "subreddit": "cybersecurity",
+          "url": "https://www.reddit.com/r/cybersecurity/.rss",
+          "priority": "low"
+        }
+      ],
+      "keyword_clusters": {
+        "security_exposure": [
+          "on shodan",
+          "shodan",
+          "exposed",
+          "exposed gateway",
+          "port open",
+          "no auth",
+          "publicly reachable",
+          "bind 0.0.0.0",
+          "reverse proxy",
+          "basic auth",
+          "oauth",
+          "firewall",
+          "iptables",
+          "tailscale does not isolate",
+          "tailscale",
+          "tailnet",
+          "segmentation",
+          "network segmentation"
+        ],
+        "skills_supply_chain": [
+          "skill",
+          "skills",
+          "malicious skills",
+          "one bad skill",
+          "skills slop",
+          "plugin",
+          "plugins",
+          "supply chain",
+          "prompt injection",
+          "dependency",
+          "npm",
+          "honeypot",
+          "audit skills",
+          "skill audit",
+          "vetted skills"
+        ],
+        "autonomy_collapse": [
+          "asking for permission forever",
+          "permission forever",
+          "endless follow up questions",
+          "never actually starts",
+          "doesn't execute",
+          "non execution",
+          "says it's done but isn't",
+          "lies about execution",
+          "planning loop",
+          "approval loop",
+          "useless",
+          "hangs",
+          "gateway crash",
+          "slow and frustrating"
+        ],
+        "hardening_and_runtime": [
+          "docker vs vm",
+          "docker",
+          "vm",
+          "vps",
+          "docker.sock",
+          "least privilege",
+          "minimal privilege",
+          "secrets management",
+          "env separation",
+          "kill switch",
+          "risk register",
+          "gateway token",
+          "mcp",
+          "tool calling",
+          "qwen",
+          "ollama",
+          "claude"
+        ],
+        "migration_and_rebrand_brittleness": [
+          "migrate clawdbot",
+          "migrate moltbot",
+          "rename",
+          "rebrand",
+          "hard coded dependency",
+          "bricked",
+          "won't boot",
+          "upgrade broke",
+          "config changed",
+          "domain scam",
+          "handle sniping"
+        ]
+      }
+    }
+  },
+  "cross_pillar": {
+    "high_intent_triggers": [
+      "i'm scared to touch it",
+      "it technically works",
+      "i don't trust it anymore",
+      "it said it fixed it",
+      "asking for permission forever",
+      "one bad skill",
+      "on shodan",
+      "preview looked fine but",
+      "keeps asking for approval",
+      "i feel stupid"
+    ]
+  },
+  "scoring": {
+    "fields_to_scan": [
+      "title",
+      "content",
+      "author",
+      "subreddit",
+      "link"
+    ],
+    "weights": {
+      "emotional_pain_match": 3,
+      "execution_failure_match": 3,
+      "security_exposure_match": 2,
+      "payments_backend_match": 2,
+      "infra_hardening_match": 1,
+      "cross_pillar_trigger_match": 3
+    },
+    "thresholds": {
+      "draft_if_score_gte": 5,
+      "priority_draft_if_score_gte": 7,
+      "manual_review_if_score_gte": 9
+    },
+    "routing": {
+      "lovable": {
+        "default_queue": "queue/lovable",
+        "priority_queue": "queue/lovable_priority",
+        "manual_queue": "queue/lovable_manual"
+      },
+      "openclaw": {
+        "default_queue": "queue/openclaw",
+        "priority_queue": "queue/openclaw_priority",
+        "manual_queue": "queue/openclaw_manual"
+      }
+    }
+  },
+  "drafting": {
+    "output_format": {
+      "include": [
+        "source",
+        "matched_keywords",
+        "score_breakdown",
+        "suggested_reply",
+        "cta_variant",
+        "tag"
+      ]
+    },
+    "cta_variants": {
+      "lovable": [
+        "If you want, paste the exact error + what changed last and I’ll tell you the safest next move.",
+        "If you want, DM me the repo/export state and I’ll send a tight fix order (what to lock down first)."
+      ],
+      "openclaw": [
+        "If you want, reply with your setup (VM/Docker/VPS + gateway bind + skills source) and I’ll point out the biggest blast-radius risk.",
+        "If you want, DM ‘SAFE’ and I’ll send the hardening checklist I use for real deployments."
+      ]
+    }
+  }
+}

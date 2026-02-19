@@ -17,7 +17,10 @@
   "redditQueue": [],
   "redditResponses": [],
   "agentDeployments": [],
+  "rssDrafts": [],
+  "rssSeenIds": [],
   "lastDriftRepairAt": null,
   "lastRedditResponseAt": null,
-  "lastAgentDeployAt": null
+  "lastAgentDeployAt": null,
+  "lastRssSweepAt": null
 }

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { cp, mkdir, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { cp, mkdir, readFile, writeFile, appendFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 const MAX_REDDIT_QUEUE = 100;
+const RSS_SEEN_CAP = 400;
 function ensureDocChangeStored(path, context) {
     const { state } = context;
     if (state.pendingDocChanges.includes(path))
@@ -15,6 +16,61 @@ function ensureRedditQueueLimit(context) {
     if (context.state.redditQueue.length > MAX_REDDIT_QUEUE) {
         context.state.redditQueue.length = MAX_REDDIT_QUEUE;
     }
+}
+function rememberRssId(context, id) {
+    if (context.state.rssSeenIds.includes(id))
+        return;
+    context.state.rssSeenIds.unshift(id);
+    if (context.state.rssSeenIds.length > RSS_SEEN_CAP) {
+        context.state.rssSeenIds.length = RSS_SEEN_CAP;
+    }
+}
+function stripHtml(value) {
+    return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+function parseRssEntries(xml) {
+    const entries = [];
+    const itemRegex = /<entry>([\s\S]*?)<\/entry>/gi;
+    let match;
+    while ((match = itemRegex.exec(xml)) !== null) {
+        const block = match[1];
+        const idMatch = block.match(/<id>([\s\S]*?)<\/id>/i);
+        const titleMatch = block.match(/<title>([\s\S]*?)<\/title>/i);
+        const contentMatch = block.match(/<content[^>]*>([\s\S]*?)<\/content>/i);
+        const linkMatch = block.match(/<link[^>]*href="([^"]+)"/i);
+        const authorMatch = block.match(/<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>/i);
+        const id = idMatch ? stripHtml(idMatch[1]) : randomUUID();
+        const title = titleMatch ? stripHtml(titleMatch[1]) : "";
+        const content = contentMatch ? stripHtml(contentMatch[1]) : "";
+        const link = linkMatch ? linkMatch[1] : "";
+        const author = authorMatch ? stripHtml(authorMatch[1]) : undefined;
+        if (!title && !content)
+            continue;
+        entries.push({ id, title, content, link, author });
+    }
+    return entries;
+}
+function buildScore(text, clusterKeywords) {
+    const lower = text.toLowerCase();
+    const matched = [];
+    const breakdown = {};
+    Object.entries(clusterKeywords).forEach(([cluster, keywords]) => {
+        let count = 0;
+        for (const keyword of keywords) {
+            if (lower.includes(keyword.toLowerCase())) {
+                matched.push(keyword);
+                count += 1;
+            }
+        }
+        if (count > 0) {
+            breakdown[cluster] = count;
+        }
+    });
+    return { matched, breakdown };
+}
+async function appendDraft(path, record) {
+    await mkdir(dirname(path), { recursive: true });
+    await appendFile(path, `${JSON.stringify(record)}\n`, "utf-8");
 }
 const startupHandler = async (_, context) => {
     context.state.lastStartedAt = new Date().toISOString();
@@ -101,6 +157,101 @@ const redditResponseHandler = async (task, context) => {
     await context.saveState();
     return `${status} reddit reply for ${queueItem.id}`;
 };
+const rssSweepHandler = async (task, context) => {
+    const configPath = typeof task.payload.configPath === "string"
+        ? task.payload.configPath
+        : context.config.rssConfigPath ?? join(process.cwd(), "..", "rss_filter_config.json");
+    const draftsPath = typeof task.payload.draftsPath === "string"
+        ? task.payload.draftsPath
+        : context.config.redditDraftsPath ?? join(process.cwd(), "..", "logs", "reddit-drafts.jsonl");
+    const rawConfig = await readFile(configPath, "utf-8");
+    const rssConfig = JSON.parse(rawConfig);
+    const now = new Date().toISOString();
+    let drafted = 0;
+    const pillars = Object.entries(rssConfig.pillars ?? {});
+    for (const [pillarKey, pillar] of pillars) {
+        const feeds = pillar.feeds ?? [];
+        for (const feed of feeds) {
+            const response = await fetch(feed.url, { headers: { "User-Agent": "openclaw-orchestrator" } });
+            if (!response.ok) {
+                context.logger.warn(`[rss] failed ${feed.url}: ${response.status}`);
+                continue;
+            }
+            const xml = await response.text();
+            const entries = parseRssEntries(xml);
+            for (const entry of entries) {
+                const seenId = `${feed.id}:${entry.id}`;
+                if (context.state.rssSeenIds.includes(seenId))
+                    continue;
+                const textBlob = `${entry.title}\n${entry.content}\n${entry.author ?? ""}\n${feed.subreddit}\n${entry.link}`;
+                const clusterScore = buildScore(textBlob, pillar.keyword_clusters ?? {});
+                const crossTriggers = rssConfig.cross_pillar?.high_intent_triggers ?? [];
+                const crossMatches = crossTriggers.filter((trigger) => textBlob.toLowerCase().includes(trigger.toLowerCase()));
+                const scoreBreakdown = {};
+                let totalScore = 0;
+                Object.entries(clusterScore.breakdown).forEach(([cluster, count]) => {
+                    let weight = 1;
+                    if (["emotional_identity_pain"].includes(cluster))
+                        weight = rssConfig.scoring.weights.emotional_pain_match;
+                    if (["core_instability", "debug_blindness", "preview_vs_production", "export_quality_shock", "autonomy_collapse", "migration_and_rebrand_brittleness"].includes(cluster)) {
+                        weight = rssConfig.scoring.weights.execution_failure_match;
+                    }
+                    if (["security_exposure", "skills_supply_chain"].includes(cluster))
+                        weight = rssConfig.scoring.weights.security_exposure_match;
+                    if (["payments_and_backend"].includes(cluster))
+                        weight = rssConfig.scoring.weights.payments_backend_match;
+                    if (["hardening_and_runtime"].includes(cluster))
+                        weight = rssConfig.scoring.weights.infra_hardening_match;
+                    const weighted = count * weight;
+                    scoreBreakdown[cluster] = weighted;
+                    totalScore += weighted;
+                });
+                if (crossMatches.length > 0) {
+                    const bonus = rssConfig.scoring.weights.cross_pillar_trigger_match * crossMatches.length;
+                    scoreBreakdown.cross_pillar_trigger_match = bonus;
+                    totalScore += bonus;
+                }
+                const thresholds = rssConfig.scoring.thresholds;
+                if (totalScore < thresholds.draft_if_score_gte) {
+                    rememberRssId(context, seenId);
+                    continue;
+                }
+                let tag = "draft";
+                if (totalScore >= thresholds.manual_review_if_score_gte)
+                    tag = "manual-review";
+                else if (totalScore >= thresholds.priority_draft_if_score_gte)
+                    tag = "priority";
+                const ctas = rssConfig.drafting?.cta_variants?.[pillarKey] ?? [];
+                const ctaVariant = ctas[0] ?? "If you want, share more context and I’ll suggest the next move.";
+                const suggestedReply = `Saw your post about ${entry.title}. ${ctaVariant}`;
+                const record = {
+                    draftId: randomUUID(),
+                    pillar: pillarKey,
+                    feedId: feed.id,
+                    subreddit: feed.subreddit,
+                    title: entry.title,
+                    content: entry.content,
+                    link: entry.link,
+                    author: entry.author,
+                    matchedKeywords: [...clusterScore.matched, ...crossMatches],
+                    scoreBreakdown,
+                    totalScore,
+                    suggestedReply,
+                    ctaVariant,
+                    tag,
+                    queuedAt: now,
+                };
+                context.state.rssDrafts.push(record);
+                await appendDraft(draftsPath, record);
+                rememberRssId(context, seenId);
+                drafted += 1;
+            }
+        }
+    }
+    context.state.lastRssSweepAt = now;
+    await context.saveState();
+    return drafted > 0 ? `rss sweep drafted ${drafted} replies` : "rss sweep complete (no drafts)";
+};
 const heartbeatHandler = async (task) => {
     return `heartbeat (${task.payload.reason ?? "interval"})`;
 };
@@ -149,6 +300,7 @@ export const taskHandlers = {
     "doc-sync": docSyncHandler,
     "drift-repair": driftRepairHandler,
     "reddit-response": redditResponseHandler,
+    "rss-sweep": rssSweepHandler,
     heartbeat: heartbeatHandler,
     "agent-deploy": agentDeployHandler,
 };

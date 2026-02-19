@@ -3,5 +3,7 @@
   "logsDir": "/home/oneclickwebsitedesignfactory/.openclaw/workspace/logs",
   "stateFile": "/home/oneclickwebsitedesignfactory/.openclaw/workspace/orchestrator_state.json",
   "deployBaseDir": "/home/oneclickwebsitedesignfactory/.openclaw/workspace/agents-deployed",
+  "rssConfigPath": "/home/oneclickwebsitedesignfactory/.openclaw/workspace/rss_filter_config.json",
+  "redditDraftsPath": "/home/oneclickwebsitedesignfactory/.openclaw/workspace/logs/reddit-drafts.jsonl",
   "notes": "The orchestrator reads local OpenClaw docs from docsPath; ensure sync_openclaw_docs.sh keeps this mirror current."
 }

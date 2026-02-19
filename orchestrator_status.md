@@ -2,8 +2,9 @@
 
 ## Runtime
 - ✅ Stateful runtime + doc indexer already running (see `orchestrator/`)
-- ✅ Task queue wired with handlers for `startup`, `doc-change`, `doc-sync`, `drift-repair`, `reddit-response`, `agent-deploy`, and `heartbeat`
+- ✅ Task queue wired with handlers for `startup`, `doc-change`, `doc-sync`, `drift-repair`, `reddit-response`, `rss-sweep`, `agent-deploy`, and `heartbeat`
 - ✅ 10-min scheduler enqueues `reddit-response` sweeps so the Reddit Helper agent gets steady work
+- ✅ 15-min scheduler monitors RSS feeds and drafts replies to `logs/reddit-drafts.jsonl`
 - ✅ `agent-deploy` now copies local templates into `agents-deployed/` with a DEPLOYMENT.json run hint
 
 ## State Tracking Enhancements

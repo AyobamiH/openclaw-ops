@@ -8,6 +8,8 @@ const HISTORY_LIMIT = 50;
 const DRIFT_LOG_LIMIT = 25;
 const REDDIT_RESPONSE_LIMIT = 100;
 const AGENT_DEPLOYMENT_LIMIT = 50;
+const RSS_DRAFT_LIMIT = 200;
+const RSS_SEEN_LIMIT = 400;
 
 export async function loadState(path: string): Promise<OrchestratorState> {
   if (!existsSync(path)) {
@@ -26,6 +28,8 @@ export async function loadState(path: string): Promise<OrchestratorState> {
       redditQueue: parsed.redditQueue ?? [],
       redditResponses: parsed.redditResponses ?? [],
       agentDeployments: parsed.agentDeployments ?? [],
+      rssDrafts: parsed.rssDrafts ?? [],
+      rssSeenIds: parsed.rssSeenIds ?? [],
     };
   } catch (error) {
     console.warn(`[state] Failed to parse state file, starting fresh: ${(error as Error).message}`);
@@ -42,6 +46,8 @@ export async function saveState(path: string, state: OrchestratorState) {
     driftRepairs: state.driftRepairs.slice(-DRIFT_LOG_LIMIT),
     redditResponses: state.redditResponses.slice(-REDDIT_RESPONSE_LIMIT),
     agentDeployments: state.agentDeployments.slice(-AGENT_DEPLOYMENT_LIMIT),
+    rssDrafts: state.rssDrafts.slice(-RSS_DRAFT_LIMIT),
+    rssSeenIds: state.rssSeenIds.slice(-RSS_SEEN_LIMIT),
     updatedAt: new Date().toISOString(),
   };
 
@@ -60,8 +66,11 @@ export function createDefaultState(): OrchestratorState {
     redditQueue: [],
     redditResponses: [],
     agentDeployments: [],
+    rssDrafts: [],
+    rssSeenIds: [],
     lastDriftRepairAt: null,
     lastRedditResponseAt: null,
     lastAgentDeployAt: null,
+    lastRssSweepAt: null,
   };
 }
