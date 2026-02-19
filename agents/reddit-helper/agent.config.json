@@ -1,0 +1,12 @@
+{
+  "name": "reddit-helper",
+  "orchestratorTask": "reddit-response",
+  "knowledgePackDir": "../../logs/knowledge-packs",
+  "redditQueueApi": "https://api.reddit.com/message/unread",
+  "telemetryStream": "http://localhost:8700/telemetry",
+  "redditAuth": {
+    "clientId": "${REDDIT_CLIENT_ID}",
+    "clientSecret": "${REDDIT_CLIENT_SECRET}",
+    "refreshToken": "${REDDIT_REFRESH_TOKEN}"
+  }
+}

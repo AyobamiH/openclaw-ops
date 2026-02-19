@@ -1,0 +1,6 @@
+{
+  "docsPath": "/home/oneclickwebsitedesignfactory/.openclaw/workspace/openclaw-docs",
+  "logsDir": "/home/oneclickwebsitedesignfactory/.openclaw/workspace/logs",
+  "stateFile": "/home/oneclickwebsitedesignfactory/.openclaw/workspace/orchestrator_state.json",
+  "notes": "The orchestrator reads local OpenClaw docs from docsPath; ensure sync_openclaw_docs.sh keeps this mirror current."
+}

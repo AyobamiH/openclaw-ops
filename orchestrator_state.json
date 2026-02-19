@@ -1,0 +1,23 @@
+{
+  "lastStartedAt": "2026-02-19T01:41:44.407Z",
+  "updatedAt": "2026-02-19T01:41:44.409Z",
+  "indexedDocs": 693,
+  "docIndexVersion": 1,
+  "pendingDocChanges": [],
+  "taskHistory": [
+    {
+      "id": "841b8c27-d26e-4273-8a96-303b103dec4d",
+      "type": "startup",
+      "handledAt": "2026-02-19T01:41:44.409Z",
+      "result": "ok",
+      "message": "orchestrator boot complete"
+    }
+  ],
+  "driftRepairs": [],
+  "redditQueue": [],
+  "redditResponses": [],
+  "agentDeployments": [],
+  "lastDriftRepairAt": null,
+  "lastRedditResponseAt": null,
+  "lastAgentDeployAt": null
+}
