@@ -2,6 +2,7 @@ export interface OrchestratorConfig {
   docsPath: string;
   logsDir: string;
   stateFile: string;
+  deployBaseDir?: string;
   notes?: string;
 }
 

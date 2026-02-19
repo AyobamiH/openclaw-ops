@@ -24,7 +24,7 @@ rsync -av /path/to/openclaw/docs/ ~/openclaw-docs/
 The Orchestrator only needs the documentation set stored in `openclaw-docs/`. Keep this directory in sync with <https://docs.openclaw.ai> by periodically updating it (for example, via `rsync` or by downloading the docs bundle). This avoids cloning the entire repository while still giving the Orchestrator the Single Source of Truth it requires.
 
 ## 4. Configuration
-- **Configuration File**: The Orchestrator reads `/home/oneclickwebsitedesignfactory/.openclaw/workspace/orchestrator_config.json`. The `docsPath` entry is already pointed at `/home/oneclickwebsitedesignfactory/.openclaw/workspace/openclaw-docs`; update other fields (logsDir, stateFile, etc.) as needed for your deployment.
+- **Configuration File**: The Orchestrator reads `/home/oneclickwebsitedesignfactory/.openclaw/workspace/orchestrator_config.json`. The `docsPath` entry is already pointed at `/home/oneclickwebsitedesignfactory/.openclaw/workspace/openclaw-docs`; update other fields (logsDir, stateFile, deployBaseDir, etc.) as needed for your deployment.
 - **Environment Variables**:
   - `ORCHESTRATOR_CONFIG`: override the config file path if you need to run the Orchestrator from a different working directory.
 

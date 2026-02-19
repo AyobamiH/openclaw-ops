@@ -35,3 +35,4 @@
 - Created `agents/` workspace with shared telemetry helper and dedicated folders for Doc Specialist and Reddit Helper.
 - Each agent ships with README (mission, flow, escalation), sample `agent.config.json`, and TypeScript entry point wired to telemetry.
 - Added knowledge-pack artifact path + Reddit queue hooks so the Orchestrator can deploy via the new `agent-deploy` handler.
+- `agent-deploy` now scaffolds from these templates into `agents-deployed/` (local workspace option).

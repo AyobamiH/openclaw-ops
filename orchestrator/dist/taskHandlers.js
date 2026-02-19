@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { cp, mkdir, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 const MAX_REDDIT_QUEUE = 100;
 function ensureDocChangeStored(path, context) {
     const { state } = context;
@@ -105,9 +107,24 @@ const heartbeatHandler = async (task) => {
 const agentDeployHandler = async (task, context) => {
     const deploymentId = randomUUID();
     const agentName = String(task.payload.agentName ?? `agent-${deploymentId.slice(0, 6)}`);
-    const template = String(task.payload.template ?? "docs-specialist");
-    const repoPath = String(task.payload.repoPath ?? `agents/${agentName}`);
+    const template = String(task.payload.template ?? "doc-specialist");
+    const templatePath = String(task.payload.templatePath ?? join(process.cwd(), "..", "agents", template));
+    const deployBase = context.config.deployBaseDir ?? join(process.cwd(), "..", "agents-deployed");
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const repoPath = String(task.payload.repoPath ?? join(deployBase, `${agentName}-${timestamp}`));
     const config = typeof task.payload.config === "object" && task.payload.config !== null ? task.payload.config : {};
+    await mkdir(deployBase, { recursive: true });
+    await cp(templatePath, repoPath, { recursive: true });
+    const deploymentNotes = {
+        deploymentId,
+        agentName,
+        template,
+        templatePath: basename(templatePath),
+        deployedAt: new Date().toISOString(),
+        runHint: "npm install && npm run dev -- <payload.json>",
+        payload: task.payload,
+    };
+    await writeFile(join(repoPath, "DEPLOYMENT.json"), JSON.stringify(deploymentNotes, null, 2), "utf-8");
     const record = {
         deploymentId,
         agentName,
@@ -121,7 +138,7 @@ const agentDeployHandler = async (task, context) => {
     context.state.agentDeployments.push(record);
     context.state.lastAgentDeployAt = record.deployedAt;
     await context.saveState();
-    return `deployed ${agentName} via ${template} template`;
+    return `deployed ${agentName} via ${template} template to ${repoPath}`;
 };
 const fallbackHandler = async (task) => {
     return `no handler for task type ${task.type}`;
