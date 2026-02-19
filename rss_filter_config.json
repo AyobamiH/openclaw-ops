@@ -334,12 +334,12 @@
     },
     "cta_variants": {
       "lovable": [
-        "If you want, paste the exact error + what changed last and I’ll tell you the safest next move.",
-        "If you want, DM me the repo/export state and I’ll send a tight fix order (what to lock down first)."
+        "If you want a fast, paid diagnostic, DM me “DIAG” and I’ll send the exact intake + price. You’ll get a clear fix order in 24 hours.",
+        "If you’re done guessing, DM me “FIX” and I’ll send my fixed-scope options (diagnostic, sprint, or retainer)."
       ],
       "openclaw": [
-        "If you want, reply with your setup (VM/Docker/VPS + gateway bind + skills source) and I’ll point out the biggest blast-radius risk.",
-        "If you want, DM ‘SAFE’ and I’ll send the hardening checklist I use for real deployments."
+        "If you want a paid hardening audit, DM me “AUDIT” and I’ll send the scope + price. You’ll get a risk-ranked fix list and a safer architecture.",
+        "If you’re running this anywhere near real data, DM me “SAFE” and I’ll send the audit intake + fixed-price options."
       ]
     }
   }
