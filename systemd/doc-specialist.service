@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenClaw Doc Specialist Service
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/oneclickwebsitedesignfactory/.openclaw/workspace/agents/doc-specialist
+Environment=PATH=/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.12.0/bin:/usr/bin:/bin
+ExecStart=/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.12.0/bin/node /home/oneclickwebsitedesignfactory/.openclaw/workspace/node_modules/tsx/dist/cli.mjs src/service.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

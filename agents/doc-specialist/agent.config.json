@@ -3,6 +3,8 @@
   "orchestratorTask": "drift-repair",
   "docsPath": "../../openclaw-docs",
   "stateFile": "../../orchestrator_state.json",
+  "orchestratorStatePath": "../../orchestrator_state.json",
+  "serviceStatePath": "../../logs/doc-specialist-service.json",
   "telemetryStream": "http://localhost:8700/telemetry",
   "knowledgePackDir": "../../logs/knowledge-packs"
 }

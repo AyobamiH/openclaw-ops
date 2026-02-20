@@ -4,6 +4,8 @@
   "knowledgePackDir": "../../logs/knowledge-packs",
   "draftLogPath": "../../logs/reddit-drafts.jsonl",
   "devvitQueuePath": "../../logs/devvit-submissions.jsonl",
+  "orchestratorStatePath": "../../orchestrator_state.json",
+  "serviceStatePath": "../../logs/reddit-helper-service.json",
   "telemetryStream": "http://localhost:8700/telemetry",
   "redditAuth": {
     "clientId": "${REDDIT_CLIENT_ID}",
