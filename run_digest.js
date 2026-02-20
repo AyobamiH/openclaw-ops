@@ -71,7 +71,7 @@ const lines = [
 
 for (const item of digestItems) {
   lines.push(
-    `${item.index}) r/${item.subreddit} — ${item.tag}`,
+    `${item.index}) r/${item.subreddit} - ${item.tag}`,
     item.link,
     item.replyText,
     "",

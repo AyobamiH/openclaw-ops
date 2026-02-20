@@ -124,12 +124,15 @@ function pickDocSnippet(pack?: KnowledgePack, draft?: RssDraftRecord) {
 }
 
 function buildReply(draft: RssDraftRecord, doc?: KnowledgePackDoc | null) {
-  const intro = draft.suggestedReply;
-  const docSection = doc
-    ? `**Reference → ${doc.firstHeading ?? doc.path}**\n${doc.summary}`
-    : undefined;
-  const ctaBlock = draft.ctaVariant ? `_${draft.ctaVariant}_` : undefined;
-  return [intro, docSection, ctaBlock].filter(Boolean).join("\n\n");
+  const title = draft.title || "Your post";
+  const context = doc?.firstHeading ?? doc?.path;
+  const line1 = `Good question. ${title}`.replace(/—/g, "-");
+  const line2 = doc
+    ? `The risk is usually in ${context}.`
+    : "The risk is usually in the handoff between build and production.";
+  const line3 = "Share whether this is live or pre‑launch and what you control (repo + hosting), and I can outline the cleanest path.";
+  const line4 = "Is this live or pre‑launch?";
+  return [line1, line2, line3, line4].filter(Boolean).join("\n\n");
 }
 
 function deriveConfidence(tag?: string) {
@@ -201,7 +204,7 @@ async function runOnce(config: AgentConfig) {
       queueId: draft.draftId,
       subreddit: draft.subreddit,
       replyText,
-      cta: draft.ctaVariant,
+      cta: null,
       pillar: draft.pillar,
       link: draft.link,
       createdAt: new Date().toISOString(),

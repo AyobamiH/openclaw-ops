@@ -125,15 +125,19 @@ function buildReply(
   queue: RedditQueuePayload,
   draft: RssDraftPayload | undefined,
   doc: KnowledgePackDoc | null,
-  ctaVariant?: string,
 ) {
-  const intro = draft?.suggestedReply ?? `Hey there — saw your thread about ${queue.question}.`;
-  const docSection = doc
-    ? `**Reference → ${doc.firstHeading ?? doc.path}**\n${doc.summary}`
-    : undefined;
-  const cta = ctaVariant ?? draft?.ctaVariant ?? queue.ctaVariant;
-  const ctaBlock = cta ? `_${cta}_` : undefined;
-  return [intro, docSection, ctaBlock].filter(Boolean).join("\n\n");
+  const title = queue.question || draft?.suggestedReply || "Your post";
+  const context = doc?.firstHeading ?? doc?.path;
+  const prompt = context ? `Context: ${context}.` : "";
+  const question = queue.tag === "manual-review"
+    ? "Is this live or still pre‑launch?"
+    : "Is this live or pre‑launch?";
+  const line1 = `Good question. ${title}`.replace(/—/g, "-");
+  const line2 = doc
+    ? `The risk is usually in ${context}.` : "The risk is usually in the handoff between build and production.";
+  const line3 = `Share whether this is live or pre‑launch and what you control (repo + hosting), and I can outline the cleanest path.`;
+  const line4 = question;
+  return [line1, line2, line3, line4].filter(Boolean).join("\n\n");
 }
 
 function deriveConfidence(tag?: string) {
@@ -156,7 +160,7 @@ async function runTask(task: TaskPayload): Promise<AgentResult> {
   }
 
   const docSnippet = pack ? pickDocSnippet(pack, queue) : null;
-  const replyText = buildReply(queue, draft, docSnippet, queue.ctaVariant);
+  const replyText = buildReply(queue, draft, docSnippet);
   const confidence = deriveConfidence(queue.tag ?? draft?.tag);
 
   const draftRecord = {
@@ -164,7 +168,7 @@ async function runTask(task: TaskPayload): Promise<AgentResult> {
     queueId: queue.id,
     subreddit: queue.subreddit,
     replyText,
-    cta: queue.ctaVariant ?? draft?.ctaVariant,
+    cta: null,
     pillar: queue.pillar,
     link: queue.link,
     createdAt: new Date().toISOString(),
