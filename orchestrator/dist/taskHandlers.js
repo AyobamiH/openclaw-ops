@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { cp, mkdir, readFile, writeFile, appendFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { cp, mkdir, readFile, writeFile, appendFile, mkdtemp, rm, readdir, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 const MAX_REDDIT_QUEUE = 100;
 const RSS_SEEN_CAP = 400;
@@ -23,6 +25,116 @@ function rememberRssId(context, id) {
     context.state.rssSeenIds.unshift(id);
     if (context.state.rssSeenIds.length > RSS_SEEN_CAP) {
         context.state.rssSeenIds.length = RSS_SEEN_CAP;
+    }
+}
+async function runDocSpecialistJob(docPaths, targetAgents, requestedBy, logger) {
+    const agentRoot = join(process.cwd(), "..", "agents", "doc-specialist");
+    const tmpRoot = await mkdtemp(join(tmpdir(), "docspec-"));
+    const payloadPath = join(tmpRoot, "payload.json");
+    const resultPath = join(tmpRoot, "result.json");
+    const payload = {
+        id: randomUUID(),
+        docPaths,
+        targetAgents,
+        requestedBy,
+    };
+    await writeFile(payloadPath, JSON.stringify(payload, null, 2), "utf-8");
+    try {
+        await new Promise((resolve, reject) => {
+            const tsxPath = join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
+            const child = spawn(process.execPath, [tsxPath, "src/index.ts", payloadPath], {
+                cwd: agentRoot,
+                env: {
+                    ...process.env,
+                    DOC_SPECIALIST_RESULT_FILE: resultPath,
+                },
+                stdio: ["ignore", "pipe", "pipe"],
+                timeout: 5 * 60 * 1000, // 5 minutes
+            });
+            let stderr = "";
+            child.stderr.on("data", (chunk) => {
+                stderr += chunk.toString();
+            });
+            child.stdout.on("data", (chunk) => {
+                logger.log(`[doc-specialist] ${chunk.toString().trim()}`);
+            });
+            child.on("close", (code) => {
+                if (code === 0) {
+                    resolve();
+                }
+                else {
+                    reject(new Error(stderr.trim() || `doc-specialist exited with code ${code}`));
+                }
+            });
+        });
+        const raw = await readFile(resultPath, "utf-8");
+        return JSON.parse(raw);
+    }
+    finally {
+        await rm(tmpRoot, { recursive: true, force: true });
+    }
+}
+async function findLatestKnowledgePack(dir) {
+    const targetDir = dir ?? join(process.cwd(), "..", "logs", "knowledge-packs");
+    try {
+        const files = await readdir(targetDir);
+        const packFiles = files.filter((file) => file.endsWith(".json"));
+        if (!packFiles.length)
+            return null;
+        const sorted = await Promise.all(packFiles.map(async (file) => {
+            const fullPath = join(targetDir, file);
+            const stats = await stat(fullPath);
+            return { path: fullPath, mtime: stats.mtimeMs };
+        }));
+        sorted.sort((a, b) => b.mtime - a.mtime);
+        const latest = sorted[0];
+        const raw = await readFile(latest.path, "utf-8");
+        const parsed = JSON.parse(raw);
+        return { path: latest.path, pack: parsed };
+    }
+    catch (error) {
+        return null;
+    }
+}
+async function runRedditHelperJob(payload, logger) {
+    const agentRoot = join(process.cwd(), "..", "agents", "reddit-helper");
+    const tmpRoot = await mkdtemp(join(tmpdir(), "reddithelper-"));
+    const payloadPath = join(tmpRoot, "payload.json");
+    const resultPath = join(tmpRoot, "result.json");
+    await writeFile(payloadPath, JSON.stringify(payload, null, 2), "utf-8");
+    try {
+        await new Promise((resolve, reject) => {
+            const tsxPath = join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
+            const child = spawn(process.execPath, [tsxPath, "src/index.ts", payloadPath], {
+                cwd: agentRoot,
+                env: {
+                    ...process.env,
+                    REDDIT_HELPER_RESULT_FILE: resultPath,
+                },
+                stdio: ["ignore", "pipe", "pipe"],
+                timeout: 5 * 60 * 1000, // 5 minutes
+            });
+            let stderr = "";
+            child.stderr.on("data", (chunk) => {
+                stderr += chunk.toString();
+            });
+            child.stdout.on("data", (chunk) => {
+                logger.log(`[reddit-helper] ${chunk.toString().trim()}`);
+            });
+            child.on("close", (code) => {
+                if (code === 0) {
+                    resolve();
+                }
+                else {
+                    reject(new Error(stderr.trim() || `reddit-helper exited with code ${code}`));
+                }
+            });
+        });
+        const raw = await readFile(resultPath, "utf-8");
+        return JSON.parse(raw);
+    }
+    finally {
+        await rm(tmpRoot, { recursive: true, force: true });
     }
 }
 function stripHtml(value) {
@@ -104,40 +216,74 @@ const driftRepairHandler = async (task, context) => {
     const targets = Array.isArray(task.payload.targets)
         ? task.payload.targets
         : ["doc-doctor", "reddit-helper"];
-    const packId = `doc-pack-${Date.now()}`;
+    let docSpecResult = null;
+    try {
+        docSpecResult = await runDocSpecialistJob(processedPaths, targets, requestedBy, context.logger);
+    }
+    catch (error) {
+        context.logger.warn(`[drift-repair] doc specialist failed: ${error.message}`);
+    }
     const record = {
         runId: randomUUID(),
         requestedBy,
         processedPaths,
-        generatedPackIds: [packId],
+        generatedPackIds: docSpecResult?.packId ? [docSpecResult.packId] : [],
+        packPaths: docSpecResult?.packPath ? [docSpecResult.packPath] : undefined,
+        docsProcessed: docSpecResult?.docsProcessed,
         updatedAgents: targets,
         durationMs: Date.now() - startedAt,
         completedAt: new Date().toISOString(),
-        notes: task.payload.notes ? String(task.payload.notes) : undefined,
+        notes: [
+            docSpecResult?.packPath ? `pack:${docSpecResult.packPath}` : null,
+            task.payload.notes ? String(task.payload.notes) : null,
+        ]
+            .filter(Boolean)
+            .join(" | ") || undefined,
     };
     context.state.driftRepairs.push(record);
     context.state.lastDriftRepairAt = record.completedAt;
     await context.saveState();
-    return `drift repair ${record.runId.slice(0, 8)} regenerated ${record.generatedPackIds.length} pack(s) for ${targets.length} agent(s)`;
+    if (docSpecResult) {
+        return `drift repair ${record.runId.slice(0, 8)} generated ${docSpecResult.packId}`;
+    }
+    return `drift repair ${record.runId.slice(0, 8)} completed without pack generation`;
 };
 const redditResponseHandler = async (task, context) => {
     const now = new Date().toISOString();
     let queueItem = context.state.redditQueue.shift();
-    if (!queueItem) {
+    if (!queueItem && task.payload.queue) {
+        const manualQueue = task.payload.queue;
         queueItem = {
-            id: String(task.payload.queueId ?? randomUUID()),
-            subreddit: String(task.payload.subreddit ?? "r/OpenClaw"),
-            question: String(task.payload.question ?? "General OpenClaw workflow question"),
-            link: task.payload.link ? String(task.payload.link) : undefined,
+            id: String(manualQueue.id ?? randomUUID()),
+            subreddit: String(manualQueue.subreddit ?? "r/OpenClaw"),
+            question: String(manualQueue.question ?? "General OpenClaw workflow question"),
+            link: manualQueue.link ? String(manualQueue.link) : undefined,
             queuedAt: now,
+            draftRecordId: manualQueue.draftRecordId ? String(manualQueue.draftRecordId) : undefined,
         };
     }
+    if (!queueItem) {
+        await context.saveState();
+        return "no reddit queue items";
+    }
     const responder = String(task.payload.responder ?? "reddit-helper");
-    const confidence = Number.isFinite(task.payload.confidence) ? Number(task.payload.confidence) : 0.82;
-    const draftedResponse = typeof task.payload.draft === "string"
-        ? task.payload.draft
-        : `Thanks for the question! Pulling knowledge pack v${context.state.docIndexVersion} now — expect a complete reply shortly.`;
-    const status = task.payload.postImmediately === false ? "drafted" : "posted";
+    const matchingDraft = context.state.rssDrafts.find((draft) => draft.draftId === (queueItem?.draftRecordId ?? queueItem.id));
+    const latestPack = await findLatestKnowledgePack(context.config.knowledgePackDir);
+    let agentResult = null;
+    try {
+        agentResult = await runRedditHelperJob({
+            queue: queueItem,
+            rssDraft: matchingDraft,
+            knowledgePackPath: latestPack?.path,
+            knowledgePack: latestPack?.pack,
+        }, context.logger);
+    }
+    catch (error) {
+        context.logger.warn(`[reddit-response] helper failed: ${error.message}`);
+    }
+    const draftedResponse = agentResult?.replyText ?? queueItem.suggestedReply ?? queueItem.question;
+    const confidence = agentResult?.confidence ?? 0.75;
+    const status = "drafted";
     const record = {
         queueId: queueItem.id,
         subreddit: queueItem.subreddit,
@@ -147,15 +293,17 @@ const redditResponseHandler = async (task, context) => {
         confidence,
         status,
         respondedAt: now,
-        postedAt: status === "posted" ? now : undefined,
         link: queueItem.link,
-        notes: task.payload.notes ? String(task.payload.notes) : undefined,
+        notes: matchingDraft ? `rssDraft:${matchingDraft.draftId}` : undefined,
+        rssDraftId: matchingDraft?.draftId,
+        devvitPayloadPath: agentResult?.devvitPayloadPath,
+        packId: agentResult?.packId ?? (latestPack?.pack?.id ?? undefined),
+        packPath: agentResult?.packPath ?? latestPack?.path,
     };
     context.state.redditResponses.push(record);
     context.state.lastRedditResponseAt = now;
-    ensureRedditQueueLimit(context);
     await context.saveState();
-    return `${status} reddit reply for ${queueItem.id}`;
+    return `drafted reddit reply for ${queueItem.subreddit} (${queueItem.id})`;
 };
 const rssSweepHandler = async (task, context) => {
     const configPath = typeof task.payload.configPath === "string"
@@ -242,6 +390,24 @@ const rssSweepHandler = async (task, context) => {
                     queuedAt: now,
                 };
                 context.state.rssDrafts.push(record);
+                context.state.redditQueue.push({
+                    id: record.draftId,
+                    subreddit: feed.subreddit,
+                    question: entry.title,
+                    link: entry.link,
+                    queuedAt: now,
+                    tag,
+                    pillar: pillarKey,
+                    feedId: feed.id,
+                    entryContent: entry.content,
+                    author: entry.author,
+                    ctaVariant,
+                    matchedKeywords: record.matchedKeywords,
+                    score: totalScore,
+                    draftRecordId: record.draftId,
+                    suggestedReply,
+                });
+                ensureRedditQueueLimit(context);
                 await appendDraft(draftsPath, record);
                 rememberRssId(context, seenId);
                 drafted += 1;

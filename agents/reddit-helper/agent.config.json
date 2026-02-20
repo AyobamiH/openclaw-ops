@@ -2,7 +2,8 @@
   "name": "reddit-helper",
   "orchestratorTask": "reddit-response",
   "knowledgePackDir": "../../logs/knowledge-packs",
-  "redditQueueApi": "https://api.reddit.com/message/unread",
+  "draftLogPath": "../../logs/reddit-drafts.jsonl",
+  "devvitQueuePath": "../../logs/devvit-submissions.jsonl",
   "telemetryStream": "http://localhost:8700/telemetry",
   "redditAuth": {
     "clientId": "${REDDIT_CLIENT_ID}",

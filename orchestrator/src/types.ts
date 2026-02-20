@@ -5,6 +5,7 @@ export interface OrchestratorConfig {
   deployBaseDir?: string;
   rssConfigPath?: string;
   redditDraftsPath?: string;
+  knowledgePackDir?: string;
   notes?: string;
 }
 
@@ -34,6 +35,8 @@ export interface DriftRepairRecord {
   requestedBy: string;
   processedPaths: string[];
   generatedPackIds: string[];
+  packPaths?: string[];
+  docsProcessed?: number;
   updatedAgents: string[];
   durationMs: number;
   completedAt: string;
@@ -46,6 +49,16 @@ export interface RedditQueueItem {
   question: string;
   link?: string;
   queuedAt: string;
+  tag?: string;
+  pillar?: string;
+  feedId?: string;
+  entryContent?: string;
+  author?: string;
+  ctaVariant?: string;
+  matchedKeywords?: string[];
+  score?: number;
+  draftRecordId?: string;
+  suggestedReply?: string;
 }
 
 export interface RedditReplyRecord {
@@ -60,6 +73,10 @@ export interface RedditReplyRecord {
   postedAt?: string;
   link?: string;
   notes?: string;
+  rssDraftId?: string;
+  devvitPayloadPath?: string;
+  packId?: string;
+  packPath?: string;
 }
 
 export interface AgentDeploymentRecord {
