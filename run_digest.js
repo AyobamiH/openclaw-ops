@@ -73,7 +73,7 @@ for (const item of digestItems) {
   lines.push(
     `${item.index}) r/${item.subreddit} - ${item.tag}`,
     item.link,
-    item.replyText,
+    item.replyText || "[Draft text not generated yet]",
     "",
   );
 }
