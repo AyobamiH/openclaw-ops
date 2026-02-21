@@ -1,0 +1,346 @@
+# MEMORY.md — Long-Term Strategy & Context
+
+This is your curated memory. It contains decisions made, strategy, and how to extend the system.
+Read this before each session to understand where things stand.
+
+---
+
+## Core Mission
+
+**Goal**: Find leads automatically, review once daily (morning), minimize manual work.
+
+**How it works:**
+- **11:00 PM UTC**: Nightly batch job collects RSS feeds + Reddit posts → scores each one → mark high-confidence (>0.75) → create digest JSON
+- **reddit-helper**: Uses gpt-4 to draft personalized replies (contextual, not templates)
+- **Confidence scoring**: Hybrid formula combining RSS relevance (40%) + LLM self-assessment (60%)
+- **6:00 AM UTC**: Morning digest compiled, delivered to email (or Slack/Discord if configured)
+- **You**: Review digest in morning, approve/reject drafts, move on
+
+**Why this matters:**
+- Token cost: ~$1.65/day (batched, not continuous polling)
+- UX: All work ready at 6am, not scattered throughout day
+- Quality: Personalized replies with honest confidence, grounded in ENGAGEMENT_OS.md doctrine
+- Simplicity: No new tech — just email (what you already use)
+
+---
+
+## Key Strategy Decisions
+
+### 1. Nightly Batched (Not Continuous Polling)
+
+**Decision**: 11pm batch + 6am digest, not polling every 10-15 minutes
+
+**Was**: 4 setInterval timers (1m, 5m, 10m, 15m) = ~4-5 API calls/hour = expensive & fragmented
+**Now**: 2 cron jobs (11pm batch, 6am notify) = ~2-3 API calls/day = negligible cost
+
+**Trade-off**: Replies ready in morning, not immediately
+**Worth it**: Better UX, lower cost, single morning digest
+
+---
+
+### 2. LLM Personalization (Not Templates)
+
+**Decision**: gpt-4 drafts contextual replies per post, not fill-in-blanks templates
+
+**Was**: Hardcoded template ("Great question! Here's what I know...") repeated identically
+**Now**: Each reply contextual to specific post, shows authority, asks right qualifying questions
+
+**Cost**: ~$1.65/day for 100 drafts (150-300 tokens per reply, gpt-4 pricing $0.06/1k)
+**Worth it**: Each reply unique, not spam-like, matches ENGAGEMENT_OS.md doctrine
+
+---
+
+### 3. Hybrid Confidence Scoring
+
+**Decision**: `(rssScore * 0.4) + (llmScore * 0.6)` — two signals, not guessing
+
+**Was**: Arbitrary hardcoding ("if tag=='priority' → 0.92, else if score>0.8 → 0.85, else 0.78")
+**Now**: Transparent, auditable, matches actual signals
+  - rssScore = keyword relevance from RSS sweep (0-1 scale)
+  - llmScore = gpt-4 self-evaluation ("How confident is this reply on-brand?") (0-1 scale)
+
+**Why**: Both signals matter. RSS catches relevance, LLM catches quality.
+**Result**: Confidence varies per post (0.3-0.9 range), trustworthy
+
+---
+
+### 4. Email-Native Notifications (Not Slack)
+
+**Decision**: Notifications route to email, not Slack
+
+**Why**: No new tools required. Single inbox. Archive-friendly.
+**How**: notifier.ts supports Slack/Discord/Email/Log — pick what you want
+**Configuration**: Set `digestNotificationChannel` in orchestrator_config.json
+
+**Trade-off**: Email less "real-time" than Slack, but you check email anyway
+
+---
+
+### 5. System Self-Documentation (Git + CHANGELOG + Daily Notes)
+
+**Decision**: System remembers itself through Git + curated memory files
+
+**How it works:**
+- Git automatically tracks every code change (what changed, when, who)
+- CHANGELOG.md documents WHY (in human words, for understanding)
+- memory/YYYY-MM-DD.md captures raw session notes
+- MEMORY.md (this file) holds long-term strategy
+
+**Result**: Future-you can understand what was decided and why, without guessing
+
+---
+
+## System Architecture Overview
+
+```
+NIGHTLY ORCHESTRATION (11pm UTC)
+│
+├─ doc-sync: Flush pending document changes
+├─ Mark items: Filter reddit queue where score > 0.75
+└─ Compile digest: JSON with summary + all marked items
+   └─ Save to: /logs/digests/digest-YYYY-MM-DD.json
+
+REDDIT REPLY DRAFTING (Inside nightly batch)
+│
+├─ Load knowledge pack (from doc-specialist)
+├─ For each high-confidence item:
+│  ├─ Call gpt-4 with RUNTIME_ENGAGEMENT_OS.md as doctrine
+│  ├─ gpt-4 drafts contextual reply
+│  ├─ gpt-4 self-scores draft quality (0-1)
+│  └─ Calculate hybrid confidence: (rss*0.4) + (llm*0.6)
+└─ Log: /logs/reddit-drafts.jsonl (every draft recorded)
+
+MORNING NOTIFICATION (6am UTC)
+│
+├─ Find latest digest: /logs/digests/digest-YYYY-MM-DD.json
+├─ Format message: "X leads ready (score > 0.75)"
+├─ Send via notifier:
+│  ├─ Email: HTML body with digest summary
+│  ├─ Slack: Rich embed with button link
+│  ├─ Discord: Colored embed with metadata
+│  └─ Log: Console output (fallback)
+└─ Update state: lastDigestNotificationAt timestamp
+
+ERROR ALERTING (Continuous)
+│
+├─ Track each task result (success/failure)
+├─ Consecutive failures counter per task type
+├─ Alert after 3 failures: send Slack/email
+├─ Heartbeat watch-dog: Check if orchestrator hung (>15 min no pulse)
+└─ Cleanup: Keep 48 hours of alert history
+```
+
+---
+
+## Important Configuration
+
+**orchestrator_config.json** — What controls behavior:
+
+| Field | Current | What It Does |
+|-------|---------|--------------|
+| `openaiModel` | gpt-4 | Which LLM for reply drafting |
+| `openaiMaxTokens` | 300 | Max length per reply (250-300 recommended) |
+| `runtimeEngagementOsPath` | ./RUNTIME_ENGAGEMENT_OS.md | LLM's doctrine for tone/style |
+| `nightlyBatchSchedule` | 0 23 * * * | When to run batch (11pm UTC) |
+| `morningNotificationSchedule` | 0 6 * * * | When to send digest (6am UTC) |
+| `digestNotificationChannel` | email | How to deliver (email/slack/discord/log) |
+| `digestNotificationTarget` | your-email@... | Where digest goes |
+| `digestDir` | ./logs/digests | Where digest JSON files saved |
+
+**To change behavior:**
+- Faster replies? Lower maxTokens (200)
+- Longer replies? Raise maxTokens (400)
+- Different tone? Edit RUNTIME_ENGAGEMENT_OS.md
+- Different time? Update cron expressions
+- Different channel? Change digestNotificationChannel
+
+---
+
+## System Health Indicators
+
+**🟢 Green (all working):**
+- Digest file appears daily: `ls -la logs/digests/ | tail -1`
+- Nightly batch completes <30 sec: `grep nightly-batch logs/orchestrator.log | grep "complete\|success"`
+- Confidence scores vary (0.3-0.9 range):
+  ```bash
+  jq '.confidence' logs/reddit-drafts.jsonl | sort | uniq -c
+  ```
+- No errors in last 24h: `grep ERROR logs/orchestrator.log | wc -l`
+
+**🟡 Yellow (watch it):**
+- LLM API rate limiting: Check logs for `openai.*429`
+- Missing ENGAGEMENT_OS.md: Check exists + readable
+- Digest file stale (>24h old): Batch job might have crashed
+- Alert history growing: Check `grep CRITICAL logs/orchestrator.log`
+
+**🔴 Red (fix now):**
+- Orchestrator not running: `ps aux | grep orchestrator`
+- Git repo corrupted: `git fsck --full`
+- Config fields missing: Check orchestrator_config.json against schema
+- LLM API key invalid: Test with `curl` to OpenAI endpoint
+
+---
+
+## How to Extend
+
+**Add a new Reddit community:**
+1. Edit `rss_filter_config.json` — add subreddit + keywords
+2. Next 11pm batch picks it up automatically
+3. Drafts appear in morning digest
+
+**Change reply style:**
+1. Edit `RUNTIME_ENGAGEMENT_OS.md` (gpt-4's doctrine)
+2. Redeploy orchestrator or wait for next 11pm batch to reload
+3. Next batch of replies use new doctrine
+
+**Tighten/loosen filtering:**
+1. Change score threshold in nightly-batch handler (currently 0.75)
+   - Lower (0.65) = more leads, noisier
+   - Higher (0.85) = fewer leads, cleaner
+2. Test with 1-2 nights before finalizing
+3. Update config: `nightlyBatchScore` field (add if needed)
+
+**Add approval workflow:**
+1. Before sending digest, filter for `approved == false`
+2. Show pending drafts to John via email/Telegram
+3. Wait for approval before marking `selectedForDraft = true`
+4. Next batch sends only approved replies
+
+**Monitor trending topics:**
+1. Parse digest summaries weekly
+2. Extract top keywords from high-confidence drafts
+3. Update rss_filter_config.json to focus on trending topics
+4. Fine-tune which communities/keywords to monitor
+
+---
+
+## Session Checklist
+
+**Start of session:**
+- [ ] Read SOUL.md (who you are)
+- [ ] Read USER.md (who I'm helping)
+- [ ] Read MEMORY.md (this file — long-term strategy)
+- [ ] Read memory/YYYY-MM-DD.md (today's context)
+- [ ] Check `git status` (what's modified?)
+- [ ] Check `ls -la logs/digests/ | tail -1` (system healthy?)
+
+**During session:**
+- [ ] Make changes to code
+- [ ] Test locally: `npm run dev`
+- [ ] Run manual tests: `npx tsx test-*.ts`
+- [ ] Check for errors: `npm run build`
+
+**End of session:**
+- [ ] Review what changed: `git status`
+- [ ] Commit with message: `git commit -m "..."`
+- [ ] Update CHANGELOG.md with what was built
+- [ ] Update memory/YYYY-MM-DD.md with learnings
+- [ ] Update MEMORY.md if strategy changed
+
+---
+
+## Known Limitations & Trade-offs
+
+| Limitation | Why | Workaround |
+|-----------|-----|-----------|
+| Drafts ready 6am, not immediate | Batched system | Acceptable trade-off for cost savings |
+| Need EMAIL_API_KEY for email | Requires email service | Fallback to log channel (logs to console) |
+| Reddit posts must be RSS-able | Limited to RSS feeds | Manually add high-value communities |
+| LLM cost scales with volume | 100 drafts = $1.65/day | Monitor budget, adjust maxTokens |
+| No reply approval workflow yet | System auto-drafts | Manual: review drafts before posting |
+
+---
+
+## What Works Well Right Now
+
+✅ **Nightly batch** — Consolidates all leads into single 11pm job
+✅ **Hybrid scoring** — Combines RSS + LLM signals transparently
+✅ **LLM personalization** — Each reply contextual, not templated
+✅ **Email delivery** — No new tech, uses what you already have
+✅ **Error tracking** — Knows when things break, escalates after 3 failures
+✅ **Self-documentation** — Git + CHANGELOG + daily notes = perfect memory
+
+---
+
+## What's In Progress / Future
+
+⏳ **Production deployment** — All code ready, just needs env vars set
+⏳ **Real 11pm batch** — Not yet run on live schedule (can test manually)
+⏳ **Trending analysis** — Track topics over time (optional enhancement)
+⏳ **Approval workflow** — Human reviews before posting (optional enhancement)
+
+---
+
+## Critical Files & Locations
+
+**System:**
+- Orchestrator: `/orchestrator/` (cron scheduling, task handlers)
+- reddit-helper: `/agents/reddit-helper/` (LLM drafting)
+- Config: `orchestrator_config.json` (behavior settings)
+- State: `orchestrator_state.json` (runtime state, restored on crash)
+
+**Data:**
+- Digests: `logs/digests/digest-YYYY-MM-DD.json`
+- Drafts: `logs/reddit-drafts.jsonl` (one line = one draft)
+- Logs: `logs/orchestrator.log`
+
+**Documentation:**
+- SOUL.md (who you are)
+- USER.md (who John is)
+- MEMORY.md (this file)
+- CHANGELOG.md (what was built)
+- memory/YYYY-MM-DD.md (daily notes)
+
+---
+
+## Emergency Recovery
+
+**Orchestrator crashed?**
+```bash
+cd orchestrator
+npm run dev  # Restart
+git log -1  # See last change
+```
+
+**Digest not created?**
+```bash
+# Manual test
+npx tsx test-nightly-batch.ts
+# Check error in output
+```
+
+**Lost state?**
+```bash
+# Restore from git
+git checkout orchestrator_state.json
+# Or start fresh (loses history of last task)
+```
+
+**Notifications not sending?**
+```bash
+# Check config
+cat orchestrator_config.json | jq '.digestNotificationChannel'
+# Test manually
+npx tsx test-send-digest.ts
+```
+
+---
+
+## Next Big Decision (When You're Ready)
+
+**Should we set up actual Slack webhook for alerts?**
+
+Currently: Email-native (no new tech)
+Option: Add Slack for real-time alerts to `#alerts` channel
+
+Trade-off:
+- ✅ Faster alert visibility
+- ✅ Channel organization
+- ❌ One more tool to check
+
+Your call when ready.
+
+---
+
+_Last curated: 2026-02-21_
+_Next review: After major implementation or significant bugs found_
