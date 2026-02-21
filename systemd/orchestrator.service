@@ -1,0 +1,21 @@
+[Unit]
+Description=OpenClaw Orchestrator Service
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/oneclickwebsitedesignfactory/.openclaw/workspace/orchestrator
+Environment=PATH=/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.12.0/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+ExecStart=/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.12.0/bin/node dist/index.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+MemoryLimit=1G
+CPUQuota=80%
+
+[Install]
+WantedBy=default.target

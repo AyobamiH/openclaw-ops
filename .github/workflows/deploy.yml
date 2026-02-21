@@ -1,0 +1,62 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm install
+          cd orchestrator && npm install
+
+      - name: Build orchestrator
+        run: cd orchestrator && npm run build
+
+      - name: Verify production readiness
+        run: |
+          echo "🔍 Deployment Checklist:"
+          echo "✅ Code compiled successfully"
+          ls -lh orchestrator/dist/index.js
+          echo "✅ Configuration files present"
+          ls -lh orchestrator_config.json orchestrator_state.json
+          echo "✅ Knowledge packs exist"
+          ls -lh logs/knowledge-packs/ | head -5
+
+      - name: Create deployment artifact
+        run: |
+          mkdir -p deployment
+          cp -r orchestrator/dist deployment/
+          cp orchestrator/package.json deployment/
+          cp orchestrator_config.json deployment/
+          tar -czf orchestrator-build-${{ github.sha }}.tar.gz deployment/
+          echo "✅ Deployment artifact created"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: orchestrator-build
+          path: orchestrator-build-*.tar.gz
+          retention-days: 30
+
+      - name: Notify deployment
+        run: |
+          echo "📦 Deployment package ready at:"
+          echo "   orchestrator-build-${{ github.sha }}.tar.gz"
+          echo ""
+          echo "To deploy:"
+          echo "1. Extract: tar -xzf orchestrator-build-*.tar.gz"
+          echo "2. Copy files to production server"
+          echo "3. Run: systemctl restart orchestrator"

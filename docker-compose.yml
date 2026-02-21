@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openclaw-orchestrator
+    working_dir: /app
+    volumes:
+      - ./logs:/app/logs
+      - ./orchestrator_config.json:/app/orchestrator_config.json:ro
+      - ./openclaw-docs:/app/openclaw-docs:ro
+      - ./openai-cookbook:/app/openai-cookbook:ro
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+    ports:
+      - "3000:3000"  # If orchestrator exposes API in future
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "try { require('fs').statSync('/app/orchestrator_state.json'); } catch(e) { process.exit(1); }"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - openclaw
+
+networks:
+  openclaw:
+    driver: bridge
