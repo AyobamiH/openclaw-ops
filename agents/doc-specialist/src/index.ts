@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { dirname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Telemetry } from "../../shared/telemetry.js";
@@ -12,10 +12,12 @@ interface DriftRepairPayload {
 
 interface AgentConfig {
   docsPath: string;
+  cookbookPath?: string;
   knowledgePackDir: string;
 }
 
 interface ProcessedDocSummary {
+  source: "openclaw" | "openai";
   path: string;
   absolutePath: string;
   summary: string;
@@ -38,6 +40,7 @@ async function loadAgentConfig(): Promise<AgentConfig> {
   }
   return {
     docsPath: resolve(dirname(configPath), parsed.docsPath),
+    cookbookPath: parsed.cookbookPath ? resolve(dirname(configPath), parsed.cookbookPath) : undefined,
     knowledgePackDir: resolve(dirname(configPath), parsed.knowledgePackDir),
   };
 }
@@ -49,6 +52,38 @@ function normalizeDocPath(docPath: string, docsRoot: string) {
     return trimmed;
   }
   return resolve(docsRoot, trimmed);
+}
+
+async function findMarkdownFiles(
+  dir: string,
+  prefix = "",
+): Promise<Array<{ path: string; absolutePath: string }>> {
+  const results: Array<{ path: string; absolutePath: string }> = [];
+
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+
+      const absolutePath = resolve(dir, entry.name);
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+
+      if (entry.isDirectory()) {
+        const subFiles = await findMarkdownFiles(absolutePath, relativePath);
+        results.push(...subFiles);
+      } else if (entry.name.endsWith(".md")) {
+        results.push({ path: relativePath, absolutePath });
+      }
+    }
+  } catch (error) {
+    await telemetry.warn("dir.scan_failed", {
+      dir,
+      message: (error as Error).message,
+    });
+  }
+
+  return results;
 }
 
 function summarize(content: string, maxChars = 600) {
@@ -80,6 +115,7 @@ async function collectDocSummaries(docPaths: string[], docsRoot: string): Promis
       const wordCount = content.split(/\s+/).filter(Boolean).length;
       const bytes = Buffer.byteLength(content, "utf-8");
       summaries.push({
+        source: "openclaw",
         path: relative(docsRoot, absolute),
         absolutePath: absolute,
         summary,
@@ -98,9 +134,58 @@ async function collectDocSummaries(docPaths: string[], docsRoot: string): Promis
   return summaries;
 }
 
+async function collectDocsFromPath(
+  docsPath: string,
+  source: "openclaw" | "openai",
+): Promise<ProcessedDocSummary[]> {
+  const summaries: ProcessedDocSummary[] = [];
+  const mdFiles = await findMarkdownFiles(docsPath);
+
+  for (const file of mdFiles) {
+    try {
+      const content = await readFile(file.absolutePath, "utf-8");
+      const summary = summarize(content);
+      const wordCount = content.split(/\s+/).filter(Boolean).length;
+      const bytes = Buffer.byteLength(content, "utf-8");
+      summaries.push({
+        source,
+        path: file.path,
+        absolutePath: file.absolutePath,
+        summary,
+        wordCount,
+        bytes,
+        firstHeading: extractHeading(content),
+      });
+    } catch (error) {
+      await telemetry.warn("doc.read_failed", {
+        path: file.path,
+        source,
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  return summaries;
+}
+
 async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConfig) {
-  await telemetry.info("pack.start", { files: task.docPaths.length });
-  const summaries = await collectDocSummaries(task.docPaths, config.docsPath);
+  await telemetry.info("pack.start", { files: task.docPaths.length, useDualSources: !!config.cookbookPath });
+  
+  let summaries: ProcessedDocSummary[] = [];
+
+  // If custom docPaths provided, use those (backward compatibility)
+  if (task.docPaths && task.docPaths.length > 0) {
+    summaries = await collectDocSummaries(task.docPaths, config.docsPath);
+  } else {
+    // Otherwise, scan both openclaw docs and openai cookbook
+    const openclawDocs = await collectDocsFromPath(config.docsPath, "openclaw");
+    summaries.push(...openclawDocs);
+
+    if (config.cookbookPath) {
+      const cookbookDocs = await collectDocsFromPath(config.cookbookPath, "openai");
+      summaries.push(...cookbookDocs);
+    }
+  }
 
   await mkdir(config.knowledgePackDir, { recursive: true });
   const packId = `knowledge-pack-${Date.now()}`;
@@ -115,18 +200,27 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
   };
 
   await writeFile(packPath, JSON.stringify(payload, null, 2), "utf-8");
-  await telemetry.info("pack.complete", { packPath, docsProcessed: summaries.length });
+  const sourceBreakdown = summaries.reduce((acc, doc) => {
+    acc[doc.source] = (acc[doc.source] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  await telemetry.info("pack.complete", { 
+    packPath, 
+    docsProcessed: summaries.length,
+    sourceBreakdown,
+  });
 
   const resultFile = process.env.DOC_SPECIALIST_RESULT_FILE;
   if (resultFile) {
     await writeFile(
       resultFile,
-      JSON.stringify({ packPath, packId, docsProcessed: summaries.length }, null, 2),
+      JSON.stringify({ packPath, packId, docsProcessed: summaries.length, sourceBreakdown }, null, 2),
       "utf-8",
     );
   }
 
-  return { packPath, packId, docsProcessed: summaries.length };
+  return { packPath, packId, docsProcessed: summaries.length, sourceBreakdown };
 }
 
 async function run() {

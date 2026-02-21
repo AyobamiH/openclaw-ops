@@ -2,11 +2,16 @@ import { readFile, writeFile, appendFile, mkdir, readdir, stat } from "node:fs/p
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Telemetry } from "../../shared/telemetry.js";
+import OpenAI from "openai";
 
 interface AgentConfig {
   knowledgePackDir: string;
   draftLogPath: string;
   devvitQueuePath?: string;
+  openaiModel?: string;
+  openaiMaxTokens?: number;
+  openaiTemperature?: number;
+  runtimeEngagementOsPath?: string;
 }
 
 interface RedditQueuePayload {
@@ -21,6 +26,7 @@ interface RedditQueuePayload {
   ctaVariant?: string;
   matchedKeywords?: string[];
   score?: number;
+  selectedForDraft?: boolean;
 }
 
 interface RssDraftPayload {
@@ -40,6 +46,7 @@ interface TaskPayload {
 }
 
 interface KnowledgePackDoc {
+  source: "openclaw" | "openai";
   path: string;
   summary: string;
   wordCount: number;
@@ -53,13 +60,24 @@ interface KnowledgePack {
   docs: KnowledgePackDoc[];
 }
 
+interface ConfidenceBreakdown {
+  rssScore: number;
+  llmScore: number;
+  weights: { rss: number; llm: number };
+  final: number;
+}
+
 interface AgentResult {
   replyText: string;
   confidence: number;
+  rssScore?: number;
+  llmScore?: number;
+  confidenceBreakdown?: ConfidenceBreakdown;
   ctaVariant?: string;
   devvitPayloadPath?: string;
   packId?: string;
   packPath?: string;
+  reasoning?: string;
 }
 
 const telemetry = new Telemetry({ component: "reddit-helper" });
@@ -79,6 +97,10 @@ async function loadConfig(): Promise<AgentConfig> {
     devvitQueuePath: parsed.devvitQueuePath
       ? resolve(dirname(configPath), parsed.devvitQueuePath)
       : undefined,
+    openaiModel: parsed.openaiModel || "gpt-4",
+    openaiMaxTokens: parsed.openaiMaxTokens || 300,
+    openaiTemperature: parsed.openaiTemperature ?? 0.7,
+    runtimeEngagementOsPath: parsed.runtimeEngagementOsPath,
   };
 }
 
@@ -113,43 +135,204 @@ async function loadKnowledgePackFromDir(dir: string): Promise<{ pack: KnowledgeP
   }
 }
 
-function pickDocSnippet(pack?: KnowledgePack, queue?: RedditQueuePayload) {
-  if (!pack?.docs?.length) return null;
-  if (!queue?.matchedKeywords?.length) return pack.docs[0];
+async function loadRuntimeEngagementOS(path?: string): Promise<string> {
+  if (!path) return "";
+  try {
+    return await readFile(path, "utf-8");
+  } catch (error) {
+    await telemetry.warn("engagement-os.load_failed", { path, message: (error as Error).message });
+    return "";
+  }
+}
+
+function pickDocSnippets(pack?: KnowledgePack, queue?: RedditQueuePayload, limit = 3): KnowledgePackDoc[] {
+  if (!pack?.docs?.length) return [];
+  if (!queue?.matchedKeywords?.length) {
+    // Prefer openclaw docs by default (they have more direct guidance)
+    const openclaw = pack.docs.filter((d) => d.source === "openclaw").slice(0, limit);
+    const openai = pack.docs.filter((d) => d.source === "openai").slice(0, limit - openclaw.length);
+    return [...openclaw, ...openai];
+  }
+
   const keyword = queue.matchedKeywords[0].toLowerCase();
-  const match = pack.docs.find((doc) => doc.summary.toLowerCase().includes(keyword));
-  return match ?? pack.docs[0];
+  const matching = pack.docs.filter((doc) => doc.summary.toLowerCase().includes(keyword));
+  const result = matching.length > 0 ? matching : pack.docs;
+
+  // Balance by source: if we have both, try to include both perspectives
+  const openclaw = result.filter((d) => d.source === "openclaw");
+  const openai = result.filter((d) => d.source === "openai");
+  const openclawSlice = openclaw.slice(0, Math.ceil(limit / 2));
+  const openaiSlice = openai.slice(0, limit - openclawSlice.length);
+  return [...openclawSlice, ...openaiSlice].slice(0, limit);
 }
 
-function buildReply(
+function buildLLMPrompt(
   queue: RedditQueuePayload,
-  draft: RssDraftPayload | undefined,
-  doc: KnowledgePackDoc | null,
-) {
-  const title = queue.question || draft?.suggestedReply || "Your post";
-  const context = doc?.firstHeading ?? doc?.path;
-  const prompt = context ? `Context: ${context}.` : "";
-  const question = queue.tag === "manual-review"
-    ? "Is this live or still pre‑launch?"
-    : "Is this live or pre‑launch?";
-  const line1 = `Good question. ${title}`.replace(/—/g, "-");
-  const line2 = doc
-    ? `The risk is usually in ${context}.` : "The risk is usually in the handoff between build and production.";
-  const line3 = `Share whether this is live or pre‑launch and what you control (repo + hosting), and I can outline the cleanest path.`;
-  const line4 = question;
-  return [line1, line2, line3, line4].filter(Boolean).join("\n\n");
+  docs: KnowledgePackDoc[],
+  engagementOS: string,
+): { system: string; user: string } {
+  const contextBlock = docs.length > 0
+    ? `\n\nContext from your work:\n${docs
+        .map((d) => {
+          const source = d.source === "openclaw" ? "[OpenClaw Automation]" : "[OpenAI Cookbook]";
+          return `${source} ${d.firstHeading || d.path}: ${d.summary}`;
+        })
+        .join("\n")}`
+    : "";
+
+  const userMessage = `Reddit Post:
+Subreddit: r/${queue.subreddit}
+Title: ${queue.question || "(no title)"}
+Link: ${queue.link || "(no direct link)"}
+Keywords matched: ${queue.matchedKeywords?.join(", ") || "none"}
+Author level: ${queue.tag || "unknown"}
+${queue.entryContent ? `\nPost content:\n${queue.entryContent.substring(0, 500)}...` : ""}
+${contextBlock}
+
+Generate a reply following the doctrine. Remember:
+- No more than 5 sentences
+- Ask 1-2 qualifying questions
+- Do not solve or architect yet
+- Show your authority, not your solutions`;
+
+  return {
+    system: `You are a senior engineer drafting Reddit replies to potential clients. Follow this doctrine:\n\n${engagementOS}\n\nGenerate YOUR response to the post above.`,
+    user: userMessage,
+  };
 }
 
-function deriveConfidence(tag?: string) {
-  if (tag === "priority") return 0.92;
-  if (tag === "manual-review") return 0.6;
-  return 0.78;
+async function scoreReplyQualityWithLLM(
+  replyText: string,
+  queue: RedditQueuePayload,
+  engagementOS: string,
+  config: AgentConfig,
+): Promise<{ score: number; reasoning: string }> {
+  try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) throw new Error("OPENAI_API_KEY not set");
+
+    const client = new OpenAI({ apiKey });
+
+    const scoringPrompt = `You just generated this Reddit reply:
+
+${replyText}
+
+Score how well this reply adheres to the following doctrine:
+
+${engagementOS}
+
+Answer with ONLY a JSON object, no markdown:
+{"score": 0.75, "reasoning": "brief explanation"}
+
+Consider:
+- Does it follow the 4-5 sentence structure?
+- Does it ask qualifying questions without solving?
+- Is the tone calm and authoritative (not eager, not verbose)?
+- Would this convert qualified leads?
+
+If perfect adherence: 0.95+
+If good adherence with minor issues: 0.80-0.94
+If acceptable but has drift: 0.65-0.79
+If poor adherence: <0.65`;
+
+    const response = await client.chat.completions.create({
+      model: config.openaiModel || "gpt-4",
+      max_tokens: 100,
+      temperature: 0.2,
+      messages: [
+        {
+          role: "user",
+          content: scoringPrompt,
+        },
+      ],
+    });
+
+    const scoreText = response.choices[0]?.message?.content || "";
+    const scoreJson = JSON.parse(scoreText) as { score: number; reasoning: string };
+
+    await telemetry.info("llm.score_success", {
+      score: scoreJson.score,
+      tokenUsage: response.usage?.total_tokens || 0,
+    });
+
+    return { score: Math.max(0, Math.min(1, scoreJson.score)), reasoning: scoreJson.reasoning };
+  } catch (error) {
+    await telemetry.error("llm.score_failed", { message: (error as Error).message });
+    return { score: 0.65, reasoning: "Scoring failed, using baseline" };
+  }
 }
 
-async function runTask(task: TaskPayload): Promise<AgentResult> {
-  const config = await loadConfig();
+async function draftReplyWithLLM(
+  queue: RedditQueuePayload,
+  docs: KnowledgePackDoc[],
+  engagementOS: string,
+  config: AgentConfig,
+): Promise<{ replyText: string; llmScore: number; reasoning: string }> {
+  try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error("OPENAI_API_KEY not set in environment");
+    }
+
+    const client = new OpenAI({ apiKey });
+    const { system, user } = buildLLMPrompt(queue, docs, engagementOS);
+
+    const response = await client.chat.completions.create({
+      model: config.openaiModel || "gpt-4",
+      max_tokens: config.openaiMaxTokens || 300,
+      temperature: config.openaiTemperature ?? 0.7,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+    });
+
+    const replyText = response.choices[0]?.message?.content || "";
+
+    // Get LLM's own quality assessment of the draft
+    const { score: llmScore, reasoning: scoreReasoning } = await scoreReplyQualityWithLLM(
+      replyText,
+      queue,
+      engagementOS,
+      config,
+    );
+
+    await telemetry.info("llm.draft_success", {
+      queueId: queue.id,
+      subreddit: queue.subreddit,
+      tokenUsage: response.usage?.total_tokens || 0,
+      llmScore,
+    });
+
+    return { replyText, llmScore, reasoning: scoreReasoning };
+  } catch (error) {
+    await telemetry.error("llm.draft_failed", {
+      queueId: queue.id,
+      message: (error as Error).message,
+    });
+
+    // Fallback: if LLM fails, use simple template response
+    const fallbackReply =
+      `Good question. The main considerations for ${queue.question?.substring(0, 30) || "your case"} usually involve scope and environment. ` +
+      `Is this live or pre-launch? And what do you control—repo, hosting, DNS? Once I see that, I can outline the path.`;
+
+    return { replyText: fallbackReply, llmScore: 0.5, reasoning: "LLM failed, using fallback template" };
+  }
+}
+
+async function runTask(task: TaskPayload, config: AgentConfig): Promise<AgentResult> {
   const queue = task.queue;
   const draft = task.rssDraft;
+
+  // Skip if not manually selected
+  if (!queue.selectedForDraft) {
+    await telemetry.info("task.skipped", { queueId: queue.id, reason: "not_selected_for_draft" });
+    return {
+      replyText: "",
+      confidence: 0,
+      devvitPayloadPath: undefined,
+    };
+  }
 
   let pack = task.knowledgePack;
   let packPath = task.knowledgePackPath;
@@ -159,16 +342,43 @@ async function runTask(task: TaskPayload): Promise<AgentResult> {
     packPath = latest?.path;
   }
 
-  const docSnippet = pack ? pickDocSnippet(pack, queue) : null;
-  const replyText = buildReply(queue, draft, docSnippet);
-  const confidence = deriveConfidence(queue.tag ?? draft?.tag);
+  // Load ENGAGEMENT_OS and knowledge context
+  const engagementOS = await loadRuntimeEngagementOS(config.runtimeEngagementOsPath);
+  const docSnippets = packPath ? pickDocSnippets(pack, queue, 3) : [];
+
+  // Draft reply with LLM
+  const { replyText, llmScore, reasoning: llmReasoning } = await draftReplyWithLLM(
+    queue,
+    docSnippets,
+    engagementOS,
+    config,
+  );
+
+  // Get RSS score from queue (initial relevance score from RSS_SWEEP)
+  const rssScore = queue.score ?? 0.65;
+
+  // Hybrid confidence: 40% RSS relevance + 60% LLM draft quality
+  // This combines: whether the post matches your work (RSS) + quality of the reply (LLM)
+  const weights = { rss: 0.4, llm: 0.6 };
+  const finalConfidence = rssScore * weights.rss + llmScore * weights.llm;
+
+  const confidenceBreakdown: ConfidenceBreakdown = {
+    rssScore,
+    llmScore,
+    weights,
+    final: finalConfidence,
+  };
 
   const draftRecord = {
-    stage: "agent",
+    stage: "agent-llm-hybrid",
     queueId: queue.id,
     subreddit: queue.subreddit,
     replyText,
-    cta: null,
+    confidence: finalConfidence,
+    rssScore,
+    llmScore,
+    confidenceBreakdown,
+    reasoning: llmReasoning,
     pillar: queue.pillar,
     link: queue.link,
     createdAt: new Date().toISOString(),
@@ -183,6 +393,7 @@ async function runTask(task: TaskPayload): Promise<AgentResult> {
       subreddit: queue.subreddit,
       link: queue.link,
       body: replyText,
+      confidence: finalConfidence,
       createdAt: new Date().toISOString(),
       tag: queue.tag,
     };
@@ -192,11 +403,15 @@ async function runTask(task: TaskPayload): Promise<AgentResult> {
 
   return {
     replyText,
-    confidence,
+    confidence: finalConfidence,
+    rssScore,
+    llmScore,
+    confidenceBreakdown,
     ctaVariant: queue.ctaVariant ?? draft?.ctaVariant,
     devvitPayloadPath,
     packId: pack?.id,
     packPath,
+    reasoning: llmReasoning,
   };
 }
 
@@ -206,10 +421,11 @@ async function main() {
     throw new Error("Usage: tsx src/index.ts <payload.json>");
   }
 
+  const config = await loadConfig();
   const raw = await readFile(payloadPath, "utf-8");
   const payload = JSON.parse(raw) as TaskPayload;
   await telemetry.info("task.received", { queueId: payload.queue?.id, subreddit: payload.queue?.subreddit });
-  const result = await runTask(payload);
+  const result = await runTask(payload, config);
   await telemetry.info("task.success", { queueId: payload.queue?.id, subreddit: payload.queue?.subreddit });
 
   if (process.env.REDDIT_HELPER_RESULT_FILE) {
