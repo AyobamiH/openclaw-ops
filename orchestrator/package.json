@@ -6,16 +6,28 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
+    "test:integration": "vitest run --reporter=verbose test/integration",
+    "test:load": "vitest run --reporter=verbose test/load",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "chokidar": "^3.6.0",
+    "node-cron": "^3.0.3",
+    "openai": "^4.53.0",
     "p-queue": "^8.0.1",
     "yaml": "^2.6.0"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
+    "@types/node-cron": "^3.0.11",
+    "@vitest/ui": "^1.0.0",
     "tsx": "^4.12.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitest": "^1.0.0",
+    "@vitest/coverage-v8": "^1.0.0"
   }
 }
