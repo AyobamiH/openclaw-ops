@@ -1,0 +1,87 @@
+# Node modules (will be installed fresh)
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Git
+.git
+.gitignore
+.github
+
+# Development
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test files
+test
+__tests__
+*.test.ts
+*.spec.ts
+vitest.config.ts
+coverage
+.nyc_output
+
+# Build outputs
+dist
+build
+*.tsbuildinfo
+
+# Documentation (not needed in runtime image)
+docs
+README.md
+*.md
+CHANGELOG.md
+
+# Docker files
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.circleci
+
+# Logs
+logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary
+tmp
+temp
+/tmp
+/temp
+
+# Package manager locks (for base image)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Node version managers
+.nvmrc
+.nvm
+.node-version
+
+# IDE settings
+.editorconfig
+.eslintrc*
+.prettierrc*
+tsconfig.json
+
+# Misc development
+.venv
+venv
+.python-version
