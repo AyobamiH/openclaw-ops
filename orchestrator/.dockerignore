@@ -65,8 +65,7 @@ temp
 /tmp
 /temp
 
-# Package manager locks (for base image)
-package-lock.json
+# Package manager locks
 yarn.lock
 pnpm-lock.yaml
 
@@ -79,7 +78,6 @@ pnpm-lock.yaml
 .editorconfig
 .eslintrc*
 .prettierrc*
-tsconfig.json
 
 # Misc development
 .venv

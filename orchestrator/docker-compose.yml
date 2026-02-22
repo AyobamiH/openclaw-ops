@@ -5,7 +5,7 @@ services:
   orchestrator:
     build:
       context: .
-      dockerfile: orchestrator/Dockerfile
+      dockerfile: Dockerfile
     container_name: wagging-orchestrator
     ports:
       - "3000:3000"
@@ -31,9 +31,9 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./orchestrator/logs:/app/logs
-      - ./orchestrator/data:/app/data
-      - ./orchestrator/src:/app/src
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./src:/app/src
     networks:
       - orchestrator-net
     restart: unless-stopped
@@ -46,7 +46,7 @@ services:
 
   # MongoDB for State & Audit Trail Persistence
   mongo:
-    image: mongo:7.0-alpine
+    image: mongo:latest
     container_name: wagging-mongo
     ports:
       - "27017:27017"

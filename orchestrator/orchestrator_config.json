@@ -1,0 +1,5 @@
+{
+  "docsPath": "/app/docs",
+  "logsDir": "/app/logs",
+  "stateFile": "/app/data/orchestrator-state.json"
+}
