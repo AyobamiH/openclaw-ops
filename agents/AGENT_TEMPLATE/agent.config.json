@@ -1,0 +1,62 @@
+{
+  "id": "template-agent",
+  "name": "Template Agent",
+  "description": "Change this in agent.config.json",
+  "version": "1.0.0",
+  "author": "OpenClaw Team",
+  "model": {
+    "primary": "claude-3-5-sonnet",
+    "fallback": "gpt-4o-mini",
+    "tier": "balanced",
+    "temperature": 0.5,
+    "maxTokens": 2048
+  },
+  "permissions": {
+    "skills": {
+      "sourceFetch": {
+        "allowed": true,
+        "maxCalls": 10,
+        "rateLimit": "1/second"
+      },
+      "documentParser": {
+        "allowed": false
+      },
+      "normalizer": {
+        "allowed": false
+      },
+      "workspacePatch": {
+        "allowed": false
+      },
+      "testRunner": {
+        "allowed": false
+      }
+    },
+    "fileSystem": {
+      "readPaths": ["workspace"],
+      "writePaths": ["artifacts"]
+    },
+    "network": {
+      "allowed": false,
+      "allowedDomains": []
+    },
+    "secrets": {
+      "allowed": false
+    }
+  },
+  "constraints": {
+    "timeout": 60000,
+    "maxRetries": 3,
+    "memory": "512M",
+    "cpu": "1.0"
+  },
+  "heartbeat": {
+    "enabled": true,
+    "interval": 300000,
+    "checks": ["liveness", "resource-usage"]
+  },
+  "logging": {
+    "level": "info",
+    "format": "json",
+    "destinations": ["stdout"]
+  }
+}
