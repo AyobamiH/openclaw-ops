@@ -1,0 +1,46 @@
+{
+  "id": "summarization-agent",
+  "name": "Summarization Agent",
+  "description": "Condenses large bodies of text, research, and reports into concise executive summaries",
+  "model": "gpt-4o-mini",
+  "tier": "cheap",
+  "maxConcurrentTasks": 10,
+  "permissions": {
+    "skills": {
+      "documentParser": {
+        "allowed": true,
+        "maxCalls": 30,
+        "rateLimit": "5/sec",
+        "reason": "Parse documents before summarization"
+      },
+      "normalizer": {
+        "allowed": true,
+        "maxCalls": 20,
+        "rateLimit": "5/sec",
+        "reason": "Normalize extracted text"
+      }
+    },
+    "network": {
+      "allowed": false,
+      "reason": "Works only on local content"
+    }
+  },
+  "constraints": {
+    "maxSummaryLength": 2000,
+    "minCompressionRatio": 0.1,
+    "timeoutSec": 60,
+    "maxRetries": 2
+  },
+  "heartbeat": {
+    "interval": "5m",
+    "checks": [
+      "skill_access",
+      "performance",
+      "error_rate"
+    ]
+  },
+  "escalation": {
+    "alertThreshold": 3,
+    "alertIntervalSec": 1800
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "build-refactor-agent",
+  "version": "1.0.0",
+  "description": "Analyzes code for refactoring opportunities and applies safe, tested transformations with zero-downtime deployment",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "test": "vitest",
+    "test:local": "vitest run",
+    "test:permissions": "vitest run --grep permissions",
+    "test:unit": "vitest run --reporter=verbose",
+    "test:integration": "vitest run --grep integration",
+    "test:e2e": "vitest run --grep e2e",
+    "test:debug": "DEBUG=refactor:* vitest run"
+  },
+  "keywords": [
+    "refactoring",
+    "code-quality",
+    "performance-optimization",
+    "security",
+    "static-analysis"
+  ],
+  "author": "orchestrator",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

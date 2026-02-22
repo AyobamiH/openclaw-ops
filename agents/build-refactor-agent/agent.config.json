@@ -1,0 +1,48 @@
+{
+  "id": "build-refactor-agent",
+  "name": "Build & Refactor Agent",
+  "description": "Analyzes codebases for refactoring opportunities, applies safe code transformations, and optimizes build processes",
+  "model": "claude-3-5-sonnet",
+  "tier": "balanced",
+  "maxConcurrentTasks": 3,
+  "permissions": {
+    "skills": {
+      "workspacePatch": {
+        "allowed": true,
+        "maxCalls": 50,
+        "rateLimit": "1/sec",
+        "reason": "Apply code refactoring transformations safely"
+      },
+      "testRunner": {
+        "allowed": true,
+        "maxCalls": 20,
+        "rateLimit": "1/sec",
+        "reason": "Validate refactoring doesn't break tests"
+      }
+    },
+    "network": {
+      "allowed": false,
+      "reason": "Works only on local codebase"
+    }
+  },
+  "constraints": {
+    "maxPatchSize": 10000,
+    "maxFilesPerTask": 20,
+    "requiresReview": true,
+    "dryRunRequired": true,
+    "timeoutSec": 300,
+    "maxRetries": 1
+  },
+  "heartbeat": {
+    "interval": "10m",
+    "checks": [
+      "disk_access",
+      "skill_access",
+      "test_runner_available"
+    ]
+  },
+  "escalation": {
+    "alertThreshold": 3,
+    "alertIntervalSec": 3600
+  }
+}

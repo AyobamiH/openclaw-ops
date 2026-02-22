@@ -1,0 +1,38 @@
+{
+  "name": "summarization-agent",
+  "version": "1.0.0",
+  "description": "Condenses large bodies of text into concise executive summaries with compression ratios and source citations",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "test": "vitest",
+    "test:local": "vitest run",
+    "test:unit": "vitest run --reporter=verbose",
+    "test:integration": "vitest run --grep=integration",
+    "test:e2e": "vitest run --grep=e2e",
+    "audit:log": "echo 'View orchestrator/logs/tool-invocations.json'",
+    "audit:denied": "echo 'Denied invocations should be empty'",
+    "profile": "echo 'Profile execution time per task'",
+    "benchmark": "echo 'Benchmark compression ratios against test documents'"
+  },
+  "keywords": [
+    "summarization",
+    "text-compression",
+    "research",
+    "executive-summary",
+    "ai-agent"
+  ],
+  "author": "orchestrator",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
