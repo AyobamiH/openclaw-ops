@@ -1,0 +1,21 @@
+{
+  "name": "system-monitor-agent",
+  "version": "1.0.0",
+  "description": "Monitors system health, collects metrics, analyzes logs, and detects anomalies across the agent swarm",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "test": "vitest",
+    "test:local": "vitest run",
+    "test:metrics": "vitest run --grep metrics",
+    "test:alerts": "vitest run --grep alerts",
+    "start:dashboard": "echo 'Starting dashboard on port 3000'",
+    "export:metrics": "echo 'Exporting metrics to monitoring system'"
+  },
+  "keywords": ["observability", "monitoring", "metrics", "health-check", "dashboard"],
+  "author": "orchestrator",
+  "license": "MIT",
+  "dependencies": { "@types/node": "^22.0.0", "typescript": "^5.5.0" },
+  "devDependencies": { "ts-node": "^10.9.0", "vitest": "^1.0.0" },
+  "engines": { "node": ">=22.0.0" }
+}

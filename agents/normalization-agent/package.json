@@ -1,0 +1,26 @@
+{
+  "name": "normalization-agent",
+  "version": "1.0.0",
+  "description": "Transforms raw data into standardized formats with validation and quality metrics",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "test": "vitest",
+    "test:local": "vitest run",
+    "test:performance": "vitest run --grep performance",
+    "validate:schema": "vitest run --grep schema",
+    "check:quality": "echo 'Data quality metrics'"
+  },
+  "keywords": ["normalization", "etl", "data-quality", "schema-mapping"],
+  "author": "orchestrator",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": { "node": ">=22.0.0" }
+}

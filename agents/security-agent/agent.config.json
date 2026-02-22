@@ -1,0 +1,29 @@
+{
+  "id": "security-agent",
+  "name": "Security Audit Agent",
+  "description": "Performs comprehensive security audits: vulnerability scanning, penetration testing guidance, compliance checking, secrets detection",
+  "model": "claude-3-5-sonnet",
+  "tier": "balanced",
+  "maxConcurrentTasks": 2,
+  "permissions": {
+    "skills": {
+      "documentParser": {
+        "allowed": true,
+        "maxCalls": 20,
+        "reason": "Parse security configs and policy documents"
+      },
+      "normalizer": {
+        "allowed": true,
+        "maxCalls": 10,
+        "reason": "Normalize findings into standard format"
+      }
+    },
+    "network": { "allowed": false }
+  },
+  "constraints": {
+    "timeoutSec": 600,
+    "maxRetries": 0,
+    "requiresReview": true
+  },
+  "heartbeat": { "interval": "15m", "checks": ["skill_access", "threat_feeds"] }
+}

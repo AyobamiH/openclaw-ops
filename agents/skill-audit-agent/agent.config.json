@@ -1,0 +1,17 @@
+{
+  "id": "skill-audit-agent",
+  "name": "Skill Audit & Verification Agent",
+  "description": "Validates skills for correctness, performance, and compliance: unit testing, integration testing, provenance verification, audit logging",
+  "model": "claude-3-5-sonnet",
+  "tier": "balanced",
+  "maxConcurrentTasks": 4,
+  "permissions": {
+    "skills": {
+      "testRunner": { "allowed": true, "maxCalls": 50, "reason": "Run skill tests" },
+      "documentParser": { "allowed": true, "maxCalls": 20, "reason": "Parse skill code and docs" }
+    },
+    "network": { "allowed": false }
+  },
+  "constraints": { "timeoutSec": 300, "maxRetries": 1 },
+  "heartbeat": { "interval": "30m", "checks": ["skill_access", "test_availability"] }
+}

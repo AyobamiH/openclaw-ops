@@ -1,0 +1,26 @@
+{
+  "name": "security-agent",
+  "version": "1.0.0",
+  "description": "Comprehensive security auditing: vulnerability scanning, compliance checking, secrets detection, threat intelligence analysis",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "test": "vitest",
+    "test:local": "vitest run",
+    "test:security": "vitest run --grep security",
+    "test:secrets": "vitest run --grep secrets",
+    "audit:known-vulns": "echo 'Check against known vulnerabilities'"
+  },
+  "keywords": ["security", "audit", "vulnerability-scanning", "compliance", "cvss"],
+  "author": "orchestrator",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": { "node": ">=22.0.0" }
+}

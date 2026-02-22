@@ -1,0 +1,21 @@
+{
+  "name": "skill-audit-agent",
+  "version": "1.0.0",
+  "description": "Validates skills for correctness, compliance, performance, and security through comprehensive testing and auditing",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "test": "vitest",
+    "test:local": "vitest run",
+    "audit:all": "echo 'Audit all skills'",
+    "test:regressions": "vitest run --grep regression",
+    "benchmark": "echo 'Performance benchmarking'",
+    "check:compliance": "echo 'Compliance checking'"
+  },
+  "keywords": ["audit", "testing", "quality-assurance", "validation", "skill-management"],
+  "author": "orchestrator",
+  "license": "MIT",
+  "dependencies": { "@types/node": "^22.0.0", "typescript": "^5.5.0" },
+  "devDependencies": { "ts-node": "^10.9.0", "vitest": "^1.0.0" },
+  "engines": { "node": ">=22.0.0" }
+}

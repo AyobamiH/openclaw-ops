@@ -1,0 +1,17 @@
+{
+  "id": "normalization-agent",
+  "name": "Data Normalization Agent",
+  "description": "Transforms raw data into standardized formats: schema mapping, type conversion, deduplication, validation",
+  "model": "gpt-4o-mini",
+  "tier": "cheap",
+  "maxConcurrentTasks": 20,
+  "permissions": {
+    "skills": {
+      "normalizer": { "allowed": true, "maxCalls": 100, "reason": "Data normalization" },
+      "documentParser": { "allowed": true, "maxCalls": 50, "reason": "Parse input data" }
+    },
+    "network": { "allowed": false }
+  },
+  "constraints": { "timeoutSec": 120, "maxRetries": 1 },
+  "heartbeat": { "interval": "5m", "checks": ["skill_access", "performance"] }
+}

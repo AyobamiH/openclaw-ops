@@ -1,0 +1,17 @@
+{
+  "id": "integration-agent",
+  "name": "Integration & Workflow Agent",
+  "description": "Orchestrates complex multi-skill workflows: coordinates agent communication, manages data flow between agents, handles error recovery",
+  "model": "claude-3-5-sonnet",
+  "tier": "balanced",
+  "maxConcurrentTasks": 5,
+  "permissions": {
+    "skills": {
+      "documentParser": { "allowed": true, "maxCalls": 30, "reason": "Parse workflow specs" },
+      "normalizer": { "allowed": true, "maxCalls": 20, "reason": "Normalize data between agents" }
+    },
+    "network": { "allowed": false }
+  },
+  "constraints": { "timeoutSec": 600, "maxRetries": 2 },
+  "heartbeat": { "interval": "10m", "checks": ["skill_access", "workflow_execution"] }
+}

@@ -1,0 +1,16 @@
+{
+  "id": "content-agent",
+  "name": "Content Generation Agent",
+  "description": "Generates documentation, README files, API specs, blog posts, and marketing content from code and data",
+  "model": "gpt-4o-mini",
+  "tier": "cheap",
+  "maxConcurrentTasks": 15,
+  "permissions": {
+    "skills": {
+      "documentParser": { "allowed": true, "maxCalls": 50, "reason": "Parse source code and docs" }
+    },
+    "network": { "allowed": false }
+  },
+  "constraints": { "timeoutSec": 180, "maxRetries": 1 },
+  "heartbeat": { "interval": "5m", "checks": ["skill_access"] }
+}

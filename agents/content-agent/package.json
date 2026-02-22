@@ -1,0 +1,19 @@
+{
+  "name": "content-agent",
+  "version": "1.0.0",
+  "description": "Generates documentation, READMEs, API specs, and technical content from source code",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "test": "vitest",
+    "test:local": "vitest run",
+    "test:readme": "vitest run --grep readme",
+    "test:api-docs": "vitest run --grep api"
+  },
+  "keywords": ["documentation", "content", "api-docs", "readme", "generation"],
+  "author": "orchestrator",
+  "license": "MIT",
+  "dependencies": { "@types/node": "^22.0.0", "typescript": "^5.5.0" },
+  "devDependencies": { "ts-node": "^10.9.0", "vitest": "^1.0.0" },
+  "engines": { "node": ">=22.0.0" }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "integration-agent",
+  "version": "1.0.0",
+  "description": "Orchestrates complex multi-agent workflows with error recovery and data coordination",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "test": "vitest",
+    "test:local": "vitest run",
+    "test:workflows": "vitest run --grep workflow",
+    "test:error-handling": "vitest run --grep error",
+    "check:performance": "echo 'Workflow performance metrics'"
+  },
+  "keywords": ["orchestration", "workflow", "multi-agent", "integration"],
+  "author": "orchestrator",
+  "license": "MIT",
+  "dependencies": { "@types/node": "^22.0.0", "typescript": "^5.5.0" },
+  "devDependencies": { "ts-node": "^10.9.0", "vitest": "^1.0.0" },
+  "engines": { "node": ">=22.0.0" }
+}

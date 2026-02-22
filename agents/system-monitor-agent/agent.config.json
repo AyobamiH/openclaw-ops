@@ -1,0 +1,16 @@
+{
+  "id": "system-monitor-agent",
+  "name": "System Monitor & Observability Agent",
+  "description": "Monitors system health, collects metrics, analyzes logs, detects anomalies, reports on agent performance and resource usage",
+  "model": "gpt-4o-mini",
+  "tier": "cheap",
+  "maxConcurrentTasks": 1,
+  "permissions": {
+    "skills": {
+      "documentParser": { "allowed": true, "maxCalls": 100, "reason": "Parse logs and metrics" }
+    },
+    "network": { "allowed": false }
+  },
+  "constraints": { "timeoutSec": 30, "maxRetries": 0, "continuous": true },
+  "heartbeat": { "interval": "1m", "checks": ["all_agents_healthy", "resource_usage", "error_rate"] }
+}
