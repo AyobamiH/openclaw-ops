@@ -214,6 +214,119 @@ ERROR ALERTING (Continuous)
 
 ---
 
+## 11-Agent Swarm Infrastructure (NEW — Feb 22, 2026)
+
+### Decision: Skills as Bounded Tool Wrappers (Option B)
+
+**Strategic Choice**: Skills are NOT prompt-level instructions. They are audited, pinned TypeScript modules with strict permission gates.
+
+**Why this matters:**
+- ✅ Auditable (every call logged with args + returns)
+- ✅ Enforceable (permissions enforced in code, not prompt advisory)
+- ✅ Reusable (one skill, many agents)
+- ✅ Supply-chain safe (pinned to commit hash, reviewed before install)
+- ✅ Deterministic (same input → same output, no hallucination in execution)
+
+**vs. Prompt-Level Procedures:**
+- ❌ No audit trail (what did LLM actually do?)
+- ❌ Can be bypassed (agent ignores safety prompt instructions)
+- ❌ Repeated logic (copy/paste skill across agents)
+- ❌ Fails silently (unstructured error handling)
+
+### Core Skill Pack v1 (Week 1 Target)
+
+These 5 skills unblock the highest-value agents:
+
+| Skill | Used By | Purpose | Enforcement |
+|-------|---------|---------|-------------|
+| **SourceFetch** | market-research, integration | Fetch from allowlisted domains only | Whitelist gate + strip scripts |
+| **DocumentParser** | extraction | PDF/HTML/CSV → structured blocks | Workspace-only reads |
+| **Normalizer** | data-modeling, extraction | Data schema enforcement | Schema validation before output |
+| **WorkspacePatch** | build, ops | Safe code modifications on diffs | Dry-run mode default, no outside-workspace writes |
+| **TestRunner** | QA, ops | Predefined test commands only | Allowlist of permitted test commands, no arbitrary exec |
+
+### Agent-Skill Mapping
+
+```
+mission-control-orchestrator: (routes, doesn't execute skills directly)
+market-and-web-research-agent: SourceFetch, EvidenceExtractor
+document-and-data-extraction-agent: DocumentParser, Normalizer
+summarization-and-briefing-agent: (read-only, uses extracted data)
+software-build-and-refactor-agent: WorkspacePatch, TestRunner
+quality-assurance-and-verification-agent: TestRunner (read-only), ArtifactValidator
+operations-and-runbook-agent: WorkspacePatch (ops scope), TestRunner (ops commands)
+security-and-hardening-agent: (audit only, no execution)
+data-modeling-and-normalization-agent: Normalizer
+content-and-distribution-agent: (draft only, no posting)
+integration-and-automation-agent: SourceFetch (APIs), Normalizer
+skill-discovery-and-supply-chain-audit-agent: (audit gate, proposes skills)
+```
+
+### Skill Audit Gate (Day 1, All Skills)
+
+Every skill passes before runtime:
+- **Provenance**: Who wrote it, where hosted, version pinned?
+- **Permissions**: What tools does it wrap? (network, exec, file)
+- **Data flows**: Can it read secrets, env, credentials?
+- **Runtime**: Does it eval, spawn shell, download code?
+- **Determinism**: Same input → same output?
+- **Observability**: Logs + artifacts for audit trail?
+
+Location: `orchestrator/src/skillAudit.ts`
+
+### Phased Rollout
+
+| Week | Target | Agents Unblocked |
+|------|--------|------------------|
+| 1 | Core 5 skills (SourceFetch, Parser, Normalizer, Patch, TestRunner) | market-research, extraction, build, QA |
+| 2 | Integration with 5 highest-value agents + testing | Full pipeline validation |
+| 3 | Extended skills (EvidenceExtractor, Validator, Digest, TaskRouter, Alert) | Remaining 6 agents |
+| 4 | Full swarm + supply-chain audit pipeline | All 12 agents live |
+
+### Status: Core Skill Pack v1 COMPLETED ✅
+
+**What was built (Feb 22, 2026):**
+
+✅ **5 Core Skills** — All implemented with full logic:
+- `sourceFetch.ts`: HTTP fetch with allowlist enforcement, content normalization, timeout handling
+- `documentParser.ts`: PDF/HTML/CSV parsing to structured blocks, tables, entity extraction
+- `normalizer.ts`: Schema-driven data normalization (dates, currencies, numbers, emails)
+- `workspacePatch.ts`: Safe file modification with dry-run mode, diff generation, risk detection
+- `testRunner.ts`: Whitelisted test command execution (no arbitrary exec), result parsing
+
+✅ **Skills Registry** (`skills/index.ts`):
+- Loads all skills at startup
+- Validates each skill through audit gate before registration
+- Provides `executeSkill(skillId, input, agentId)` interface
+- Tracks skill metadata (version, permissions, auditedAt)
+- Lists registered skills for discovery
+
+✅ **Skill Types** (`orchestrator/src/skills/types.ts`):
+- SkillDefinition, SkillInputSchema, SkillOutputSchema
+- SkillPermissions, SkillProvenance, SkillAuditResults
+- SkillInvocation, SkillRegistry, SkillExecutionContext, SkillResult
+
+✅ **AGENT_TEMPLATE** — Boilerplate for rapid agent creation:
+- `agent.config.json`: Permission matrix, skill allowlist, model tier selection
+- `SOUL.md`: Agent identity, values, core purpose
+- `IDENTITY.md`: Behavioral patterns, error handling, decision making
+- `USER.md`: Who the agent serves, use cases, expectations
+- `TOOLS.md`: Development tools, local testing, credentials
+- `HEARTBEAT.md`: Periodic health checks, failure escalation
+- `src/index.ts`: Entry point with skill access pattern
+- `package.json`: Dependencies and scripts
+
+**Commit**: `080bc59 - feat: complete core skill pack v1 and agent template framework`
+
+**Next steps:**
+1. Create `orchestrator/src/agentRegistry.ts` to manage agent lifecycle
+2. Create `orchestrator/src/toolGate.ts` to enforce permissions at runtime
+3. Update `orchestrator/src/taskHandlers.ts` with 11 new agents
+4. Create integration tests (e2e skills × agents)
+5. Deploy and validate permission enforcement
+
+---
+
 ## Session Checklist
 
 **Start of session:**
