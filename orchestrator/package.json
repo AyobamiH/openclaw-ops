@@ -11,7 +11,7 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:integration": "vitest run --reporter=verbose test/integration.test.ts",
-    "test:unit:fixtures": "vitest run --reporter=verbose test/integration",
+    "test:unit:fixtures": "vitest run --reporter=verbose test/integration/*.test.ts",
     "test:load": "vitest run --reporter=verbose test/load",
     "test:live:3000": "ORCHESTRATOR_FAST_START=true LIVE_RATE_TOTAL_TASKS=3000 LIVE_RATE_INTERVAL_MS=25 LIVE_RATE_IP_POOL=400 tsx scripts/live-rate-shaped-dispatch.ts",
     "test:live:quick": "ORCHESTRATOR_FAST_START=true LIVE_RATE_TOTAL_TASKS=120 LIVE_RATE_INTERVAL_MS=50 LIVE_RATE_IP_POOL=80 tsx scripts/live-rate-shaped-dispatch.ts",
