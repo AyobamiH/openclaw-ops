@@ -62,8 +62,8 @@
         "endpoint": "/internal/menu/force-poll-milestones"
       },
       {
-        "label": "Sync GitHub → Wiki",
-        "description": "Fetch milestones-feed.json from GitHub and write it to the subreddit wiki (relay for scheduler)",
+        "label": "Init Milestone Wiki",
+        "description": "Write the built-in milestone data to the subreddit wiki so the scheduler can read it (no external HTTP needed)",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/sync-github-to-wiki"
@@ -85,7 +85,7 @@
   "permissions": {
     "http": {
       "enable": true,
-      "domains": ["raw.githubusercontent.com", "github.com"]
+      "domains": ["cdn.jsdelivr.net"]
     },
     "redis": true,
     "realtime": true
@@ -99,7 +99,8 @@
     }
   },
   "triggers": {
-    "onAppInstall": "/internal/triggers/on-app-install"
+    "onAppInstall": "/internal/triggers/on-app-install",
+    "onAppUpgrade": "/internal/triggers/on-app-upgrade"
   },
   "scripts": {
     "dev": "vite build --watch",

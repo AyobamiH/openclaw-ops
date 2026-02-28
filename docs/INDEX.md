@@ -21,6 +21,8 @@ Welcome to the orchestrator system documentation. This is a control center for a
 - **[Milestone Pipeline Runbook](./operations/MILESTONE_PIPELINE_RUNBOOK.md)** — Setup, backfill, secret rotation, dead-letter diagnosis
 
 ### Getting Started
+- **[Quick Start (root)](../QUICKSTART.md)** — Local dev vs Docker paths, env vars, openclawdbot deploy
+- **[Deployment Guide (root)](../DEPLOYMENT.md)** — Full Docker Compose + systemd deployment reference
 - **[Getting Started](./start/getting-started.md)** — Install and run the orchestrator in 5 minutes
 - **[Architecture Overview](./start/architecture-overview.md)** — Non-technical explanation for stakeholders
 - **[Quick Start](./start/quickstart.md)** — Minimal setup checklist

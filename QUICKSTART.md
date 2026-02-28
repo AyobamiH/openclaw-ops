@@ -1,212 +1,147 @@
-# Quick Reference: Deploying Nightly Batch System
+# OpenClaw Orchestrator — Quick Start
 
-## 🚀 Start Orchestrator
+## Two Deployment Paths
+
+### Path A: Local Dev
 
 ```bash
-cd /home/oneclickwebsitedesignfactory/.openclaw/workspace/orchestrator
-npm install                    # If not already done
-npm run build                  # Compile TypeScript
-npm run dev                    # Start orchestrator
+cd workspace/orchestrator
+npm install
+npm run dev
 ```
 
-**Expected output**:
-```
-[orchestrator] config loaded { ... }
-[orchestrator] indexed 698 docs
-[orchestrator] alerts enabled: true
-[orchestrator] 🔔 Alerts configured and monitoring started
-[orchestrator] Scheduled 3 cron jobs: nightly-batch (11pm), send-digest (6am), heartbeat (5min)
-[orchestrator] Processing task: startup
-[orchestrator] ✅ startup: orchestrator boot complete
-```
+Config: `workspace/orchestrator_config.json` (absolute paths, used by local + systemd)
+
+**Systemd service**: `workspace/systemd/orchestrator.service`
 
 ---
 
-## 📋 Verify System Working
+### Path B: Docker Compose (full stack)
 
-### Test 1: Nightly Batch Handler
+Brings up orchestrator + MongoDB + Redis + Prometheus.
+
 ```bash
-npx tsx test-nightly-batch.ts
+cd workspace/orchestrator
+cp .env.example .env   # if not already done
+# fill in all required vars (see below)
+docker-compose up -d
 ```
 
-Expected: `✨ Test PASSED - Digest created successfully!`
+Config: `workspace/orchestrator/orchestrator_config.json` (uses `/app/*` container paths)
 
-Check digest:
-```bash
-ls -lah logs/digests/
-cat logs/digests/digest-*.json | jq '.summary'
-```
-
-### Test 2: Send Digest Notification
-```bash
-npx tsx test-send-digest.ts
-```
-
-Expected: `✨ Test PASSED - Notification delivery tested!`
+> A legacy workspace-level `workspace/docker-compose.yml` also exists but is not the primary path.
 
 ---
 
-## 🔔 Enable Slack Alerts
+## Environment Variables
 
-### Step 1: Create Slack Webhook
-1. Go to [api.slack.com/apps](https://api.slack.com/apps)
-2. "Create New App" → "From scratch"
-3. Name: "OpenClaw Alerter"
-4. Go to "Incoming Webhooks" → "Add New Webhook to Workspace"
-5. Select channel (e.g., `#alerts`)
-6. Copy webhook URL
+All vars live in `workspace/orchestrator/.env`.
 
-### Step 2: Set Environment Variable
-```bash
-export SLACK_ERROR_WEBHOOK=https://hooks.slack.com/services/T00000000/B00000000/XXXXX
-```
-
-### Step 3: Start Orchestrator
-```bash
-cd orchestrator && npm run dev
-```
-
-### Step 4: Test Alert
-- Wait for a task failure (or manually trigger one)
-- Check `#alerts` channel in Slack
-- You should see an error alert
+| Variable | Required | Notes |
+|---|---|---|
+| `API_KEY` | ✅ | Security posture check — orchestrator refuses to start without it |
+| `WEBHOOK_SECRET` | ✅ | Security posture check — orchestrator refuses to start without it |
+| `MONGO_USERNAME` | ✅ (Docker) | MongoDB auth |
+| `MONGO_PASSWORD` | ✅ (Docker) | MongoDB auth |
+| `REDIS_PASSWORD` | ✅ (Docker) | Redis auth |
+| `DATABASE_URL` | ✅ | Full MongoDB connection URL |
+| `REDIS_URL` | ✅ | Full Redis connection URL |
+| `OPENAI_API_KEY` | ✅ | LLM agents |
+| `ANTHROPIC_API_KEY` | ✅ | LLM agents |
+| `MILESTONE_SIGNING_SECRET` | ✅ | Must match openclawdbot server |
+| `SLACK_ERROR_WEBHOOK` | Optional | Alert delivery to Slack |
 
 ---
 
-## 📊 Monitor System Health
-
-### Watch Logs in Real-Time
-```bash
-cd orchestrator && npm run dev | grep -E "cron|nightly|digest|ERROR|alert"
-```
-
-### Check Digest Files
-```bash
-# See digest directory
-ls -lah logs/digests/
-
-# View latest digest
-cat logs/digests/digest-$(date +%Y-%m-%d).json | jq .summary
-```
-
-### Check Task History
-```bash
-# Last 5 tasks completed
-cat orchestrator_state.json | jq '.taskHistory[-5:]'
-```
-
-### Monitor Alerts
-```bash
-# See recent alerts in logs
-tail -50 logs/orchestrator.log | grep alert
-```
-
----
-
-## 📅 Scheduled Tasks
-
-| Time | Task | What |
-|------|------|------|
-| **11:00 PM UTC** | `nightly-batch` | Collect leads, mark high-confidence, create digest |
-| **6:00 AM UTC** | `send-digest` | Send digest notification (Slack/Discord/Email) |
-| **Every 5 min** | `heartbeat` | Health check (ensure system not hung) |
-
-**Configure times** in `orchestrator_config.json`:
-```json
-{
-  "nightlyBatchSchedule": "0 23 * * *",
-  "morningNotificationSchedule": "0 6 * * *"
-}
-```
-
----
-
-## ⚙️ Configuration
-
-### Set Notification Channel
-
-Edit `orchestrator_config.json`:
-```json
-{
-  "digestNotificationChannel": "slack",
-  "digestNotificationTarget": "C1234567890"
-}
-```
-
-Or:
-```json
-{
-  "digestNotificationChannel": "log",
-  "digestNotificationTarget": "console"
-}
-```
-
-### Set Alert Severity
+## Verify Orchestrator Is Running
 
 ```bash
-# Only critical alerts
-export ALERT_SEVERITY_THRESHOLD=critical
-
-# All alerts including info
-export ALERT_SEVERITY_THRESHOLD=info
-
-# Default: warning level
-export ALERT_SEVERITY_THRESHOLD=warning
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Issue: No digest file created
-```bash
-tail -50 logs/orchestrator.log | grep -i "error\|nightly-batch"
-cat orchestrator_state.json | jq '.redditQueue | length'  # Check queue not empty
-```
-
-### Issue: Notification not sent to Slack
-```bash
-# Test webhook
-curl -X POST $SLACK_ERROR_WEBHOOK -d '{"text":"test"}'
-
-# Check logs
-tail -20 logs/orchestrator.log | grep notifier
-```
-
-### Issue: Orchestrator not responding
-```bash
-# Check if process running
+# Confirm process is up
 ps aux | grep orchestrator
 
-# Check if hung (missing heartbeat)
-tail -50 logs/orchestrator.log | grep heartbeat
+# Tail logs
+tail -f workspace/orchestrator/logs/orchestrator.log
+
+# Expected log lines on healthy start:
+# [orchestrator] config loaded { ... }
+# [orchestrator] Scheduled 3 cron jobs: nightly-batch (11pm), send-digest (6am), heartbeat (5min)
+# [orchestrator] ✅ startup: orchestrator boot complete
 ```
 
 ---
 
-## 📖 Full Documentation
+## Scheduled Tasks (in-process)
 
-- **Monitoring**: See `MONITORING.md` for real-time monitoring setup
-- **Error Alerting**: See `ERROR_ALERTS.md` for alerting configuration
-- **Implementation Details**: See `IMPLEMENTATION_COMPLETE.md` for architecture
-
----
-
-## ✅ Deployment Checklist
-
-- [ ] Node.js dependencies installed: `npm install`
-- [ ] TypeScript compiled: `npm run build`
-- [ ] Orchestrator starts: `npm run dev`
-- [ ] Manual tests pass: `test-nightly-batch.ts`, `test-send-digest.ts`
-- [ ] Slack webhook configured: `export SLACK_ERROR_WEBHOOK=...`
-- [ ] Alerts enabled: `export ALERTS_ENABLED=true`
-- [ ] Config reviewed: `orchestrator_config.json` has correct times/channels
-- [ ] Logs directory writable: `logs/digests/` exists and is writable
-- [ ] First batch run completed (wait for 11pm or manually test)
-- [ ] Morning notification received (wait for 6am or manually test)
+| Schedule | Task | What |
+|---|---|---|
+| `0 23 * * *` (11pm UTC) | `nightly-batch` | Collect leads, mark high-confidence, create digest |
+| `0 6 * * *` (6am UTC) | `send-digest` | Send digest notification |
+| Every 5 min | `heartbeat` | Health check |
 
 ---
 
-**System Status**: 🟢 Ready for Production
+## Milestone Pipeline
 
-All components tested and verified. You can now deploy to your infrastructure.
+```
+Orchestrator
+  → writes orchestrator/data/milestones-feed.json
+  → host cron (*/2 * * * *) runs scripts/push-feed.sh → git push to GitHub
+  → jsDelivr CDN serves the feed
+  → openclawdbot Devvit scheduler polls every 60s → writes Reddit wiki
+  → app UI reads wiki
+```
+
+Host cron entry:
+```
+*/2 * * * * /path/to/workspace/orchestrator/scripts/push-feed.sh
+```
+
+---
+
+## openclawdbot (Reddit Devvit App)
+
+Located at `workspace/openclawdbot/`.
+
+> **Required for all `devvit` CLI calls:**
+> ```bash
+> export NODE_OPTIONS="--dns-result-order=ipv4first"
+> ```
+
+```bash
+cd workspace/openclawdbot
+
+# Deploy (type-check + lint + test + upload)
+npm run deploy
+
+# Deploy + publish
+npm run launch
+```
+
+Deployed on **r/openclawdbot_dev**.
+
+---
+
+## Troubleshooting
+
+**Orchestrator won't start** — missing `API_KEY` or `WEBHOOK_SECRET` in `.env`.
+
+**Milestone feed not updating** — check host cron is running `push-feed.sh` and that `data/milestones-feed.json` is being written.
+
+**Devvit deploy fails** — ensure `NODE_OPTIONS="--dns-result-order=ipv4first"` is exported first.
+
+**Slack alerts not arriving** — verify `SLACK_ERROR_WEBHOOK` is set and test with:
+```bash
+curl -X POST "$SLACK_ERROR_WEBHOOK" -d '{"text":"test"}'
+```
+
+---
+
+## Deployment Checklist
+
+- [ ] `.env` created with all required vars
+- [ ] `npm install` run in `workspace/orchestrator`
+- [ ] Orchestrator starts and logs show `startup: orchestrator boot complete`
+- [ ] `data/milestones-feed.json` is being written
+- [ ] Host cron `push-feed.sh` is registered
+- [ ] `NODE_OPTIONS` set before any `devvit` CLI calls
+- [ ] `MILESTONE_SIGNING_SECRET` matches between orchestrator and openclawdbot

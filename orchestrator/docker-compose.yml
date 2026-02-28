@@ -17,14 +17,16 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       # Database
-      DATABASE_URL: mongodb://mongo:27017/orchestrator
+      DATABASE_URL: ${DATABASE_URL}
       # Redis Cache
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: ${REDIS_URL}
       # Monitoring
       PROMETHEUS_ENABLED: "true"
       PROMETHEUS_PORT: 9090
       GRAFANA_ENABLED: "true"
       GRAFANA_PORT: 3001
+      # Milestone pipeline
+      MILESTONE_SIGNING_SECRET: ${MILESTONE_SIGNING_SECRET}
     depends_on:
       mongo:
         condition: service_healthy
@@ -34,6 +36,7 @@ services:
       - ./logs:/app/logs
       - ./data:/app/data
       - ./src:/app/src
+      - .:/app/workspace
     networks:
       - orchestrator-net
     restart: unless-stopped

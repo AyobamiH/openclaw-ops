@@ -61,7 +61,7 @@ export class MilestoneEmitter {
         feedPath,
         secret,
         gitPush: this.config.gitPushOnMilestone === true,
-        workspaceRoot: join(this.config.logsDir, '..', '..'),
+        workspaceRoot: join(this.config.logsDir, '..'),
       }).catch((err) => {
         console.warn('[milestones] feed publish failed:', (err as Error).message);
       });

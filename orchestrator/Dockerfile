@@ -43,8 +43,8 @@ LABEL description="12-Agent Orchestrator System - Production"
 
 WORKDIR /app
 
-# Install curl and dumb-init for health checks and signal handling
-RUN apk add --no-cache curl dumb-init
+# Install curl, dumb-init, and git for health checks, signal handling, and feed push
+RUN apk add --no-cache curl dumb-init git
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \

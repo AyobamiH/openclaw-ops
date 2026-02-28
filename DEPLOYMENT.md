@@ -1,5 +1,9 @@
 # Deployment Guide
 
+> **Two Docker Compose files exist — use the right one:**
+> - `workspace/orchestrator/docker-compose.yml` — **Primary**. Full stack: orchestrator + MongoDB + Redis + Prometheus. Run from `workspace/orchestrator/`.
+> - `workspace/docker-compose.yml` — Legacy workspace-level compose. Not the primary deployment path.
+
 ## Quick Start (systemd)
 
 ### Prerequisites
@@ -41,31 +45,64 @@ sudo systemctl is-active orchestrator
 
 ---
 
-## Docker Deployment
+## Docker Deployment (Primary)
 
-### Build Docker Image
+Uses `workspace/orchestrator/docker-compose.yml`. Brings up orchestrator + MongoDB + Redis + Prometheus.
+
+### Prerequisites
+
+Set all required env vars in `workspace/orchestrator/.env`:
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `API_KEY` | ✅ | Security posture — orchestrator won't start without it |
+| `WEBHOOK_SECRET` | ✅ | Security posture — orchestrator won't start without it |
+| `MONGO_USERNAME` | ✅ | MongoDB auth |
+| `MONGO_PASSWORD` | ✅ | MongoDB auth |
+| `REDIS_PASSWORD` | ✅ | Redis auth |
+| `DATABASE_URL` | ✅ | Full MongoDB URL |
+| `REDIS_URL` | ✅ | Full Redis URL |
+| `OPENAI_API_KEY` | ✅ | LLM agents |
+| `ANTHROPIC_API_KEY` | ✅ | LLM agents |
+| `MILESTONE_SIGNING_SECRET` | ✅ | Milestone pipeline signing (must match openclawdbot) |
+| `SLACK_ERROR_WEBHOOK` | optional | Alert delivery |
+
+### Build and Start
 
 ```bash
-docker build -t openclaw-orchestrator:latest .
-```
-
-### Run with Docker
-
-```bash
-docker run -d \
-  --name orchestrator \
-  -v $(pwd)/logs:/app/logs \
-  -v $(pwd)/orchestrator_config.json:/app/orchestrator_config.json:ro \
-  -v $(pwd)/openclaw-docs:/app/openclaw-docs:ro \
-  -v $(pwd)/openai-cookbook:/app/openai-cookbook:ro \
-  openclaw-orchestrator:latest
+cd workspace/orchestrator
+cp .env.example .env   # then fill in all required vars
+docker-compose build
+docker-compose up -d
 ```
 
 ### Run with Docker Compose
 
 ```bash
+# Start all services
 docker-compose up -d
+
+# View orchestrator logs
 docker-compose logs -f orchestrator
+
+# Check health
+docker ps
+curl http://localhost:3000/health
+```
+
+### Build a standalone image (without compose)
+
+```bash
+cd workspace/orchestrator
+docker build -t openclaw-orchestrator:latest .
+
+docker run -d \
+  --name openclaw-orchestrator \
+  -p 127.0.0.1:3000:3000 \
+  --env-file .env \
+  -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/data:/app/data \
+  openclaw-orchestrator:latest
 ```
 
 ---

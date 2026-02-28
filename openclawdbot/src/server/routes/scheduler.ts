@@ -54,6 +54,31 @@ export async function runPoll(): Promise<PollResult> {
   const secret = await redis.get(SIGNING_SECRET_REDIS_KEY);
   if (!secret) return { ok: false, reason: 'signing secret not configured' };
 
+  // Try to refresh the wiki from jsDelivr CDN (orchestrator pushes there via git).
+  // If fetch succeeds, write fresh data to wiki so it stays up to date.
+  // If fetch is blocked (PERMISSIONS_DENIED), fall through and read the existing wiki.
+  const feedUrl = await redis.get(FEED_URL_REDIS_KEY);
+  if (feedUrl) {
+    try {
+      const res = await fetch(feedUrl);
+      if (res.ok) {
+        const content = await res.text();
+        JSON.parse(content); // validate before writing
+        await reddit.updateWikiPage({
+          subredditName: context.subredditName,
+          page: 'milestones-feed',
+          content,
+          reason: 'scheduler sync',
+        });
+        console.log('[scheduler] wiki refreshed from CDN');
+      }
+    } catch {
+      // Non-fatal — wiki still has last-known-good state
+      console.warn('[scheduler] CDN fetch failed, reading existing wiki');
+    }
+  }
+
+  // Always read from wiki — the canonical source
   console.log(`[scheduler] reading milestones wiki for r/${context.subredditName}...`);
 
   let remoteFeed: RemoteFeed;

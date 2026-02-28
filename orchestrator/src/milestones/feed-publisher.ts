@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { MilestoneEvent } from './schema.js';
+import { writeToWiki } from './wiki-writer.js';
 
 const execAsync = promisify(exec);
 
@@ -82,6 +83,11 @@ export async function publishToFeed(opts: {
 
   await mkdir(dirname(feedPath), { recursive: true });
   await writeFile(feedPath, JSON.stringify(feed, null, 2) + '\n', 'utf-8');
+
+  // Mirror to Reddit wiki so the Devvit scheduler can read it (no external fetch needed)
+  writeToWiki(JSON.stringify(feed, null, 2)).catch((err) => {
+    console.warn('[milestones] wiki write failed (non-fatal):', (err as Error).message);
+  });
 
   if (gitPush) {
     await gitPushFeed(feedPath, workspaceRoot, idempotencyKey);

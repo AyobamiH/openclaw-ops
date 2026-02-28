@@ -5,6 +5,7 @@ import { context, scheduler, redis, reddit } from '@devvit/web/server';
 import { createPost } from '../core/post';
 import { runPoll, FEED_URL_REDIS_KEY } from './scheduler';
 import { SIGNING_SECRET_REDIS_KEY } from './forms';
+import { INITIAL_WIKI_FEED } from './triggers';
 
 const DEFAULT_FEED_URL =
   'https://raw.githubusercontent.com/AyobamiH/openclaw-ops/master/orchestrator/data/milestones-feed.json';
@@ -140,29 +141,25 @@ menu.post('/force-poll-milestones', async (c) => {
 });
 
 menu.post('/sync-github-to-wiki', async (c) => {
-  const feedUrl = await redis.get(FEED_URL_REDIS_KEY);
-  if (!feedUrl) {
-    return c.json<UiResponse>({ showToast: 'Feed URL not configured — use Reset Defaults first.' }, 200);
-  }
+  // Writes the hardcoded initial milestone feed to the wiki so the scheduler
+  // can read it. No external HTTP needed — avoids PERMISSIONS_DENIED entirely.
   try {
-    const res = await fetch(feedUrl);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const content = await res.text();
-    // Validate JSON before writing to wiki
-    JSON.parse(content);
     await reddit.updateWikiPage({
       subredditName: context.subredditName,
       page: 'milestones-feed',
-      content,
-      reason: 'Synced from GitHub by moderator',
+      content: INITIAL_WIKI_FEED,
+      reason: 'Initialized by moderator via menu',
     });
+    // Immediately run a poll so new milestones appear without waiting 1 min
+    const result = await runPoll();
+    const loaded = result.ok ? result.added : 0;
     return c.json<UiResponse>(
-      { showToast: { text: 'GitHub → Wiki sync complete! Scheduler will pick up changes within 1 minute.', appearance: 'success' } },
+      { showToast: { text: `Milestone wiki initialized — ${loaded} milestone(s) loaded.`, appearance: 'success' } },
       200
     );
   } catch (err) {
     return c.json<UiResponse>(
-      { showToast: `Sync failed: ${(err as Error).message}` },
+      { showToast: `Init failed: ${(err as Error).message}` },
       200
     );
   }
