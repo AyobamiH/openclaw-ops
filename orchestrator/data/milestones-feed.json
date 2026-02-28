@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-02-23T11:07:15.898Z",
+  "lastUpdated": "2026-02-28T11:27:55.027Z",
   "entries": [
     {
       "idempotencyKey": "orchestrator.started.2026-02-23T06:29:06.103Z",
@@ -84,6 +84,27 @@
         "source": "orchestrator"
       },
       "signature": "beae89143e65562b6ad3236ac8f64295e20cfd2e29adb81825d00091021fe804"
+    },
+    {
+      "idempotencyKey": "dbcdeb95814ece70549eba525623247a",
+      "sentAtUtc": "2026-02-28T11:27:55.027Z",
+      "event": {
+        "milestoneId": "orchestrator.started.2026-02-28T11:27:55.017Z",
+        "timestampUtc": "2026-02-28T11:27:55.017Z",
+        "scope": "runtime",
+        "claim": "Orchestrator started successfully.",
+        "evidence": [
+          {
+            "type": "log",
+            "path": "/app/data/orchestrator-state.json",
+            "summary": "lastStartedAt set in orchestrator state"
+          }
+        ],
+        "riskStatus": "on-track",
+        "nextAction": "Monitor task queue for first incoming tasks.",
+        "source": "orchestrator"
+      },
+      "signature": "0b6d8a8154fcc75b235d631581fc34bae459e47e7f6cdb390f01efd75d1142c4"
     }
   ]
 }
