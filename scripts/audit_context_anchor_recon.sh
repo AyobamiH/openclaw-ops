@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="/home/oneclickwebsitedesignfactory/.openclaw"
-AUDIT_DIR="$REPO_ROOT/workspace/logs/audits/context-anchor"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+AUDIT_DIR="$REPO_ROOT/logs/audits/context-anchor"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 REPORT_PATH="$AUDIT_DIR/context-anchor-recon-$STAMP.txt"
 LATEST_PATH="$AUDIT_DIR/LATEST.txt"
-CANONICAL_ANCHOR="$REPO_ROOT/OPENCLAW_CONTEXT_ANCHOR.md"
+# Canonical anchor lives one level above the repo root (in .openclaw/)
+CANONICAL_ANCHOR="$(cd "$REPO_ROOT/.." && pwd)/OPENCLAW_CONTEXT_ANCHOR.md"
 
-mkdir -p "$AUDIT_DIR"
+# In CI or read-only environments, fall back to a temp dir for the report
+if ! mkdir -p "$AUDIT_DIR" 2>/dev/null; then
+  AUDIT_DIR="$(mktemp -d)"
+  REPORT_PATH="$AUDIT_DIR/context-anchor-recon-$STAMP.txt"
+  LATEST_PATH="$AUDIT_DIR/LATEST.txt"
+fi
 
 run_cmd() {
   local cmd="$1"

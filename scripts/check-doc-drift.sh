@@ -40,7 +40,13 @@ require_not_contains() {
 }
 
 echo "[drift-check] validating required files"
-require_file "$CANONICAL_ANCHOR"
+# CANONICAL_ANCHOR lives outside the repo root (.openclaw/); skip in CI if absent
+if [[ -f "$CANONICAL_ANCHOR" ]]; then
+  HAVE_CANONICAL=true
+else
+  echo "[drift-check] WARN: canonical anchor not found at $CANONICAL_ANCHOR (expected in CI — skipping canonical checks)"
+  HAVE_CANONICAL=false
+fi
 require_file "$WORKSPACE_ANCHOR"
 require_file "$README"
 require_file "$DOCS_INDEX"
@@ -59,9 +65,13 @@ require_contains "$WORKSPACE_ANCHOR" "Do not update this file."
 require_contains "$WORKSPACE_ANCHOR" "../OPENCLAW_CONTEXT_ANCHOR.md"
 
 echo "[drift-check] validating canonical anchor references completion workflow"
-require_contains "$CANONICAL_ANCHOR" "Sprint to completion"
-require_contains "$CANONICAL_ANCHOR" "workspace/docs/operations/SPRINT_TO_COMPLETION.md"
-require_contains "$CANONICAL_ANCHOR" "workspace/scripts/audit_context_anchor_recon.sh"
+if [[ "$HAVE_CANONICAL" == true ]]; then
+  require_contains "$CANONICAL_ANCHOR" "Sprint to completion"
+  require_contains "$CANONICAL_ANCHOR" "workspace/docs/operations/SPRINT_TO_COMPLETION.md"
+  require_contains "$CANONICAL_ANCHOR" "workspace/scripts/audit_context_anchor_recon.sh"
+else
+  echo "[drift-check] skipping canonical anchor content checks (file absent)"
+fi
 
 echo "[drift-check] validating public navigation contracts"
 require_contains "$README" "GitHub Navigation Tabs"
