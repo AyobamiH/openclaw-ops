@@ -1,9 +1,14 @@
 # Build & Refactor Agent
 
+Status: Active task runbook
+Primary orchestrator task: `build-refactor`
+Canonical contract: `agent.config.json` and `src/index.ts`
+
 ## Mission
 Perform safe, scoped code refactoring and build-oriented cleanups with validation.
 
-## I/O Contract
+## Contract
+
 ### Inputs
 - `build-refactor` tasks.
 - Target code context and constraints from `agent.config.json`.
@@ -11,18 +16,17 @@ Perform safe, scoped code refactoring and build-oriented cleanups with validatio
 ### Outputs
 - Refactor summary, patch result, and test verification status.
 
-### File Path I/O
+### File Path Scope
 - Local workspace edits via `workspacePatch`.
 - No network usage.
 
-## How It Runs
-```bash
-cd agents/build-refactor-agent
-npm install
-npm run dev
-```
+## Runtime
 
-## Governance Links
+- Local entrypoint: `npm run dev`
+- Validation: `npm run test:local`
+- Deeper verification: `npm run test:unit`, `npm run test:integration`
+
+## Governance
 - `ROLE.md`
 - `SCOPE.md`
 - `POLICY.md`

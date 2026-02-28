@@ -5,52 +5,102 @@ summary: "Configure orchestrator_config.json and environment settings."
 
 # Configuration
 
-## orchestrator_config.json
+The runtime source of truth is:
 
-The main configuration file is `orchestrator_config.json` at the workspace root.
+- `orchestrator_config.json` at the workspace root
+- agent-specific `agent.config.json` files under `agents/*/`
+- environment variables used by the orchestrator process
 
-### Required Fields
+If this guide conflicts with code or config, code and config win.
+
+## Main Config File
+
+The primary runtime config is:
+
+```text
+workspace/orchestrator_config.json
+```
+
+You can override that path with:
+
+```bash
+export ORCHESTRATOR_CONFIG=/path/to/alternate-config.json
+```
+
+## Core Required Fields
+
+These fields define the minimum runtime surface:
 
 ```json
 {
   "docsPath": "./openclaw-docs",
   "logsDir": "./logs",
-  "stateFile": "./logs/orchestrator.state.json"
+  "stateFile": "./orchestrator_state.json"
 }
 ```
 
-### Optional Fields
+## Common Operational Fields
+
+These are frequently used in the current workspace:
 
 ```json
 {
-  "deployBaseDir": "./agents-deployed",
-  "rssConfigPath": "./rss_filter_config.json",
-  "redditDraftsPath": "./logs/reddit-drafts.jsonl",
+  "cookbookPath": "./openai-cookbook",
   "knowledgePackDir": "./logs/knowledge-packs",
-  "notes": "Custom deployment notes"
+  "redditDraftsPath": "./logs/reddit-drafts.jsonl",
+  "rssConfigPath": "./rss_filter_config.json",
+  "digestDir": "./logs/digests",
+  "deployBaseDir": "./agents-deployed"
 }
 ```
 
-### Environment Override
+## Milestone Pipeline Fields
 
-```bash
-# Use a different config file
-export ORCHESTRATOR_CONFIG=/path/to/config.json
-npm start
+If you are using the milestone delivery path, these fields matter:
+
+```json
+{
+  "milestoneIngestUrl": "https://<app-host>/internal/milestones/ingest",
+  "milestoneFeedPath": "./orchestrator/data/milestones-feed.json",
+  "gitPushOnMilestone": false
+}
 ```
 
-## Field Descriptions
+## Environment Variables
 
-| Field | Purpose | Example |
-|-------|---------|---------|
-| `docsPath` | Path to OpenClaw docs mirror | `./openclaw-docs` or `/opt/docs` |
-| `logsDir` | Where logs and artifacts go | `./logs` or `/var/log/orchestrator` |
-| `stateFile` | Persistent state location | `./logs/state.json` |
-| `deployBaseDir` | Where agents deploy to | `./agents-deployed` |
-| `rssConfigPath` | RSS filter configuration | `./rss_filter_config.json` |
-| `redditDraftsPath` | Reddit drafts JSONL | `./logs/reddit-drafts.jsonl` |
-| `knowledgePackDir` | Knowledge pack artifacts | `./logs/knowledge-packs` |
+Important orchestrator runtime variables include:
 
----
+```bash
+API_KEY=...
+WEBHOOK_SECRET=...
+MONGO_USERNAME=...
+MONGO_PASSWORD=...
+REDIS_PASSWORD=...
+ORCHESTRATOR_FAST_START=true|false
+MILESTONE_SIGNING_SECRET=...
+```
 
-See [Configuration Reference](../reference/configuration.md) for all options.
+## Agent-Level Config
+
+Each agent may extend the runtime surface with its own config file:
+
+```text
+workspace/agents/<agent-id>/agent.config.json
+```
+
+Those files define:
+
+- model selection
+- allowed skills
+- service state paths
+- orchestrator state path
+- agent-specific runtime limits
+
+## Where To Look Next
+
+- [../reference/api.md](../reference/api.md): config-adjacent interfaces and
+  runtime behavior
+- [../reference/state-schema.md](../reference/state-schema.md): state file
+  summary
+- [../../OPENCLAW_CONTEXT_ANCHOR.md](../../OPENCLAW_CONTEXT_ANCHOR.md): current
+  canonical runtime orientation

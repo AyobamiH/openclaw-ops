@@ -1,9 +1,14 @@
 # Quality Assurance & Verification Agent
 
+Status: Active task runbook
+Primary orchestrator task: `qa-verification`
+Canonical contract: `agent.config.json` and `src/index.ts`
+
 ## Mission
 Provide objective, reproducible quality verification for orchestrated outputs.
 
-## I/O Contract
+## Contract
+
 ### Inputs
 - `qa-verification` tasks and test targets.
 - `workspace` and `artifacts` data.
@@ -11,18 +16,17 @@ Provide objective, reproducible quality verification for orchestrated outputs.
 ### Outputs
 - Verification reports in `artifacts/qa-reports`.
 
-### File Path I/O
+### File Path Scope
 - Reads: `workspace`, `artifacts`
 - Writes: `artifacts/qa-reports`
 
-## How It Runs
-```bash
-cd agents/qa-verification-agent
-npm install
-npm start
-```
+## Runtime
 
-## Governance Links
+- Local entrypoint: `npm start`
+- Alternate development loop: `npm run dev`
+- Current test surface: `npm test` (placeholder until richer tests are added)
+
+## Governance
 - `ROLE.md`
 - `SCOPE.md`
 - `POLICY.md`

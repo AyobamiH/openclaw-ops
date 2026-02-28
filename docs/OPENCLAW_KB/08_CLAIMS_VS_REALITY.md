@@ -1,33 +1,50 @@
 # Claims vs Reality Matrix
 
-Last updated: 2026-02-24
+Last reviewed: 2026-02-28
 
-## Declared Claim: Deny-by-Default ToolGate Enforcement
+## Claim: Task Intake Is Deny-by-Default
 
-- **Claim source**: `skills/index.ts` comments + long-term docs.
-- **Runtime evidence**: `orchestrator/src` has no `toolGate` implementation.
-- **Verdict**: **Not implemented in orchestrator runtime**.
+- Claim source: runtime intent and current docs
+- Runtime evidence: `ALLOWED_TASK_TYPES`, `TaskTriggerSchema`, and
+  `TaskQueue.enqueue()` all enforce allowlisting
+- Verdict: **Implemented**
 
-## Declared Claim: Skill Audit Gate at Startup
+## Claim: ToolGate Exists in Runtime
 
-- **Claim source**: `skills/index.ts` dynamic import of `skillAudit.js`.
-- **Runtime evidence**: `orchestrator/src/skillAudit.ts` not present.
-- **Verdict**: **Broken/absent dependency path**.
+- Claim source: current runtime design
+- Runtime evidence: `orchestrator/src/toolGate.ts` exists and is used by
+  `taskHandlers.ts` and `skills/index.ts`
+- Verdict: **Implemented, but partial in scope**
 
-## Declared Claim: Full 11-Agent Orchestration
+It is a real authorization layer. It is not yet the same thing as universal
+host-level execution isolation.
 
-- **Claim source**: docs/memory narrative and agent configs.
-- **Runtime evidence**: only subset of declared tasks mapped in `taskHandlers.ts` + `TaskTriggerSchema`.
-- **Verdict**: **Partially true**.
+## Claim: Skill Audit Runs During Skill Registration
 
-## Declared Claim: Integration Tests Validate Runtime Controls
+- Claim source: current skill loader design
+- Runtime evidence: `skills/index.ts` imports and uses
+  `orchestrator/src/skillAudit.ts`
+- Verdict: **Implemented**
 
-- **Claim source**: integration test naming and narrative.
-- **Runtime evidence**: tests use fixtures/mocks and simulated control checks.
-- **Verdict**: **Not runtime-proof; mostly behavioral simulation**.
+## Claim: The Broader Agent Task Surface Is Wired
 
-## Declared Claim: Orchestrator Is Sole Dispatch Authority
+- Claim source: current agent catalog and task docs
+- Runtime evidence: `taskHandlers.ts` now wires the extended agent task set,
+  including `market-research`, `data-extraction`, `qa-verification`, and
+  `skill-audit`
+- Verdict: **Implemented for the canonical task map**
 
-- **Claim source**: architecture intent.
-- **Runtime evidence**: standalone systemd units for `doc-specialist` and `reddit-helper` exist.
-- **Verdict**: **Not strictly enforced operationally**.
+## Claim: Orchestrator Is the Only Execution Authority
+
+- Claim source: architecture intent
+- Runtime evidence: the repo still includes multiple agent systemd units that
+  can run outside the queue path
+- Verdict: **Not strictly enforced operationally**
+
+## Claim: Runtime Controls Are Fully Closed
+
+- Claim source: safe-autonomy ambition
+- Runtime evidence: task allowlisting and gate preflight improved, but process
+  isolation, environment filtering, and deployment-surface consolidation remain
+  incomplete
+- Verdict: **Directionally stronger, not fully closed**

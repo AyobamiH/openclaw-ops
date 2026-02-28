@@ -1,42 +1,47 @@
 ---
-title: "README"
-summary: "Navigation hub for all documentation."
+title: "Docs Hub"
+summary: "Primary entrypoint for first-party OpenClaw workspace documentation."
 ---
 
-# Orchestrator Documentation
+# OpenClaw Docs Hub
 
-Welcome. This is the complete documentation for the AI agent orchestration system.
+This directory contains the first-party documentation for the OpenClaw
+workspace runtime.
 
-## Structure
+For current runtime truth, treat code and config as canonical first, then use
+the navigation files in this directory.
 
-### 📖 [start/](./start/)
-Getting started guides and introductions.
+## Start Here
 
-### 🧠 [concepts/](./concepts/)
-Architectural deep-dives and design decisions.
+- [INDEX.md](./INDEX.md): authoritative map of active docs
+- [NAVIGATION.md](./NAVIGATION.md): by-role and by-task routes
+- [SUMMARY.md](./SUMMARY.md): current documentation status summary
+- [operations/DOCUMENT_AUDIT.md](./operations/DOCUMENT_AUDIT.md): what is
+  canonical, historical, stale, or still pending
 
-### 🛠️ [guides/](./guides/)
-How-to guides and operational recipes.
+## Core Runtime Docs
 
-### 📚 [reference/](./reference/)
-API docs, configuration schemas, task types.
+- [Operator Guide](./OPERATOR_GUIDE.md)
+- [System Architecture](./concepts/architecture.md)
+- [Configuration Guide](./guides/configuration.md)
+- [Task Types](./reference/task-types.md)
+- [State Schema](./reference/state-schema.md)
 
-### 🔧 [troubleshooting/](./troubleshooting/)
-Common issues, debugging, performance tuning.
+## Milestone Pipeline Docs
 
-### 🚀 [operations/](./operations/)
-Deployment, scaling, monitoring, backups.
+- [CLAWDBOT Milestones](./CLAWDBOT_MILESTONES.md)
+- [Milestone Ingest Contract](./operations/MILESTONE_INGEST_CONTRACT.md)
+- [Milestone Pipeline Runbook](./operations/MILESTONE_PIPELINE_RUNBOOK.md)
+- [Milestone Delivery Plan](./operations/clawdbot-milestone-delivery-plan.md)
 
----
+## Active Closure Plan
 
-## Quick Links
+- [Sprint To Completion](./operations/SPRINT_TO_COMPLETION.md)
 
-- **New here?** → [Getting Started](./start/getting-started.md)
-- **Explain to stakeholders?** → [Architecture Overview](./start/architecture-overview.md)
-- **Deep dive?** → [System Architecture](./concepts/architecture.md)
-- **Deploy?** → [Installation Guide](./guides/installation.md)
-- **Something broken?** → [Troubleshooting](./troubleshooting/common-issues.md)
+## Root-Level Companions
 
----
-
-See [INDEX.md](./INDEX.md) for the full documentation map.
+- [../README.md](../README.md): public workspace overview
+- [../QUICKSTART.md](../QUICKSTART.md): fast local startup
+- [../DEPLOYMENT.md](../DEPLOYMENT.md): deployment paths
+- [../OPENCLAW_CONTEXT_ANCHOR.md](../OPENCLAW_CONTEXT_ANCHOR.md): canonical
+  runtime orientation

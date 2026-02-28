@@ -1,77 +1,92 @@
-# OpenClaw Runtime Truth (Verified)
+# OpenClaw Runtime Truth (Current)
 
-Last updated: 2026-02-23
-Scope: Runtime architecture and governance controls verified from source code and deployment files.
+Last reviewed: 2026-02-28
+Scope: Current runtime architecture and governance controls verified from the
+active codebase.
 
 ## 1) Canonical Control Plane
 
-**Verified**
-- `orchestrator/src/index.ts` is the only scheduler + queue bootstrap.
-- Task execution enters through `TaskQueue.enqueue()` in `orchestrator/src/taskQueue.ts` and dispatches via `resolveTaskHandler()` in `orchestrator/src/taskHandlers.ts`.
-- Public/protected HTTP routes are also defined in `orchestrator/src/index.ts`.
+Verified:
 
-**Assumed**
-- No external control-plane process is running unless deployed separately (not proven by code alone).
+- `orchestrator/src/index.ts` remains the main runtime bootstrap for the
+  orchestrator HTTP/API surface.
+- Task execution enters through `TaskQueue.enqueue()` in
+  `orchestrator/src/taskQueue.ts`.
+- Queue dispatch resolves through `resolveTaskHandler()` in
+  `orchestrator/src/taskHandlers.ts`.
+- Task intake is deny-by-default at both schema and queue boundaries:
+  `TaskTriggerSchema` limits API-triggered types, and `validateTaskType()`
+  rejects invalid queue entries.
+
+Operational reality:
+
+- The orchestrator is the canonical control plane, but it is not the only
+  executable surface in the repo because standalone agent systemd units still
+  exist.
 
 ## 2) Runtime Dispatch Model
 
-**Verified**
-- Most orchestrated agent tasks are executed by spawned child processes via temp payload/result files (`runSpawnedAgentJob()` in `orchestrator/src/taskHandlers.ts`).
-- Canonical spawned-agent contract is documented in `docs/OPENCLAW_KB/operations/AGENT_EXECUTION_CONTRACT.md` (hard cutover; no backward compatibility).
-- Dispatch coverage currently exists for:
-  - `security-audit` -> `security-agent`
-  - `summarize-content` -> `summarization-agent`
-  - `system-monitor` -> `system-monitor-agent`
-  - `build-refactor` -> `build-refactor-agent`
-  - `content-generate` -> `content-agent`
-  - `integration-workflow` -> `integration-agent`
-  - `normalize-data` -> `normalization-agent`
-  - `market-research` -> `market-research-agent`
-  - `data-extraction` -> `data-extraction-agent`
-  - `qa-verification` -> `qa-verification-agent`
-  - `skill-audit` -> `skill-audit-agent`
-  - `drift-repair` -> `doc-specialist`
-  - `reddit-response` -> `reddit-helper`
+Verified:
 
-**Verified**
-- Trigger schema allowlist (`TaskTriggerSchema` in `orchestrator/src/middleware/validation.ts`) includes all currently mapped orchestrator task types, including `market-research`, `data-extraction`, `qa-verification`, and `skill-audit`.
+- The canonical task allowlist currently includes:
+  `startup`, `doc-change`, `doc-sync`, `drift-repair`, `reddit-response`,
+  `security-audit`, `summarize-content`, `system-monitor`, `build-refactor`,
+  `content-generate`, `integration-workflow`, `normalize-data`,
+  `market-research`, `data-extraction`, `qa-verification`, `skill-audit`,
+  `rss-sweep`, `nightly-batch`, `send-digest`, `heartbeat`, and `agent-deploy`.
+- Invalid task types hard-fail. `TaskQueue.enqueue()` throws on invalid types,
+  and `unknownTaskHandler` throws if a non-allowlisted task reaches handler
+  resolution.
+- Most specialized task flows execute through `runSpawnedAgentJob()` using
+  payload/result files.
+- `drift-repair` and `reddit-response` use dedicated wrappers
+  (`runDocSpecialistJob()` and `runRedditHelperJob()`) but still flow through
+  orchestrator task handling.
+- The active spawned-agent result contract remains
+  `operations/AGENT_EXECUTION_CONTRACT.md`.
 
-## 3) API Exposure
+## 3) Security and Policy Gates
 
-**Verified public endpoints**
-- `GET /health`
-- `GET /api/knowledge/summary`
-- `GET /api/persistence/health`
+Verified:
 
-**Verified protected endpoints**
-- `POST /api/tasks/trigger` (Bearer token + validation + rate limits)
-- `POST /webhook/alerts` (HMAC signature + validation + rate limits)
-- `POST /api/knowledge/query`
-- `GET /api/knowledge/export`
-- `GET /api/persistence/historical`
-- `GET /api/persistence/export`
+- Bearer token, webhook HMAC, request validation, and rate limiting remain part
+  of the orchestrator middleware stack.
+- `orchestrator/src/toolGate.ts` now exists and is used as a real preflight
+  authorization layer.
+- `orchestrator/src/skillAudit.ts` now exists and is used by `skills/index.ts`
+  when the skill registry is initialized.
+- `taskHandlers.ts` performs tool-gate preflight checks before spawned-agent
+  tasks run.
 
-## 4) Security Controls (Implemented)
+Current limitation:
 
-**Verified**
-- Startup hard-fail if critical env vars missing (`verifySecurityPosture()` in `orchestrator/src/index.ts`).
-- Bearer token auth middleware (`orchestrator/src/middleware/auth.ts`).
-- Webhook signature validation middleware (`orchestrator/src/middleware/auth.ts`).
-- Zod request validation (`orchestrator/src/middleware/validation.ts`).
-- Endpoint-level rate limiting (`orchestrator/src/middleware/rate-limit.ts`).
+- ToolGate currently enforces allowlist checks and records invocation intent,
+  but it is not a full host-level sandbox. Child processes still run with
+  process-level privileges unless tighter isolation is added elsewhere.
 
-## 5) Safety Gaps (Claims vs Runtime)
+## 4) State, Memory, and Output Surfaces
 
-**Verified gaps**
-- `skills/index.ts` imports `../orchestrator/src/skillAudit.js`, but `orchestrator/src/skillAudit.ts` is absent.
-- `skills/index.ts` comments reference runtime `toolGate.ts`, but no such runtime module exists in `orchestrator/src`.
-- Integration tests under `orchestrator/test/integration/*.test.ts` are fixture/simulation heavy and do not enforce real runtime permission middleware or queue dispatch behavior.
+Verified:
 
-## 6) Deployment Reality
+- `orchestrator_state.json` remains the primary local state file.
+- Per-agent service memory is still persisted via configured `serviceStatePath`
+  values.
+- Additional outputs exist across logs/artifacts and optional persistence
+  integrations.
+- The orchestrator emits milestones through `getMilestoneEmitter()` for runtime
+  and pipeline state changes.
 
-**Verified**
-- Two compose surfaces exist: root `docker-compose.yml` and `orchestrator/docker-compose.yml` with different assumptions.
-- systemd units exist for orchestrator and standalone `doc-specialist`/`reddit-helper` services.
+## 5) Deployment Reality
 
-**Risk implication**
-- Running standalone services can bypass orchestrator-only dispatch policy if operators invoke agent services directly.
+Verified:
+
+- Two compose surfaces still exist: the repo root compose and
+  `orchestrator/docker-compose.yml`.
+- systemd unit files exist for the orchestrator and multiple agent services,
+  including `doc-specialist`, `reddit-helper`, and other task agents.
+
+Risk implication:
+
+- The intended governance boundary is orchestrator-first, but operators can
+  still run agent services outside the queue path if they choose to use the
+  standalone service layer.

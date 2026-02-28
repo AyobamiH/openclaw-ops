@@ -1,40 +1,57 @@
 # Agent Isolation and Dispatch Boundaries
 
-Last updated: 2026-02-24
+Last reviewed: 2026-02-28
 
-## Verified Isolation Facts
+## Current Isolation Facts
 
-- Agents are primarily run as short-lived child processes through orchestrator task handlers.
-- Child execution receives payload path and result-file env var only.
-- Agent configs define permission intent (`permissions.skills`, network flags, constraints).
+- The orchestrator still runs most task agents as short-lived child processes.
+- `drift-repair` and `reddit-response` also run through orchestrator-managed
+  wrappers for `doc-specialist` and `reddit-helper`.
+- The active task handlers now cover the broader agent set, including
+  `market-research`, `data-extraction`, `qa-verification`, and `skill-audit`.
+- ToolGate preflight now exists, so dispatch is no longer relying only on
+  handler-local conventions.
 
-## Verified Weaknesses
+## Current Coverage
 
-1. Runtime permission enforcement is mostly inside agent code (`canUseSkill` checks), not centrally enforced by orchestrator.
-2. Some agents (`doc-specialist`, `reddit-helper`) have long-running systemd services; these can execute outside queue governance.
-3. Agent config schema is not uniformly enforced at load time; shape differs significantly between agents.
+The canonical task agents are now wired through the orchestrator task map:
 
-## Runtime Coverage Table
+- `security-agent`
+- `summarization-agent`
+- `system-monitor-agent`
+- `build-refactor-agent`
+- `content-agent`
+- `integration-agent`
+- `normalization-agent`
+- `market-research-agent`
+- `data-extraction-agent`
+- `qa-verification-agent`
+- `skill-audit-agent`
+- `doc-specialist`
+- `reddit-helper`
 
-| Agent | Config has `orchestratorTask` | Handler wired | Trigger schema allows |
-|---|---:|---:|---:|
-| security-agent | yes | yes | yes |
-| summarization-agent | yes | yes | yes |
-| system-monitor-agent | yes | yes | yes |
-| build-refactor-agent | yes | yes | yes |
-| content-agent | yes | yes | yes |
-| integration-agent | yes | yes | yes |
-| normalization-agent | yes | yes | yes |
-| doc-specialist | yes | yes (`drift-repair`) | yes |
-| reddit-helper | yes | yes (`reddit-response`) | yes |
-| market-research-agent | yes | no | no |
-| data-extraction-agent | yes | no | no |
-| qa-verification-agent | yes | no | no |
-| skill-audit-agent | no | no | no |
+That means the primary documented task-agent surface is now represented in the
+runtime handler layer.
 
-## Governance Requirements
+## Isolation Limits That Still Matter
 
-- Canonical route: orchestrator queue only.
-- Explicitly classify standalone services as `debug/exception` or migrate behind orchestrator task handlers.
-- Add config linter to fail CI when `orchestratorTask` declarations are unmapped in handlers/schema.
-- Enforce the spawned-agent hard-cutover execution contract (result-file + centralized handler interpretation; no backward compatibility): `docs/OPENCLAW_KB/operations/AGENT_EXECUTION_CONTRACT.md`.
+1. ToolGate is an authorization layer, not a full process sandbox.
+2. Child processes still inherit process-level environment unless filtered.
+3. systemd service units exist for multiple agents, so direct execution remains
+   possible outside the queue path.
+4. Agent config schemas and maturity still vary between agents, even though the
+   README layer is now normalized.
+
+## Governance Rule
+
+- Preferred execution path: orchestrator queue and handler dispatch.
+- Standalone services should be treated as operational exceptions, maintenance
+  paths, or explicitly controlled deployments, not as proof that isolation is
+  fully centralized.
+
+## Practical Hardening
+
+1. Reduce secret inheritance for spawned agents.
+2. Keep task-to-agent mapping tests aligned with `agent.config.json`.
+3. Treat systemd direct-run paths as a documented exception and review them with
+   the same rigor as the orchestrator path.

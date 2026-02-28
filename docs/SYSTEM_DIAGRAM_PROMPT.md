@@ -89,9 +89,9 @@ Include the full 12-agent swarm with all agent names and primary skills."
 
 **In documentation:**
 ```markdown
-![System Architecture](docs/system-architecture.svg)
+<!-- Render your generated asset to docs/system-architecture.svg first, then embed it. -->
 
-The diagram above shows:
+The generated diagram should show:
 - Red center: Single orchestrator (mission control)
 - Teal boxes: 5 core skills (reusable, audited)
 - Colored agents: 11 specialized workers, color-coded by function

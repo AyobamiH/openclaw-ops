@@ -1,6 +1,10 @@
 # Recovery Procedures
 
-Last updated: 2026-02-24
+Last reviewed: 2026-02-28
+
+This is the retained generated operational checklist. The older repetitive
+generated KB summaries have been consolidated around `ARCHITECTURE.md`,
+`QA_VERIFICATION_MATRIX.md`, and this file.
 
 ## Immediate Containment
 1. Stop direct agent services not orchestrator-mediated.
@@ -17,3 +21,12 @@ Last updated: 2026-02-24
 1. Re-run governance integration tests.
 2. Re-verify invariants in SYSTEM_INVARIANTS.
 3. Block deployment until critical/high findings are remediated.
+
+## Reference Set
+
+Use these documents when executing recovery:
+
+- `../ARCHITECTURE.md`
+- `../07_INVARIANTS_AND_RISKS.md`
+- `../QA_VERIFICATION_MATRIX.md`
+- `AGENT_EXECUTION_CONTRACT.md`

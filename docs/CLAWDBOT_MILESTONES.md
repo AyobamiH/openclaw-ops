@@ -1,126 +1,116 @@
-# CLAWDBOT_MILESTONES
+# CLAWDBOT Milestones
 
-Milestone specification for OpenClaw operator-facing progress posts and auditability.
+Milestone policy for the OpenClaw runtime and the `openclawdbot` milestone
+surface.
 
-## 1) Purpose
+## Purpose
 
-Define when a milestone is emitted, what must be included, and which evidence is mandatory.
+Define:
 
-This spec is intentionally strict:
+- when a milestone should be emitted
+- what fields it must contain
+- what evidence standards still apply
+- how the policy maps to the current runtime schema
 
-- No milestone without evidence links.
-- No “done” claims without verification artifact references.
-- No cleanup/removal milestones without hygiene classification from `docs/GOVERNANCE_REPO_HYGIENE.md`.
+## Canonical Schema
 
-## 2) Milestone Triggers
+The active runtime schema is implemented in:
 
-Emit a milestone when one of the following happens:
+- `workspace/orchestrator/src/milestones/schema.ts`
+- `workspace/openclawdbot/src/shared/milestones.ts`
 
-1. Runtime validation milestone
-   - Example: 3000-task production-semantics run completed with reported SLA.
-2. Control-plane hardening milestone
-   - Example: auth/approval/idempotency/persistence boundary changes merged and validated.
-3. Knowledge-pipeline integrity milestone
-   - Example: sync + index + pack production/consumption chain verified end-to-end.
-4. Governance milestone
-   - Example: protected allowlist regenerated and junk inventory re-scored.
-5. Incident/remediation milestone
-   - Example: regression detected, root cause identified, fix validated.
+The current required fields are:
 
-## 3) Required Milestone Structure
+1. `milestoneId`
+2. `timestampUtc`
+3. `scope`
+4. `claim`
+5. `evidence[]`
+6. `riskStatus`
+7. `nextAction`
+8. `source` (optional: `orchestrator`, `agent`, `operator`)
 
-Every milestone post must include all fields in this order:
+## Current `riskStatus` Values
 
-1. `Milestone ID` (stable slug)
-2. `Timestamp (UTC)`
-3. `Scope` (runtime, pipeline, governance, incident)
-4. `Claim` (single-sentence outcome)
-5. `Evidence` (file/command/test artifacts)
-6. `Risk Status` (`none`, `known`, `deferred`)
-7. `Next Action` (single actionable follow-up)
+These are the live values accepted by the app and runtime:
 
-## 4) Post Template
+- `on-track`
+- `at-risk`
+- `blocked`
+- `completed`
 
-Use this template exactly:
+Older labels such as `none`, `known`, and `deferred` are not the active
+app-facing contract.
 
-```markdown
-## Milestone: <id>
-- Timestamp (UTC): <YYYY-MM-DDTHH:MM:SSZ>
-- Scope: <runtime|pipeline|governance|incident>
-- Claim: <single sentence>
-- Evidence:
-  - <artifact 1>
-  - <artifact 2>
-  - <artifact 3>
-- Risk Status: <none|known|deferred>
-- Next Action: <single next action>
+## When To Emit A Milestone
+
+Emit a milestone when one of these happens:
+
+1. Runtime validation or startup state changes
+2. Control-plane hardening or deploy actions
+3. Knowledge or pipeline repair actions
+4. Incident detection or remediation
+5. Meaningful operator-visible workflow completions
+
+## Evidence Standard
+
+The evidence rule still stands:
+
+- no milestone without concrete evidence
+- no broader claim than the evidence supports
+
+Evidence items should point to:
+
+- file paths
+- test results
+- log artifacts
+- generated outputs
+- verifiable operational records
+
+## Practical Template
+
+```json
+{
+  "milestoneId": "runtime.validation.example",
+  "timestampUtc": "2026-02-28T12:34:56.000Z",
+  "scope": "runtime",
+  "claim": "Orchestrator started successfully.",
+  "evidence": [
+    {
+      "type": "log",
+      "path": "workspace/orchestrator_state.json",
+      "summary": "lastStartedAt set in orchestrator state"
+    }
+  ],
+  "riskStatus": "on-track",
+  "nextAction": "Monitor task queue for first incoming tasks.",
+  "source": "orchestrator"
+}
 ```
 
-## 5) Guardrails
+## Guardrails
 
-Milestones are invalid if any condition below is violated:
+Milestones are invalid when:
 
-1. Evidence is missing, hand-wavy, or not reproducible.
-2. Claim is broader than evidence scope.
-3. Risk status omits known unresolved failures.
-4. Governance claims skip allowlist derivation sequence.
-5. Cleanup claims do not include candidate/drift-risk classification.
+1. evidence is missing or vague
+2. the claim is broader than the attached proof
+3. the selected `riskStatus` hides known unresolved issues
+4. governance-sensitive claims skip required hygiene classification
 
-## 6) Evidence Attachment Format
+## Current Runtime Reality
 
-Each evidence item should be one of:
+The milestone path is no longer just planned.
 
-- File evidence: `path + line reference`
-  - Example: `workspace/orchestrator/src/index.ts#L122-L131`
-- Command evidence: `command + short result`
-  - Example: `npm run test:integration -> passed`
-- Runtime artifact evidence:
-  - Example: `logs/knowledge-packs/<pack-id>.json generated`
+Current code already includes:
 
-Minimum evidence count by scope:
+- orchestrator-side emission
+- signed delivery attempts
+- retry and dead-letter states
+- app-side ingest and feed routes
+- duplicate-safe ingestion
 
-- runtime: 3 artifacts
-- pipeline: 3 artifacts
-- governance: 4 artifacts
-- incident: 4 artifacts (must include root-cause + verification)
+Use these companion docs for the operational details:
 
-## 7) Milestone Types (Canonical IDs)
-
-- `runtime.validation.<topic>`
-- `runtime.hardening.<topic>`
-- `pipeline.knowledge.<topic>`
-- `governance.hygiene.<topic>`
-- `incident.remediation.<topic>`
-
-Example IDs:
-
-- `runtime.validation.3000-task-production-semantics`
-- `governance.hygiene.protected-allowlist-rerun`
-
-## 8) Governance-Coupled Rule
-
-If a milestone touches cleanup, drift repair, mirror inputs, logs, or memory paths, it must cite:
-
-- `docs/GOVERNANCE_REPO_HYGIENE.md`
-- current protected allowlist snapshot (or regeneration output)
-- explicit classification outcome (`PROTECTED`, `PROTECTED-BUT-PRUNABLE`, `CANDIDATE`, `DRIFT-RISK`)
-
-## 9) Lightweight Review Checklist
-
-Before posting, verify:
-
-- Claim sentence matches evidence exactly.
-- Evidence references are clickable and current.
-- Any failing or flaky tests are disclosed under Risk Status.
-- Next Action is concrete and bounded.
-
-## 10) Runtime Mapping + Delivery Plan
-
-This file defines milestone policy and structure. The implementation mapping and delivery scaffolding are tracked in:
-
+- `docs/operations/MILESTONE_INGEST_CONTRACT.md`
+- `docs/operations/MILESTONE_PIPELINE_RUNBOOK.md`
 - `docs/operations/clawdbot-milestone-delivery-plan.md`
-
-Current status reminder:
-
-- Milestone spec exists (this file).
-- Runtime emitter + delivery bridge to Reddit app are planned but not yet fully implemented in control-plane code.

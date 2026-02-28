@@ -12,11 +12,12 @@ Use this as the top-level navigation model when publishing the repo.
 |---|---|---|
 | Overview | What this project is and its runtime modes | `README.md` |
 | Quick Start | Get running fast with local dev | `QUICKSTART.md` |
-| Docker + Deploy | Containerized and system deployment paths | `DEPLOYMENT.md`, `orchestrator/docs/DEPLOYMENT_GUIDE.md` |
+| Docker + Deploy | Containerized and system deployment paths | `DEPLOYMENT.md`, `docs/operations/deployment.md` |
 | Operations | Day-2 operations, boundaries, runbooks | `docs/OPERATOR_GUIDE.md`, `docs/operations/MILESTONE_PIPELINE_RUNBOOK.md` |
 | Architecture | Technical and non-technical system explanation | `docs/concepts/architecture.md`, `ARCHITECTURE_NONTECHNICAL.md` |
 | Milestones + Reddit | Milestone pipeline: emit → sign → ingest → Reddit feed | `docs/CLAWDBOT_MILESTONES.md`, `docs/operations/MILESTONE_PIPELINE_RUNBOOK.md` |
 | Sprint To Completion | Active implementation plan to close known gaps | `docs/operations/SPRINT_TO_COMPLETION.md` |
+| Documentation Audit | Canonical vs historical doc classification | `docs/operations/DOCUMENT_AUDIT.md` |
 | Governance + Security | Drift control, repo hygiene, trust boundaries | `OPENCLAW_CONTEXT_ANCHOR.md`, `docs/GOVERNANCE_REPO_HYGIENE.md`, `security/` |
 
 ## Highlights

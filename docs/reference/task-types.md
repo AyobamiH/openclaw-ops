@@ -1,299 +1,103 @@
 ---
 title: "Task Types Reference"
-summary: "All built-in task types, what triggers them, and what they do."
+summary: "Current allowlisted task types in the orchestrator runtime."
 ---
 
 # Task Types Reference
 
-The orchestrator has **8 built-in task types**. Each runs on a schedule or triggered by events.
+The canonical task allowlist lives in:
 
----
-
-## 1. `startup`
-
-**When**: System boots
-
-**Interval**: Once (at process start)
-
-**Purpose**: Initialize orchestrator, load config, build doc index
-
-**Handler**: `startupHandler()`
-
-**Output**:
-- Docs indexed
-- State initialized or loaded
-- Schedulers started
-- Logs begin
-
-```json
-{
-  "type": "startup",
-  "status": "completed",
-  "result": {
-    "configLoaded": true,
-    "docsIndexed": 42,
-    "stateInitialized": true
-  }
-}
+```text
+workspace/orchestrator/src/taskHandlers.ts
 ```
 
----
+This document mirrors the current allowlist at a high level. If it diverges,
+the code wins.
 
-## 2. `doc-change`
+## Current Allowlisted Task Types
 
-**When**: File watcher detects doc modification
+### Core Runtime
 
-**Interval**: On-demand (triggered by file system events)
+- `startup`
+- `doc-change`
+- `doc-sync`
+- `drift-repair`
+- `rss-sweep`
+- `nightly-batch`
+- `send-digest`
+- `heartbeat`
 
-**Purpose**: Regenerate knowledge pack from changed docs
+### External / Community / Content
 
-**Handler**: `docChangeHandler()`
+- `reddit-response`
+- `content-generate`
+- `market-research`
+- `data-extraction`
+- `normalize-data`
+- `summarize-content`
 
-**Spawns**: `doc-specialist` agent
+### Quality / Security / System
 
-**Output**:
-- Knowledge pack: `logs/knowledge-packs/{timestamp}.json`
-- Change delta
-- Agent result
+- `security-audit`
+- `system-monitor`
+- `qa-verification`
+- `skill-audit`
+- `integration-workflow`
 
-```json
-{
-  "type": "doc-change",
-  "status": "completed",
-  "result": {
-    "changedFiles": ["docs/concepts/architecture.md"],
-    "knowledgePackPath": "logs/knowledge-packs/1705416768123.json",
-    "agentResult": { ... }
-  }
-}
+### Sensitive / Approval-Gated
+
+- `build-refactor`
+- `agent-deploy`
+
+## Approval Requirements
+
+By default, these task types require approval before execution:
+
+- `build-refactor`
+- `agent-deploy`
+
+The approval gate behavior is implemented in:
+
+```text
+workspace/orchestrator/src/approvalGate.ts
 ```
 
----
+## Notes By Task Family
 
-## 3. `doc-sync`
+### Runtime Tasks
 
-**When**: Scheduled (triggered by interval check)
+- `startup` records boot state and emits a startup milestone.
+- `doc-change` and `doc-sync` manage the doc-change buffer.
+- `drift-repair` can trigger doc-specialist work and emit milestone records.
+- `rss-sweep`, `nightly-batch`, `send-digest`, and `heartbeat` support
+  recurring operational flows.
 
-**Interval**: Every 1 minute
+### Worker / Agent Tasks
 
-**Purpose**: Compare local docs vs config, detect stale docs, re-index if needed
+These route work to specialized agents or helper flows:
 
-**Handler**: `docSyncHandler()`
+- `reddit-response`
+- `security-audit`
+- `summarize-content`
+- `system-monitor`
+- `content-generate`
+- `integration-workflow`
+- `normalize-data`
+- `market-research`
+- `data-extraction`
+- `qa-verification`
+- `skill-audit`
 
-**Spawns**: `doc-specialist` agent (if changes detected)
+### Sensitive Tasks
 
-**Output**:
-- Files indexed
-- Changes detected (boolean)
-- Knowledge pack generated (if changed)
+- `build-refactor` is intentionally guarded because it can modify code and run
+  tests.
+- `agent-deploy` is intentionally guarded because it creates deployable agent
+  surfaces.
 
-```json
-{
-  "type": "doc-sync",
-  "status": "completed",
-  "result": {
-    "filesIndexed": 42,
-    "changeDetected": false,
-    "knowledgePackGenerated": false
-  }
-}
-```
+## Where To Inspect Behavior
 
----
-
-## 4. `drift-repair`
-
-**When**: Scheduled (maintenance task)
-
-**Interval**: Every 15 minutes
-
-**Purpose**: Full audit of docs, regenerate knowledge pack, repair any inconsistencies
-
-**Handler**: `driftRepairHandler()`
-
-**Spawns**: `doc-specialist` agent
-
-**Output**:
-- Complete re-index
-- Drift detection
-- Full knowledge pack regeneration
-- Agent audit result
-
-```json
-{
-  "type": "drift-repair",
-  "status": "completed",
-  "result": {
-    "filesAudited": 42,
-    "driftDetected": false,
-    "knowledgePackRegenerated": true,
-    "agentAuditResult": { ... }
-  }
-}
-```
-
----
-
-## 5. `reddit-response`
-
-**When**: Scheduled (engagement task)
-
-**Interval**: Every 10 minutes
-
-**Purpose**: Check Reddit for engagement opportunities, draft informed responses
-
-**Handler**: `redditResponseHandler()`
-
-**Spawns**: `reddit-helper` agent
-
-**Output**:
-- Drafted responses: `logs/reddit-drafts.jsonl`
-- Posts evaluated
-- Agent response
-
-```json
-{
-  "type": "reddit-response",
-  "status": "completed",
-  "result": {
-    "postsEvaluated": 12,
-    "draftedResponses": 3,
-    "draftsLogPath": "logs/reddit-drafts.jsonl",
-    "agentResult": { ... }
-  }
-}
-```
-
----
-
-## 6. `rss-sweep`
-
-**When**: Scheduled (content discovery)
-
-**Interval**: Every 15 minutes
-
-**Purpose**: Parse RSS feeds, score/filter entries, generate draft responses
-
-**Handler**: `rssSweepHandler()`
-
-**Output**:
-- Feed entries parsed
-- Scoring applied (relevance, recency, urgency)
-- Draft summaries: `logs/rss-drafts.jsonl`
-- High-priority items flagged
-
-```json
-{
-  "type": "rss-sweep",
-  "status": "completed",
-  "result": {
-    "feedsParsed": 3,
-    "entriesParsed": 127,
-    "entriesScored": 127,
-    "highPriorityItemsCount": 5,
-    "draftsLogPath": "logs/rss-drafts.jsonl"
-  }
-}
-```
-
----
-
-## 7. `heartbeat`
-
-**When**: Scheduled (health check)
-
-**Interval**: Every 5 minutes
-
-**Purpose**: Confirm system is alive, collect diagnostics, emit health signals
-
-**Handler**: `heartbeatHandler()`
-
-**Output**:
-- Process uptime
-- Memory usage
-- Task queue depth
-- Health status
-
-```json
-{
-  "type": "heartbeat",
-  "status": "completed",
-  "result": {
-    "uptime": 3600000,
-    "memoryUsageMb": 127,
-    "taskQueueDepth": 2,
-    "healthStatus": "ok"
-  }
-}
-```
-
----
-
-## 8. `agent-deploy`
-
-**When**: Triggered externally or manually
-
-**Interval**: On-demand
-
-**Purpose**: Deploy a template agent to `agents-deployed/`
-
-**Handler**: `agentDeployHandler()`
-
-**Output**:
-- Agent copied to deploy directory
-- Deployment metadata created
-- Ready for external invocation
-
-```json
-{
-  "type": "agent-deploy",
-  "status": "completed",
-  "result": {
-    "agentName": "doc-specialist",
-    "deployPath": "agents-deployed/doc-specialist-1705416768123",
-    "deploymentMetadata": { ... }
-  }
-}
-```
-
----
-
-## Task Scheduling
-
-| Task | Interval | Purpose |
-|------|----------|---------|
-| `startup` | Once | Initialize |
-| `doc-sync` | 1m | Check for doc changes |
-| `heartbeat` | 5m | Health signal |
-| `reddit-response` | 10m | Reddit engagement |
-| `rss-sweep` | 15m | Content discovery |
-| `drift-repair` | 15m | Maintenance & audit |
-| `doc-change` | On-demand | React to file changes |
-| `agent-deploy` | On-demand | Deploy agents |
-
----
-
-## Viewing Task Queue
-
-Check what's pending:
-
-```bash
-# View last 10 tasks
-cat logs/orchestrator.state.json | jq '.taskHistory[-10:]'
-
-# View all error tasks
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.status=="error")'
-```
-
----
-
-## Custom Tasks
-
-To add a new task type:
-
-1. Create handler in `taskHandlers.ts`
-2. Register handler in the `handlers` map
-3. Add schedule interval in `index.ts`
-4. Update this reference doc
-
-See [Task Handler Reference](./task-handlers.md) for implementation examples.
+- `workspace/orchestrator/src/taskHandlers.ts`: handler implementations
+- `workspace/orchestrator/src/middleware/validation.ts`: request schema allowlist
+- `workspace/orchestrator/src/approvalGate.ts`: approval logic
+- [./api.md](./api.md): API surfaces that trigger or inspect work

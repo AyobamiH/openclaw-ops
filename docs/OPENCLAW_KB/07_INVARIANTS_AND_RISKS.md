@@ -1,36 +1,50 @@
 # Runtime Invariants and Risk Register
 
-Last updated: 2026-02-24
+Last reviewed: 2026-02-28
 
 ## Invariants (Must Hold)
 
-1. All privileged task entrypoints require auth/signature + validation.
-2. Unknown task types are not silently accepted.
-3. Agent executions are traceable to a queue task id.
-4. Skill execution is enforced by central gate, not only local agent checks.
-5. State mutations are durable and bounded.
-6. Deployment mode does not bypass orchestrator governance.
+1. Privileged task entrypoints require auth/signature and validation.
+2. Unknown task types are rejected.
+3. Queue-dispatched agent executions are traceable to task IDs.
+4. Central policy gates exist for task and skill preflight, even if deeper host
+   isolation is still evolving.
+5. State mutations remain durable and bounded.
+6. Operational launch paths should not undermine orchestrator-first governance.
 
 ## Current Compliance Snapshot
 
-- Invariant 1: **Partially met** (API yes; internal enqueue path no global guard).
-- Invariant 2: **Not met** (fallback handler accepts unknown type with message).
-- Invariant 3: **Partially met** (task history exists; some standalone services bypass queue).
-- Invariant 4: **Not met** (no runtime tool gate module).
-- Invariant 5: **Partially met** (bounded state slices, but multi-store drift risk).
-- Invariant 6: **Not met** (systemd standalone agent services present).
+- Invariant 1: **Met for HTTP/API ingress**.
+- Invariant 2: **Met** (`TaskQueue.enqueue()` and `unknownTaskHandler` reject
+  invalid types).
+- Invariant 3: **Mostly met** for orchestrator-dispatched work, but standalone
+  services can still bypass queue provenance.
+- Invariant 4: **Partially met**. ToolGate and SkillAudit exist, but they are
+  not a full host-level policy firewall.
+- Invariant 5: **Partially met**. Local state is bounded, but multiple storage
+  surfaces can still drift.
+- Invariant 6: **Partially met**. The orchestrator is the intended primary
+  boundary, but systemd units still provide alternate execution paths.
 
-## Top Risks (Severity)
+## Top Risks
 
-- **Critical**: Claimed `toolGate`/`skillAudit` runtime controls absent.
-- **High**: Unmapped declared `orchestratorTask` values create governance drift.
-- **High**: Standalone services can operate outside orchestrator policy boundary.
-- **Medium**: Unknown task fallback behavior hides invalid route attempts.
-- **Medium**: Compose/systemd mode divergence risks inconsistent security posture.
+- **High**: Standalone service execution can bypass orchestrator-first policy
+  intent.
+- **High**: Child-process environment inheritance can overexpose credentials to
+  agents.
+- **Medium**: ToolGate is a meaningful authorization layer, but not a complete
+  runtime sandbox.
+- **Medium**: Multi-surface state and artifact storage can drift without strong
+  reconciliation.
+- **Medium**: Multiple deployment surfaces can produce inconsistent operational
+  posture if left unmanaged.
 
 ## Priority Remediation
 
-1. Implement central runtime gate and make agent-side checks advisory only.
-2. Enforce strict task mapping consistency checks in CI.
-3. Route `doc-specialist` and `reddit-helper` service behavior through orchestrator-triggered jobs only.
-4. Convert unknown task handling to explicit error + audit alert.
+1. Filter and minimize agent child-process environment exposure.
+2. Prefer orchestrator-dispatched execution over direct service starts in normal
+   operations.
+3. Keep task allowlist, API schema, and agent task wiring under continuous
+   drift checks.
+4. Add stronger audit reconciliation across state, logs, and external
+   persistence surfaces.

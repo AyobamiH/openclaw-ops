@@ -1,31 +1,60 @@
 # Skills Runtime and Supply Chain Governance
 
-Last updated: 2026-02-24
+Last reviewed: 2026-02-28
 
-## Verified Runtime Behavior
+## Current Runtime Behavior
 
-- Skills are implemented in `skills/*.ts` and invoked by agent code via `executeSkill()` from `skills/index.ts`.
-- `skills/index.ts` includes TODO-level notes for permission enforcement and references non-existent runtime modules.
+Verified:
 
-## Critical Verified Gaps
+- Skills are implemented in `skills/*.ts`.
+- `skills/index.ts` now loads definitions, audits each skill through
+  `orchestrator/src/skillAudit.ts`, and only registers skills whose audit
+  passes.
+- `executeSkill()` in `skills/index.ts` now asks ToolGate for permission when a
+  requesting agent is provided.
+- `taskHandlers.ts` also performs ToolGate preflight before spawned-agent tasks
+  are executed.
 
-- `skills/index.ts` dynamically imports `../orchestrator/src/skillAudit.js`, but no `orchestrator/src/skillAudit.ts` exists.
-- Claimed runtime `toolGate` enforcement is not present in orchestrator runtime source tree.
-- Skill permissions are metadata-rich but are not centrally enforced at skill execution entry point.
+This means the skill layer now has real audit and authorization hooks, not just
+placeholder references.
 
-## Skill Risk Notes (From Implementation)
+## What The Audit Gate Actually Covers
 
-- `sourceFetch.ts`: allowlist is declared in definition metadata, but execution path does not enforce domain allowlist before `fetch(url)`.
-- `documentParser.ts`: reads arbitrary `filePath` from input; no workspace root boundary check.
-- `workspacePatch.ts`: writes arbitrary input path when `dryRun=false`; no root guard.
-- `testRunner.ts`: uses `sh -c` with whitelisted strings, but still shell-based execution.
+`SkillAuditGate` currently evaluates:
+
+- provenance metadata
+- permission bounds
+- dangerous runtime patterns
+- direct secret access
+- input/output schema presence
+
+That is a meaningful supply-chain review step for skills loaded through the
+registry.
+
+## Remaining Runtime Limits
+
+- ToolGate authorization is real, but it still acts as a permission check and
+  audit log, not a full filesystem/network/process sandbox.
+- Some risky behaviors still depend on executor implementation rather than a
+  universal host-level policy layer.
+- Child-process tasks in `taskHandlers.ts` do not force every action through the
+  skill registry; some execution remains agent-process based rather than
+  skill-gateway based.
+
+## Current Risk Notes
+
+- `sourceFetch` safety depends on its executor and declared bounds, not a global
+  egress firewall.
+- `documentParser` and `workspacePatch` remain sensitive because path safety is
+  partly implementation-specific.
+- `testRunner` still represents command execution and therefore deserves tighter
+  scrutiny than read-only skills.
 
 ## Governance Actions
 
-1. Introduce hard runtime gate in `executeSkill()` enforcing:
-   - caller agent permission
-   - path boundaries
-   - network domain allowlist
-   - command allowlist without `sh -c`.
-2. Implement actual skill audit runtime module and fail startup if unavailable.
-3. Add signed/hashed skill manifest and verify integrity at load.
+1. Keep `executeSkill()` and ToolGate as the canonical authorization layer for
+   direct skill calls.
+2. Add stronger process-level enforcement for file, network, and environment
+   boundaries.
+3. Continue treating skill metadata as necessary but not sufficient for runtime
+   safety.

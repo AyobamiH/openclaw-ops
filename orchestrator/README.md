@@ -1,32 +1,50 @@
-# Orchestrator Service
+# OpenClaw Orchestrator
 
-This directory contains the OpenClaw orchestrator runtime.
+This directory contains the OpenClaw control plane. It is the runtime that
+accepts tasks, applies policy, dispatches work, records state, and emits
+milestone updates for downstream surfaces such as `openclawdbot`.
 
-## Canonical Local Dev Compose
+## What Lives Here
 
-The canonical Docker Compose entrypoint for full local development is:
-- `orchestrator/docker-compose.yml`
+- `src/index.ts`: runtime bootstrap and HTTP surface
+- `src/taskHandlers.ts`: task allowlist and dispatch logic
+- `src/milestones/`: milestone emission and feed publishing
+- `orchestrator_config.json`: local runtime configuration
+- `docker-compose.yml`: full local stack for orchestrator + dependencies
 
-Use this file when you need orchestrator + MongoDB + Redis + monitoring services together.
+For repo-wide orientation, start with `../README.md` and
+`../OPENCLAW_CONTEXT_ANCHOR.md`.
 
-## Minimal Alternative
+## Canonical Local Compose
 
-A separate minimal stack exists at repo root:
-- `docker-compose.yml`
+Use `orchestrator/docker-compose.yml` when you need the full local development
+stack, including the orchestrator and its supporting services.
 
-Use the root compose only for lightweight orchestrator-only container runs.
+The repo root also contains `../docker-compose.yml`, but that file is a smaller
+alternative and is not a drop-in replacement for this one.
 
-## Quick Start
+## Common Commands
 
 From this directory:
 
 ```bash
-docker compose up -d --build
-docker compose ps
+npm install
+npm run dev
+npm run build
+npm run test:run
 ```
 
-## Notes
+Useful targeted checks:
 
-- These two compose files are intentionally different and are not drop-in equivalents.
-- Running both simultaneously can cause container name and port conflicts.
-- For broader repository context, see the root README.
+- `npm run test:unit:fixtures`
+- `npm run test:integration`
+- `npm run docs:check-sync`
+
+## Operational Notes
+
+- Do not run the root and orchestrator compose stacks at the same time unless
+  you have intentionally reconciled their port/container overlap.
+- Code and config are the source of truth. This README is a current entrypoint,
+  not a replacement for the implementation.
+- The active documentation surface for runtime and operations lives under
+  `../docs/`.

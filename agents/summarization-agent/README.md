@@ -1,26 +1,30 @@
 # Summarization Agent
 
+Status: Active task runbook
+Primary orchestrator task: `summarize-content`
+Canonical contract: `agent.config.json` and `src/index.ts`
+
 ## Mission
 Produce concise, accurate summaries from long-form local content.
 
-## I/O Contract
+## Contract
+
 ### Inputs
 - `summarize-content` tasks and source documents/text.
 
 ### Outputs
 - Summaries with key facts and compression metadata.
 
-### File Path I/O
+### File Path Scope
 - No explicit path map in config; outputs must remain task-scoped.
 
-## How It Runs
-```bash
-cd agents/summarization-agent
-npm install
-npm run test:local
-```
+## Runtime
 
-## Governance Links
+- Local entrypoint: `npm run dev`
+- Validation: `npm run test:local`
+- Deeper verification: `npm run test:unit`, `npm run test:integration`
+
+## Governance
 - `ROLE.md`
 - `SCOPE.md`
 - `POLICY.md`

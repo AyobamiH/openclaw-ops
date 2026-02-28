@@ -1,26 +1,30 @@
 # Skill Audit & Verification Agent
 
+Status: Active task runbook
+Primary orchestrator task: `skill-audit`
+Canonical contract: `agent.config.json` and `src/index.ts`
+
 ## Mission
 Audit skill behavior and reliability with test-backed compliance evidence.
 
-## I/O Contract
+## Contract
+
 ### Inputs
 - `skill-audit` tasks and target skill context.
 
 ### Outputs
 - Audit findings, test results, and remediation recommendations.
 
-### File Path I/O
+### File Path Scope
 - No explicit path map in config; outputs are task-scoped.
 
-## How It Runs
-```bash
-cd agents/skill-audit-agent
-npm install
-npm run audit:all
-```
+## Runtime
 
-## Governance Links
+- Local entrypoint: `npm run dev`
+- Validation: `npm run test:local`
+- Audit surface: `npm run audit:all`, `npm run check:compliance`
+
+## Governance
 - `ROLE.md`
 - `SCOPE.md`
 - `POLICY.md`

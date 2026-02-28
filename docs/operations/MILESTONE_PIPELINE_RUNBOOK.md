@@ -57,15 +57,16 @@ Generate a new secret:
 node -e "require('crypto').randomBytes(32).toString('hex')"
 ```
 
-**openclawdbot side** — via Devvit CLI:
-```bash
-devvit settings set milestoneSigningSecret
-# Paste the same value when prompted
-```
+**openclawdbot side** — store the same value in the app via the milestone
+secret form or the form submit route:
 
-Or via the Reddit App settings UI at: `https://developers.reddit.com/apps/<your-app>`
+- Reddit app menu: `Configure Milestone Pipeline Secret`
+- Internal form submit route: `POST /internal/forms/milestone-secret-submit`
 
-Both values **must be identical**. The secret is stored encrypted by the Devvit platform; it is never committed to source control.
+The app stores this value in Redis under the app-scoped key
+`milestones:signing-secret`.
+
+Both values **must be identical**.
 
 ---
 
@@ -146,11 +147,8 @@ curl https://<your-devvit-app-hostname>/api/milestones/dead-letter
    MILESTONE_SIGNING_SECRET=<new-value>
    ```
 
-4. Update the Devvit app secret:  
-   ```bash
-   devvit settings set milestoneSigningSecret
-   # Enter new value
-   ```
+4. Update the app-side secret via the milestone secret form (or
+   `POST /internal/forms/milestone-secret-submit`) using the same new value.
 
 5. Restart the orchestrator:  
    ```bash

@@ -1,52 +1,69 @@
 # Control Plane Audit
 
-Last updated: 2026-02-24
+Last reviewed: 2026-02-28
 
-## Verified Control Graph
+## Current Control Graph
 
-1. Boot: `orchestrator/src/index.ts::bootstrap()`
-2. Queue registration: `queue.onProcess(...)`
-3. Dispatch: `resolveTaskHandler(task)`
-4. Execution:
-   - Local state updates (`state.ts`)
-   - Spawned agent jobs (`taskHandlers.ts`)
-   - Persistence + alert + metrics integrations
+1. Runtime bootstraps in `orchestrator/src/index.ts`.
+2. Task listeners are attached to `TaskQueue`.
+3. `TaskQueue.enqueue()` rejects non-allowlisted task types before they are
+   queued.
+4. `resolveTaskHandler(task)` maps the task to a concrete handler.
+5. The handler runs inline logic or a spawned-agent job, updates runtime state,
+   and persists through orchestrator save paths.
+
+This is the current canonical flow for orchestrator-managed execution.
 
 ## Mutation Authority
 
-**Verified mutable state owners**
-- `orchestrator/src/index.ts`: task history and lifecycle timestamps.
-- `orchestrator/src/taskHandlers.ts`: domain queues (`pendingDocChanges`, `redditQueue`, `rssDrafts`, etc.).
-- `orchestrator/src/state.ts`: persistence truncation/limits and write path.
+Primary mutable owners remain:
 
-**Invariant**
-- All durable orchestrator state changes must flow through `saveState()` from orchestrator context.
+- `orchestrator/src/index.ts` for top-level lifecycle and task recording
+- `orchestrator/src/taskHandlers.ts` for domain queues and task-driven state
+  mutation
+- `orchestrator/src/state.ts` for durable state serialization, bounding, and
+  persistence helpers
 
-## Scheduler Authorities
+Current invariant:
 
-**Verified cron triggers**
-- Nightly batch (`nightly-batch`)
-- Morning digest (`send-digest`)
-- 5-min heartbeat (`heartbeat`)
+- Durable orchestrator state is still expected to flow through the orchestrator
+  save path rather than ad hoc writes.
 
-**Verified background loops**
-- Heartbeat hang detection alert loop.
-- Alert cleanup loop.
-- Memory scheduler and knowledge integration startup hooks.
+## Task-Type Authority
 
-## Task-Type Authority (Verified)
+Verified:
 
-- API task trigger allowlist (`TaskTriggerSchema`) and runtime dispatch map (`taskHandlers`) now align for canonical agent tasks, including `market-research`, `data-extraction`, `qa-verification`, and `skill-audit`.
-- Agent config declarations for `orchestratorTask` now have matching control-plane routes for all declared canonical task types.
+- `ALLOWED_TASK_TYPES` in `taskHandlers.ts` is the canonical runtime allowlist.
+- `TaskQueue.enqueue()` now imports that allowlist and rejects invalid types at
+  queue entry.
+- `TaskTriggerSchema` covers the API-triggerable task surface and includes the
+  newer agent task types (`market-research`, `data-extraction`,
+  `qa-verification`, `skill-audit`).
+- `unknownTaskHandler` now throws an explicit error rather than returning a
+  success-like fallback message.
 
-## Control Plane Risks
+## Control Plane Strengths
 
-- **R1**: Missing queue-level allowlist in `TaskQueue.enqueue()` means non-API internal callsites can enqueue arbitrary string task types.
-- **R2**: Fallback handler returns success-like message for unknown task types (`no handler for task type ...`) instead of explicit reject path.
-- **R3**: Control intent split across root compose + orchestrator compose + systemd service units can cause drift in active authority.
+- Task intake is now deny-by-default at both API and queue layers.
+- Spawned-agent task handlers perform tool-gate preflight checks before running.
+- The active control plane can emit milestones for meaningful runtime events,
+  which improves external visibility into state changes.
+
+## Current Risks
+
+- The repo still exposes multiple deployment surfaces (root compose,
+  orchestrator compose, and systemd units), which means operational authority
+  can drift if teams use different launch paths.
+- Standalone agent services still exist, so orchestrator-first routing remains
+  the intended model, not an exclusive enforcement boundary.
+- Child-process spawn paths still inherit process-level environment unless
+  explicitly filtered.
 
 ## Recommended Hardening
 
-1. Add centralized allowed task enum in runtime (`taskHandlers` keys as source of truth) and reject unknown at enqueue boundary.
-2. Make fallback handler return structured error and emit security/audit metric.
-3. Enforce one deployment mode as canonical (compose or systemd) and mark alternates as emergency/debug only.
+1. Keep the runtime allowlist as the single source of truth and test it against
+   API schema drift.
+2. Treat standalone service units as an exception path, not the normal control
+   plane.
+3. Reduce environment inheritance for spawned jobs so control-plane policy is
+   backed by tighter process isolation.

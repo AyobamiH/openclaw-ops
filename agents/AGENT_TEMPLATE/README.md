@@ -1,156 +1,76 @@
 # Agent Template - Copy and Customize
 
-This is the boilerplate for creating new agents in the OpenClaw swarm.
+Status: Template scaffold
+Primary orchestrator task: define in `agent.config.json`
+Canonical contract: `agent.config.json`, `src/index.ts`, and local governance files
 
-## Required Governance Primitives
+## Purpose
 
-Every agent folder must include:
+Use this directory as the baseline for creating a new OpenClaw agent with the
+required runtime contract, memory keys, and governance surface already in place.
 
+## Contract
+
+### Required files
+
+- `agent.config.json`
 - `ROLE.md`
 - `SCOPE.md`
 - `POLICY.md`
 - `TOOLS.md`
 - `README.md`
 
-Policy authority: `../../docs/GOVERNANCE_REPO_HYGIENE.md`
+Recommended supporting files:
 
-## Quick Start
+- `SOUL.md`
+- `IDENTITY.md`
+- `USER.md`
+- `HEARTBEAT.md`
+- `src/index.ts`
+- `src/service.ts`
 
-1. **Copy this directory:**
-   ```bash
-   cp -r agents/AGENT_TEMPLATE agents/my-new-agent
-   ```
+### Required config baseline
 
-2. **Update `agent.config.json`:**
-   - Set `id`, `name`, `description`
-   - Keep `orchestratorStatePath` and `serviceStatePath` (mandatory memory contract)
-   - Configure allowed `skills`
-   - Set `model` tier (cheap/balanced/heavy/strategic)
+Every new agent must keep these baseline config keys:
 
-3. **Customize `SOUL.md`:**
-   - Your agent's purpose and values
-   - Core capabilities
-   - Behavioral boundaries
+- `orchestratorStatePath`
+- `serviceStatePath`
 
-4. **Update `src/index.ts`:**
-   - Implement your main logic
-   - Import allowed skills from skill registry
-   - Follow the pattern in the example
+Domain-specific memory paths such as `knowledgePackDir`, `draftLogPath`, or
+`devvitQueuePath` can be added, but they do not replace the baseline memory
+contract.
 
-5. **Test locally:**
-   ```bash
-   cd agents/my-new-agent
-   npm install
-   npm test
-   ```
+## Setup
 
-6. **Add to orchestrator:**
-   - Add handler in `orchestrator/src/taskHandlers.ts`
-   - Update `agentRegistry.ts` to register new agent
-   - Restart orchestrator service
+1. Copy the template.
+2. Update `agent.config.json` with the real `id`, `name`, `description`, task
+   mapping, and allowed skills.
+3. Implement the runtime entrypoint in `src/index.ts`.
+4. Add the handler wiring in `orchestrator/src/taskHandlers.ts` and agent
+   registration if the new agent is meant to run through the orchestrator.
+5. Validate locally before relying on the new agent in shared flows.
 
-## File Structure
-
-- `agent.config.json` - Agent configuration + permissions
-- `ROLE.md` - Why the agent exists, done criteria, never-do rules
-- `SCOPE.md` - Inputs/outputs, allowed actions, boundaries
-- `POLICY.md` - Enforcement rules and governance constraints
-- `SOUL.md` - Agent identity + values
-- `IDENTITY.md` - Behavioral patterns + examples
-- `TOOLS.md` - Local tools + credentials (dev only)
-- `USER.md` - Who the agent serves
-- `HEARTBEAT.md` - Periodic checks during execution
-- `src/index.ts` - Entry point
-- `src/service.ts` - Core implementation
-- `package.json` - Dependencies
-
-## Agent Config Schema
-
-```json
-{
-  "id": "my-agent",
-  "name": "My Agent",
-   "orchestratorStatePath": "../../orchestrator_state.json",
-   "serviceStatePath": "../../logs/my-agent-service.json",
-  "description": "What this agent does",
-  "version": "1.0.0",
-  "model": {
-    "primary": "claude-3-5-sonnet",
-    "fallback": "gpt-4o-mini",
-    "tier": "balanced"
-  },
-  "skills": {
-    "sourceFetch": { "allowed": true },
-    "documentParser": { "allowed": true },
-    "normalizer": { "allowed": false }
-  },
-  "constraints": {
-    "timeout": 60000,
-    "maxRetries": 3,
-    "memory": "512M"
-  },
-  "heartbeat": {
-    "interval": 300000,
-    "checks": ["liveness", "resource-usage"]
-  }
-}
+```bash
+cp -r agents/AGENT_TEMPLATE agents/my-new-agent
+cd agents/my-new-agent
+npm install
+npm test
 ```
 
-## Memory Standard (Richer Specialized Mode)
+## Runtime
 
-- Baseline memory is mandatory for every agent via `orchestratorStatePath` + `serviceStatePath`.
-- Orchestrator persists cross-run memory for spawned agents into `serviceStatePath` (status, counters, and recent timeline).
-- If your agent has domain-specific memory artifacts, add explicit paths (for example `knowledgePackDir`, `draftLogPath`, `devvitQueuePath`) in addition to the baseline keys.
+The template ships with a local script surface:
 
-## Skill Usage Pattern
+- `npm run dev`
+- `npm run build`
+- `npm test`
 
-```typescript
-import { executeSkill } from '../../skills/index.js';
+Use these scripts as the default starting point, then tighten them for the new
+agent's real runtime.
 
-async function myAgentLogic(input: any) {
-  // Call allowed skill
-  const fetchResult = await executeSkill('sourceFetch', {
-    url: 'https://example.com',
-    allowlist: ['example.com']
-  }, 'my-agent');
-  
-  if (!fetchResult.success) {
-    console.error('Fetch failed:', fetchResult.error);
-    return;
-  }
-  
-  const content = fetchResult.data.content;
-  // ... process content
-}
-```
+## Governance
 
-## Testing Checklist
-
-- [ ] Config validates against schema
-- [ ] All required skills are accessible
-- [ ] Agent respects timeout limits
-- [ ] Error handling works (network failures, timeouts)
-- [ ] Logs include execution trace
-- [ ] Heartbeat checks pass
-
-## Deployment
-
-1. **Build:**
-   ```bash
-   npm run build
-   ```
-
-2. **Test in production setup:**
-   ```bash
-   docker-compose up orchestrator
-   ```
-
-3. **Monitor logs:**
-   ```bash
-   tail -f logs/agents/my-agent.log
-   ```
-
-4. **Verify in orchestrator:**
-   ```bash
-   curl http://localhost:3000/api/agents/my-agent/status
-   ```
+- Local governance primitives in this folder remain mandatory.
+- Canonical policy authority is `../../docs/GOVERNANCE_REPO_HYGIENE.md`.
+- A new agent should not be treated as active until its `agent.config.json`,
+  task wiring, and README all agree on scope and boundaries.

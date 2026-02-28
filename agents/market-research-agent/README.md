@@ -1,9 +1,14 @@
 # Market & Web Research Agent
 
+Status: Active task runbook
+Primary orchestrator task: `market-research`
+Canonical contract: `agent.config.json` and `src/index.ts`
+
 ## Mission
 Collect and summarize market signals from approved online sources.
 
-## I/O Contract
+## Contract
+
 ### Inputs
 - `market-research` tasks.
 - Allowlisted target URLs and prompts.
@@ -11,18 +16,17 @@ Collect and summarize market signals from approved online sources.
 ### Outputs
 - Research summaries and extracted evidence in `artifacts/research`.
 
-### File Path I/O
+### File Path Scope
 - Reads: `workspace/research`
 - Writes: `artifacts/research`
 
-## How It Runs
-```bash
-cd agents/market-research-agent
-npm install
-npm start
-```
+## Runtime
 
-## Governance Links
+- Local entrypoint: `npm start`
+- Alternate development loop: `npm run dev`
+- Current test surface: `npm test` (placeholder until richer tests are added)
+
+## Governance
 - `ROLE.md`
 - `SCOPE.md`
 - `POLICY.md`

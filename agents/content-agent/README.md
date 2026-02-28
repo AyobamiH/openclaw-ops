@@ -1,9 +1,14 @@
 # Content Generation Agent
 
+Status: Active task runbook
+Primary orchestrator task: `content-generate`
+Canonical contract: `agent.config.json` and `src/index.ts`
+
 ## Mission
 Generate concise, accurate documentation and content from local repository evidence.
 
-## I/O Contract
+## Contract
+
 ### Inputs
 - `content-generate` tasks.
 - Source content from local docs/code.
@@ -11,17 +16,16 @@ Generate concise, accurate documentation and content from local repository evide
 ### Outputs
 - Documentation drafts, API docs, or content briefs per task.
 
-### File Path I/O
+### File Path Scope
 - No explicit read/write path list in config; task outputs must remain scoped and reviewable.
 
-## How It Runs
-```bash
-cd agents/content-agent
-npm install
-npm run test:local
-```
+## Runtime
 
-## Governance Links
+- Local entrypoint: `npm run dev`
+- Validation: `npm run test:local`
+- Focused checks: `npm run test:readme`, `npm run test:api-docs`
+
+## Governance
 - `ROLE.md`
 - `SCOPE.md`
 - `POLICY.md`
