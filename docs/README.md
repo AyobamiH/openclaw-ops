@@ -11,6 +11,16 @@ workspace runtime.
 For current runtime truth, treat code and config as canonical first, then use
 the navigation files in this directory.
 
+Documentation growth rule:
+
+- update the existing canonical file for a topic before creating a new Markdown
+  file
+- avoid adding new root-level docs when the topic belongs under `docs/` or a
+  subproject README
+- every material code or config change must be reflected in the relevant
+  existing `.md` file in the same change set, with code/config path references
+  where they help prevent drift
+
 ## Start Here
 
 - [INDEX.md](./INDEX.md): authoritative map of active docs

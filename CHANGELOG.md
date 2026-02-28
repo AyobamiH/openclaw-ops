@@ -33,10 +33,9 @@ For detailed code diffs, see `git log` and `git show <commit>`.
   - Alert cleanup (keeps 48 hours history)
 
 - Documentation (guides & operations manual)
-  - `MONITORING.md` — Real-time monitoring & troubleshooting
+  - `docs/guides/monitoring.md` — Real-time monitoring, alerting, and troubleshooting
   - `QUICKSTART.md` — Deploy in 5 minutes
-  - `ERROR_ALERTS.md` — Alert setup and escalation
-  - `IMPLEMENTATION_COMPLETE.md` — Architecture & full details
+  - `docs/operations/IMPLEMENTATION_COMPLETE.md` — Historical architecture snapshot
 
 - Test files
   - `test-nightly-batch.ts` — Manual test for nightly batch

@@ -1,3470 +1,2500 @@
-./
-  - .git/
-  - .github/
-  - .openclaw/
-  - .pi/
-  - agents/
-  - docs/
-  - logs/
-  - memory/
-  - node_modules/
-  - openai-cookbook/
-  - openclaw-docs/
-  - openclawdbot/
-  - orchestrator/
-  - scripts/
-  - skills/
-  - systemd/
-  - .dockerignore
-  - .gitignore
-  - AGENTS.md
-  - ARCHITECTURE_NONTECHNICAL.md
-  - BOOTSTRAP.md
-  - CHANGELOG.md
-  - DEPLOYMENT.md
-  - DOCUMENTATION_COMPLETE.md
-  - Dockerfile
-  - ENGAGEMENT_OS.md
-  - ERROR_ALERTS.md
-  - HEARTBEAT.md
-  - IDENTITY.md
-  - IMPLEMENTATION_COMPLETE.md
-  - MEMORY.md
-  - MONITORING.md
-  - OPENCLAW-FLOW.png
-  - QUICKSTART.md
-  - README.md
-  - RUNTIME_ENGAGEMENT_OS.md
-  - SOUL.md
-  - TOOLS.md
-  - USER.md
-  - docker-compose.yml
-  - orchestrator_config.json
-  - orchestrator_documentation.md
-  - orchestrator_state.json
-  - orchestrator_status.md
-  - orchestrator_workflow_plan.md
-  - package-lock.json
-  - package.json
-  - redditprofile1.png
-  - reffitprofile.png
-  - rss_filter_config.json
-  - run_drift_validation.sh
-  - sync_openai_cookbook.sh
-  - sync_openclaw_docs.sh
-  - test-nightly-batch.ts
-  - test-send-digest.ts
-  .git/
-    - branches/
-    - hooks/
-    - info/
-    - logs/
-    - objects/
-    - refs/
-    - COMMIT_EDITMSG
-    - HEAD
-    - config
-    - description
-    - index
-    .git/branches/
-    .git/hooks/
-      - applypatch-msg.sample
-      - commit-msg.sample
-      - fsmonitor-watchman.sample
-      - post-update.sample
-      - pre-applypatch.sample
-      - pre-commit.sample
-      - pre-merge-commit.sample
-      - pre-push.sample
-      - pre-rebase.sample
-      - pre-receive.sample
-      - prepare-commit-msg.sample
-      - push-to-checkout.sample
-      - sendemail-validate.sample
-      - update.sample
-    .git/info/
-      - exclude
-    .git/logs/
-      - refs/
-      - HEAD
-      .git/logs/refs/
-    .git/objects/
-      - 00/
-      - 01/
-      - 02/
-      - 03/
-      - 04/
-      - 05/
-      - 06/
-      - 07/
-      - 08/
-      - 09/
-      - 0a/
-      - 0b/
-      - 0c/
-      - 0d/
-      - 0e/
-      - 0f/
-      - 10/
-      - 11/
-      - 12/
-      - 13/
-      - 14/
-      - 15/
-      - 16/
-      - 17/
-      - 18/
-      - 19/
-      - 1a/
-      - 1b/
-      - 1c/
-      - 1d/
-      - 1e/
-      - 1f/
-      - 20/
-      - 21/
-      - 22/
-      - 23/
-      - 24/
-      - 25/
-      - 26/
-      - 27/
-      - 28/
-      - 29/
-      - 2a/
-      - 2b/
-      - 2c/
-      - 2d/
-      - 2e/
-      - 2f/
-      - 30/
-      - 31/
-      - 32/
-      - 33/
-      - 34/
-      - 35/
-      - 36/
-      - 37/
-      - 38/
-      - 39/
-      - 3a/
-      - 3b/
-      - 3c/
-      - 3d/
-      - 3e/
-      - 3f/
-      - 40/
-      - 41/
-      - 42/
-      - 43/
-      - 44/
-      - 45/
-      - 46/
-      - 47/
-      - 48/
-      - 49/
-      - 4a/
-      - 4b/
-      - 4c/
-      - 4d/
-      - 4e/
-      - 4f/
-      - 50/
-      - 51/
-      - 52/
-      - 53/
-      - 54/
-      - 55/
-      - 56/
-      - 57/
-      - 58/
-      - 59/
-      - 5a/
-      - 5b/
-      - 5c/
-      - 5d/
-      - 5e/
-      - 5f/
-      - 60/
-      - 61/
-      - 62/
-      - 63/
-      - 64/
-      - 65/
-      - 66/
-      - 67/
-      - 68/
-      - 69/
-      - 6a/
-      - 6b/
-      - 6c/
-      - 6d/
-      - 6e/
-      - 6f/
-      - 70/
-      - 71/
-      - 72/
-      - 73/
-      - 74/
-      - 75/
-      - 76/
-      - 77/
-      - 78/
-      - 79/
-      - 7a/
-      - 7b/
-      - 7c/
-      - 7d/
-      - 7e/
-      - 7f/
-      - 80/
-      - 81/
-      - 82/
-      - 83/
-      - 84/
-      - 85/
-      - 86/
-      - 87/
-      - 88/
-      - 89/
-      - 8a/
-      - 8b/
-      - 8c/
-      - 8d/
-      - 8e/
-      - 8f/
-      - 90/
-      - 91/
-      - 92/
-      - 93/
-      - 94/
-      - 95/
-      - 96/
-      - 97/
-      - 98/
-      - 99/
-      - 9a/
-      - 9b/
-      - 9c/
-      - 9d/
-      - 9e/
-      - 9f/
-      - a0/
-      - a1/
-      - a2/
-      - a3/
-      - a4/
-      - a5/
-      - a6/
-      - a7/
-      - a8/
-      - a9/
-      - aa/
-      - ab/
-      - ac/
-      - ad/
-      - ae/
-      - af/
-      - b0/
-      - b1/
-      - b2/
-      - b3/
-      - b4/
-      - b5/
-      - b6/
-      - b7/
-      - b8/
-      - b9/
-      - ba/
-      - bb/
-      - bc/
-      - bd/
-      - be/
-      - bf/
-      - c0/
-      - c1/
-      - c2/
-      - c3/
-      - c4/
-      - c5/
-      - c6/
-      - c7/
-      - c8/
-      - c9/
-      - ca/
-      - cb/
-      - cc/
-      - cd/
-      - ce/
-      - cf/
-      - d0/
-      - d1/
-      - d2/
-      - d3/
-      - d4/
-      - d5/
-      - d6/
-      - d7/
-      - d8/
-      - d9/
-      - da/
-      - db/
-      - dc/
-      - dd/
-      - de/
-      - df/
-      - e0/
-      - e1/
-      - e2/
-      - e3/
-      - e4/
-      - e5/
-      - e6/
-      - e7/
-      - e8/
-      - e9/
-      - ea/
-      - eb/
-      - ec/
-      - ed/
-      - ee/
-      - ef/
-      - f0/
-      - f1/
-      - f2/
-      - f3/
-      - f4/
-      - f5/
-      - f6/
-      - f7/
-      - f8/
-      - f9/
-      - fa/
-      - fb/
-      - fc/
-      - fd/
-      - fe/
-      - ff/
-      - info/
-      - pack/
-      .git/objects/00/
-      .git/objects/01/
-      .git/objects/02/
-      .git/objects/03/
-      .git/objects/04/
-      .git/objects/05/
-      .git/objects/06/
-      .git/objects/07/
-      .git/objects/08/
-      .git/objects/09/
-      .git/objects/0a/
-      .git/objects/0b/
-      .git/objects/0c/
-      .git/objects/0d/
-      .git/objects/0e/
-      .git/objects/0f/
-      .git/objects/10/
-      .git/objects/11/
-      .git/objects/12/
-      .git/objects/13/
-      .git/objects/14/
-      .git/objects/15/
-      .git/objects/16/
-      .git/objects/17/
-      .git/objects/18/
-      .git/objects/19/
-      .git/objects/1a/
-      .git/objects/1b/
-      .git/objects/1c/
-      .git/objects/1d/
-      .git/objects/1e/
-      .git/objects/1f/
-      .git/objects/20/
-      .git/objects/21/
-      .git/objects/22/
-      .git/objects/23/
-      .git/objects/24/
-      .git/objects/25/
-      .git/objects/26/
-      .git/objects/27/
-      .git/objects/28/
-      .git/objects/29/
-      .git/objects/2a/
-      .git/objects/2b/
-      .git/objects/2c/
-      .git/objects/2d/
-      .git/objects/2e/
-      .git/objects/2f/
-      .git/objects/30/
-      .git/objects/31/
-      .git/objects/32/
-      .git/objects/33/
-      .git/objects/34/
-      .git/objects/35/
-      .git/objects/36/
-      .git/objects/37/
-      .git/objects/38/
-      .git/objects/39/
-      .git/objects/3a/
-      .git/objects/3b/
-      .git/objects/3c/
-      .git/objects/3d/
-      .git/objects/3e/
-      .git/objects/3f/
-      .git/objects/40/
-      .git/objects/41/
-      .git/objects/42/
-      .git/objects/43/
-      .git/objects/44/
-      .git/objects/45/
-      .git/objects/46/
-      .git/objects/47/
-      .git/objects/48/
-      .git/objects/49/
-      .git/objects/4a/
-      .git/objects/4b/
-      .git/objects/4c/
-      .git/objects/4d/
-      .git/objects/4e/
-      .git/objects/4f/
-      .git/objects/50/
-      .git/objects/51/
-      .git/objects/52/
-      .git/objects/53/
-      .git/objects/54/
-      .git/objects/55/
-      .git/objects/56/
-      .git/objects/57/
-      .git/objects/58/
-      .git/objects/59/
-      .git/objects/5a/
-      .git/objects/5b/
-      .git/objects/5c/
-      .git/objects/5d/
-      .git/objects/5e/
-      .git/objects/5f/
-      .git/objects/60/
-      .git/objects/61/
-      .git/objects/62/
-      .git/objects/63/
-      .git/objects/64/
-      .git/objects/65/
-      .git/objects/66/
-      .git/objects/67/
-      .git/objects/68/
-      .git/objects/69/
-      .git/objects/6a/
-      .git/objects/6b/
-      .git/objects/6c/
-      .git/objects/6d/
-      .git/objects/6e/
-      .git/objects/6f/
-      .git/objects/70/
-      .git/objects/71/
-      .git/objects/72/
-      .git/objects/73/
-      .git/objects/74/
-      .git/objects/75/
-      .git/objects/76/
-      .git/objects/77/
-      .git/objects/78/
-      .git/objects/79/
-      .git/objects/7a/
-      .git/objects/7b/
-      .git/objects/7c/
-      .git/objects/7d/
-      .git/objects/7e/
-      .git/objects/7f/
-      .git/objects/80/
-      .git/objects/81/
-      .git/objects/82/
-      .git/objects/83/
-      .git/objects/84/
-      .git/objects/85/
-      .git/objects/86/
-      .git/objects/87/
-      .git/objects/88/
-      .git/objects/89/
-      .git/objects/8a/
-      .git/objects/8b/
-      .git/objects/8c/
-      .git/objects/8d/
-      .git/objects/8e/
-      .git/objects/8f/
-      .git/objects/90/
-      .git/objects/91/
-      .git/objects/92/
-      .git/objects/93/
-      .git/objects/94/
-      .git/objects/95/
-      .git/objects/96/
-      .git/objects/97/
-      .git/objects/98/
-      .git/objects/99/
-      .git/objects/9a/
-      .git/objects/9b/
-      .git/objects/9c/
-      .git/objects/9d/
-      .git/objects/9e/
-      .git/objects/9f/
-      .git/objects/a0/
-      .git/objects/a1/
-      .git/objects/a2/
-      .git/objects/a3/
-      .git/objects/a4/
-      .git/objects/a5/
-      .git/objects/a6/
-      .git/objects/a7/
-      .git/objects/a8/
-      .git/objects/a9/
-      .git/objects/aa/
-      .git/objects/ab/
-      .git/objects/ac/
-      .git/objects/ad/
-      .git/objects/ae/
-      .git/objects/af/
-      .git/objects/b0/
-      .git/objects/b1/
-      .git/objects/b2/
-      .git/objects/b3/
-      .git/objects/b4/
-      .git/objects/b5/
-      .git/objects/b6/
-      .git/objects/b7/
-      .git/objects/b8/
-      .git/objects/b9/
-      .git/objects/ba/
-      .git/objects/bb/
-      .git/objects/bc/
-      .git/objects/bd/
-      .git/objects/be/
-      .git/objects/bf/
-      .git/objects/c0/
-      .git/objects/c1/
-      .git/objects/c2/
-      .git/objects/c3/
-      .git/objects/c4/
-      .git/objects/c5/
-      .git/objects/c6/
-      .git/objects/c7/
-      .git/objects/c8/
-      .git/objects/c9/
-      .git/objects/ca/
-      .git/objects/cb/
-      .git/objects/cc/
-      .git/objects/cd/
-      .git/objects/ce/
-      .git/objects/cf/
-      .git/objects/d0/
-      .git/objects/d1/
-      .git/objects/d2/
-      .git/objects/d3/
-      .git/objects/d4/
-      .git/objects/d5/
-      .git/objects/d6/
-      .git/objects/d7/
-      .git/objects/d8/
-      .git/objects/d9/
-      .git/objects/da/
-      .git/objects/db/
-      .git/objects/dc/
-      .git/objects/dd/
-      .git/objects/de/
-      .git/objects/df/
-      .git/objects/e0/
-      .git/objects/e1/
-      .git/objects/e2/
-      .git/objects/e3/
-      .git/objects/e4/
-      .git/objects/e5/
-      .git/objects/e6/
-      .git/objects/e7/
-      .git/objects/e8/
-      .git/objects/e9/
-      .git/objects/ea/
-      .git/objects/eb/
-      .git/objects/ec/
-      .git/objects/ed/
-      .git/objects/ee/
-      .git/objects/ef/
-      .git/objects/f0/
-      .git/objects/f1/
-      .git/objects/f2/
-      .git/objects/f3/
-      .git/objects/f4/
-      .git/objects/f5/
-      .git/objects/f6/
-      .git/objects/f7/
-      .git/objects/f8/
-      .git/objects/f9/
-      .git/objects/fa/
-      .git/objects/fb/
-      .git/objects/fc/
-      .git/objects/fd/
-      .git/objects/fe/
-      .git/objects/ff/
-      .git/objects/info/
-      .git/objects/pack/
-    .git/refs/
-      - heads/
-      - tags/
-      .git/refs/heads/
-      .git/refs/tags/
-  .github/
-    - workflows/
-    .github/workflows/
-      - deploy.yml
-      - test.yml
-  .openclaw/
-    - workspace-state.json
-  .pi/
-  agents/
-    - AGENT_TEMPLATE/
-    - build-refactor-agent/
-    - content-agent/
-    - data-extraction-agent/
-    - doc-specialist/
-    - integration-agent/
-    - market-research-agent/
-    - normalization-agent/
-    - qa-verification-agent/
-    - reddit-helper/
-    - security-agent/
-    - shared/
-    - skill-audit-agent/
-    - summarization-agent/
-    - system-monitor-agent/
-    - README.md
-    agents/AGENT_TEMPLATE/
-      - src/
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - README.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - agent.config.json
-      - package.json
-      agents/AGENT_TEMPLATE/src/
-    agents/build-refactor-agent/
-      - src/
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - agent.config.json
-      - package.json
-      agents/build-refactor-agent/src/
-    agents/content-agent/
-      - src/
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - agent.config.json
-      - package.json
-      agents/content-agent/src/
-    agents/data-extraction-agent/
-      - src/
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - agent.config.json
-      - package.json
-      agents/data-extraction-agent/src/
-    agents/doc-specialist/
-      - src/
-      - .env
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - README.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - agent.config.json
-      agents/doc-specialist/src/
-    agents/integration-agent/
-      - src/
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - agent.config.json
-      - package.json
-      agents/integration-agent/src/
-    agents/market-research-agent/
-      - src/
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - agent.config.json
-      - package.json
-      agents/market-research-agent/src/
-    agents/normalization-agent/
-      - src/
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - agent.config.json
-      - package.json
-      agents/normalization-agent/src/
-    agents/qa-verification-agent/
-      - src/
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - agent.config.json
-      - package.json
-      agents/qa-verification-agent/src/
-    agents/reddit-helper/
-      - src/
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - README.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - agent.config.json
-      - test-real-cookbook.ts
-      agents/reddit-helper/src/
-    agents/security-agent/
-      - src/
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - agent.config.json
-      - package.json
-      agents/security-agent/src/
-    agents/shared/
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - telemetry.ts
-    agents/skill-audit-agent/
-      - src/
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - agent.config.json
-      - package.json
-      agents/skill-audit-agent/src/
-    agents/summarization-agent/
-      - src/
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - agent.config.json
-      - package.json
-      agents/summarization-agent/src/
-    agents/system-monitor-agent/
-      - src/
-      - HEARTBEAT.md
-      - IDENTITY.md
-      - SOUL.md
-      - TOOLS.md
-      - USER.md
-      - agent.config.json
-      - package.json
-      agents/system-monitor-agent/src/
-  docs/
-    - concepts/
-    - guides/
-    - operations/
-    - recon/
-    - reference/
-    - start/
-    - troubleshooting/
-    - INDEX.md
-    - MEMORY_SYSTEM_GUIDE.md
-    - NAVIGATION.md
-    - OPTION_A_IMPLEMENTATION_ROADMAP.md
-    - README.md
-    - SUMMARY.md
-    - SYSTEM_ARCHITECTURE.mmd
-    - SYSTEM_DIAGRAM_PROMPT.md
-    docs/concepts/
-      - architecture.md
-    docs/guides/
-      - adding-tasks.md
-      - configuration.md
-      - monitoring.md
-      - running-agents.md
-    docs/operations/
-      - backup-recovery.md
-      - deployment.md
-    docs/recon/
-      - components/
-      - 00_EXEC_SUMMARY.md
-      - 01_REPO_INDEX.md
-      - 02_ARCHITECTURE_MAP.md
-      - 03_RUNTIME_AND_DEPLOYMENT.md
-      - 04_COMPONENT_CATALOG.md
-      - 05_DATA_FLOWS.md
-      - 06_SECURITY_AND_THREAT_MODEL.md
-      - 07_OBSERVABILITY.md
-      - 08_RELEASE_READINESS.md
-      - 09_OPEN_QUESTIONS.md
-      docs/recon/components/
-    docs/reference/
-      - api.md
-      - state-schema.md
-      - task-types.md
-    docs/start/
-      - architecture-overview.md
-      - getting-started.md
-      - quickstart.md
-    docs/troubleshooting/
-      - common-issues.md
-      - debugging.md
-  logs/
-    - archive/
-    - digests/
-    - knowledge-packs/
-    - devvit-submissions.jsonl
-    - doc-specialist-service.json
-    - draft-approvals.json
-    - draft-digest-state.json
-    - manual-post-queue.jsonl
-    - reddit-drafts.jsonl
-    - reddit-helper-service.json
-    - sync_openclaw_docs.log
-    logs/archive/
-      - devvit-submissions.1771598480.jsonl
-      - reddit-drafts.1771598480.jsonl
-    logs/digests/
-      - digest-2026-02-21.json
-    logs/knowledge-packs/
-      - knowledge-pack-1771590702482.json
-      - knowledge-pack-1771711710790.json
-      - knowledge-pack-1771713121652.json
-      - knowledge-pack-1771713278550.json
-      - knowledge-pack-1771714226637.json
-      - knowledge-pack-1771868930635.json
-      - knowledge-pack-1771868950267.json
-      - knowledge-pack-1771868962083.json
-  memory/
-    - 2026-02-19.md
-    - 2026-02-21-0601.md
-    - 2026-02-21.md
-    - 2026-02-22.md
-  node_modules/
-    - .bin/
-    - @esbuild/
-    - esbuild/
-    - get-tsconfig/
-    - resolve-pkg-maps/
-    - tsx/
-    - .package-lock.json
-    node_modules/.bin/
-      - esbuild
-      - tsx
-    node_modules/@esbuild/
-      - linux-x64/
-      node_modules/@esbuild/linux-x64/
-    node_modules/esbuild/
-      - bin/
-      - lib/
-      - LICENSE.md
-      - README.md
-      - install.js
-      - package.json
-      node_modules/esbuild/bin/
-      node_modules/esbuild/lib/
-    node_modules/get-tsconfig/
-      - dist/
-      - LICENSE
-      - README.md
-      - package.json
-      node_modules/get-tsconfig/dist/
-    node_modules/resolve-pkg-maps/
-      - dist/
-      - LICENSE
-      - README.md
-      - package.json
-      node_modules/resolve-pkg-maps/dist/
-    node_modules/tsx/
-      - dist/
-      - LICENSE
-      - README.md
-      - package.json
-      node_modules/tsx/dist/
-  openai-cookbook/
-    - .git/
-    - .github/
-    - articles/
-    - examples/
-    - images/
-    - .gitignore
-    - AGENTS.md
-    - CONTRIBUTING.md
-    - LICENSE
-    - README.md
-    - authors.yaml
-    - registry.yaml
-    openai-cookbook/.git/
-      - branches/
-      - hooks/
-      - info/
-      - logs/
-      - objects/
-      - refs/
-      - HEAD
-      - config
-      - description
-      - index
-      - packed-refs
-      - shallow
-      openai-cookbook/.git/branches/
-      openai-cookbook/.git/hooks/
-      openai-cookbook/.git/info/
-      openai-cookbook/.git/logs/
-      openai-cookbook/.git/objects/
-      openai-cookbook/.git/refs/
-    openai-cookbook/.github/
-      - ISSUE_TEMPLATE/
-      - scripts/
-      - workflows/
-      - authors_schema.json
-      - pull_request_template.md
-      - registry_schema.json
-      openai-cookbook/.github/ISSUE_TEMPLATE/
-      openai-cookbook/.github/scripts/
-      openai-cookbook/.github/workflows/
-    openai-cookbook/articles/
-      - gpt-oss/
-      - codex_exec_plans.md
-      - gpt-oss-safeguard-guide.md
-      - how_to_work_with_large_language_models.md
-      - openai-harmony.md
-      - related_resources.md
-      - techniques_to_improve_reliability.md
-      - text_comparison_examples.md
-      - what_is_new_with_dalle_3.mdx
-      - what_makes_documentation_good.md
-      openai-cookbook/articles/gpt-oss/
-    openai-cookbook/examples/
-      - agentkit/
-      - agents_sdk/
-      - azure/
-      - book_translation/
-      - building_w_rt_mini/
-      - chatgpt/
-      - codex/
-      - dalle/
-      - data/
-      - deep_research_api/
-      - evals/
-      - evaluation/
-      - fine-tuned_qa/
-      - gpt-5/
-      - gpt4o/
-      - imgs/
-      - mcp/
-      - mermaid/
-      - multimodal/
-      - o-series/
-      - o1/
-      - object_oriented_agentic_approach/
-      - partners/
-      - responses_api/
-      - sora/
-      - stripe_model_eval/
-      - third_party/
-      - utils/
-      - vector_databases/
-      - voice_solutions/
-      - Assistants_API_overview_python.ipynb
-      - Build_a_coding_agent_with_GPT-5.1.ipynb
-      - Chat_finetuning_data_prep.ipynb
-      - Classification_using_embeddings.ipynb
-      - Clustering.ipynb
-      - Clustering_for_transaction_classification.ipynb
-      - Code_search_using_embeddings.ipynb
-      - Context_summarization_with_realtime_api.ipynb
-      - Creating_slides_with_Assistants_API_and_DALL-E3.ipynb
-      - Custom-LLM-as-a-Judge.ipynb
-      - Customizing_embeddings.ipynb
-      - Data-intensive-Realtime-apps.ipynb
-      - Data_extraction_transformation.ipynb
-      - Developing_hallucination_guardrails.ipynb
-      - Embedding_Wikipedia_articles_for_search.ipynb
-      - Embedding_long_inputs.ipynb
-      - Enhance_your_prompts_with_meta_prompting.ipynb
-      - Entity_extraction_for_long_documents.ipynb
-      - File_Search_Responses.ipynb
-      - Fine-tuned_classification.ipynb
-      - Fine_tuning_direct_preference_optimization_guide.ipynb
-      - Fine_tuning_for_function_calling.ipynb
-      - Function_calling_finding_nearby_places.ipynb
-      - Function_calling_with_an_OpenAPI_spec.ipynb
-      - GPT_with_vision_for_video_understanding.ipynb
-      - Generate_Images_With_GPT_Image.ipynb
-      - Generate_Images_With_High_Input_Fidelity.ipynb
-      - Get_embeddings_from_dataset.ipynb
-      - How_to_build_a_tool-using_agent_with_Langchain.ipynb
-      - How_to_build_an_agent_with_the_node_sdk.mdx
-      - How_to_call_functions_for_knowledge_retrieval.ipynb
-      - How_to_call_functions_with_chat_models.ipynb
-      - How_to_combine_GPT4o_with_RAG_Outfit_Assistant.ipynb
-      - How_to_count_tokens_with_tiktoken.ipynb
-      - How_to_finetune_chat_models.ipynb
-      - How_to_format_inputs_to_ChatGPT_models.ipynb
-      - How_to_handle_rate_limits.ipynb
-      - How_to_stream_completions.ipynb
-      - How_to_use_guardrails.ipynb
-      - How_to_use_moderation.ipynb
-      - Leveraging_model_distillation_to_fine-tune_a_model.ipynb
-      - Multiclass_classification_for_transactions.ipynb
-      - Named_Entity_Recognition_to_enrich_text.ipynb
-      - Optimize_Prompts.ipynb
-      - Orchestrating_agents.ipynb
-      - Parse_PDF_docs_for_RAG.ipynb
-      - Prompt_Caching101.ipynb
-      - Prompt_Caching_201.ipynb
-      - Prompt_migration_guide.ipynb
-      - Question_answering_using_a_search_API.ipynb
-      - Question_answering_using_embeddings.ipynb
-      - RAG_with_graph_db.ipynb
-      - Realtime_eval_guide.ipynb
-      - Realtime_out_of_band_transcription.ipynb
-      - Realtime_prompting_guide.ipynb
-      - Recommendation_using_embeddings.ipynb
-      - Regression_using_embeddings.ipynb
-      - Reinforcement_Fine_Tuning.ipynb
-      - Reproducible_outputs_with_the_seed_parameter.ipynb
-      - SDG1.ipynb
-      - Search_reranking_with_cross-encoders.ipynb
-      - Semantic_text_search_using_embeddings.ipynb
-      - Speech_transcription_methods.ipynb
-      - Structured_Outputs_Intro.ipynb
-      - Structured_outputs_multi_agent.ipynb
-      - Summarizing_long_documents.ipynb
-      - Tag_caption_images_with_GPT4V.ipynb
-      - Unit_test_writing_using_a_multi-step_prompt.ipynb
-      - Unit_test_writing_using_a_multi-step_prompt_with_older_completions_API.ipynb
-      - User_and_product_embeddings.ipynb
-      - Using_embeddings.ipynb
-      - Using_logprobs.ipynb
-      - Using_tool_required_for_customer_service.ipynb
-      - Visualizing_embeddings_in_2D.ipynb
-      - Visualizing_embeddings_in_3D.ipynb
-      - Whisper_correct_misspelling.ipynb
-      - Whisper_processing_guide.ipynb
-      - Whisper_prompting_guide.ipynb
-      - Zero-shot_classification_with_embeddings.ipynb
-      - api_request_parallel_processor.py
-      - batch_processing.ipynb
-      - completions_usage_api.ipynb
-      - custom_image_embedding_search.ipynb
-      - gpt4-1_prompting_guide.ipynb
-      - reasoning_function_calls.ipynb
-      - skills_in_api.ipynb
-      openai-cookbook/examples/agentkit/
-      openai-cookbook/examples/agents_sdk/
-      openai-cookbook/examples/azure/
-      openai-cookbook/examples/book_translation/
-      openai-cookbook/examples/building_w_rt_mini/
-      openai-cookbook/examples/chatgpt/
-      openai-cookbook/examples/codex/
-      openai-cookbook/examples/dalle/
-      openai-cookbook/examples/data/
-      openai-cookbook/examples/deep_research_api/
-      openai-cookbook/examples/evals/
-      openai-cookbook/examples/evaluation/
-      openai-cookbook/examples/fine-tuned_qa/
-      openai-cookbook/examples/gpt-5/
-      openai-cookbook/examples/gpt4o/
-      openai-cookbook/examples/imgs/
-      openai-cookbook/examples/mcp/
-      openai-cookbook/examples/mermaid/
-      openai-cookbook/examples/multimodal/
-      openai-cookbook/examples/o-series/
-      openai-cookbook/examples/o1/
-      openai-cookbook/examples/object_oriented_agentic_approach/
-      openai-cookbook/examples/partners/
-      openai-cookbook/examples/responses_api/
-      openai-cookbook/examples/sora/
-      openai-cookbook/examples/stripe_model_eval/
-      openai-cookbook/examples/third_party/
-      openai-cookbook/examples/utils/
-      openai-cookbook/examples/vector_databases/
-      openai-cookbook/examples/voice_solutions/
-    openai-cookbook/images/
-      - input_images/
-      - output_images/
-      - prompt-caching-201/
-      - 01_alti_agent_governance.png
-      - 01_benefit_of_temporal_kb.jpg
-      - 02_alti_stack.png
-      - 02_question_types_for_temporal_kbs.jpg
-      - 03_alti_promptfoo_dash.png
-      - 03_statement_invalidation.png
-      - 04_temporal_agent.png
-      - 05_temporal_agent_arch.png
-      - 06_temporal_agent_chunker.png
-      - 07_temporal_agent_class.png
-      - 08_invalidation_agent.png
-      - 09_full_pipeline.png
-      - 10_multi_step_retrieval.png
-      - 11_retrieval_agent.png
-      - 12_spectrum_of_tools.png
-      - 2.2_model_evolution.png
-      - 3A_rag_hierarchical_router.png
-      - 3A_rag_task_card.png
-      - 3B_coscientist_architecture.png
-      - 3B_reasoning_task_card.png
-      - 3C_insurance_architecture.png
-      - 3C_insurance_form.png
-      - 3C_insurance_task_card.png
-      - 3D_model_selection_flowchart.png
-      - Custom-LLM-as-a-Judge-Output.png
-      - Custom-LLM-as-a-Judge-Partial-Credit.gif
-      - Custom-LLM-as-a-Judge-Reasoning.png
-      - ELT_table.png
-      - NotRealCorp_chart.png
-      - Supplies_20240322_220858_Raven_Scan_3_jpeg.rf.50852940734939c8838819d7795e1756.jpg
-      - System_flow_partner_mcp.png
-      - Traces-1_partner.png
-      - Traces-2_partner.png
-      - add_label.png
-      - agent_dr.png
-      - agent_log_traces.png
-      - agent_trace_details.png
-      - agents_sdk_transcription.png
-      - app_assistant_voice_agents.png
-      - app_assistant_voice_agents_arch.png
-      - app_assistant_voice_agents_arch_2.png
-      - app_assistant_voice_agents_trace.png
-      - assistants_overview_assistants_dashboard.png
-      - assistants_overview_assistants_playground.png
-      - assistants_overview_diagram.png
-      - assistants_overview_enable_code_interpreter.png
-      - assistants_overview_enable_function.png
-      - assistants_overview_enable_retrieval.png
-      - assistants_overview_new_assistant.png
-      - aws_lambda_1.png
-      - aws_lambda_10.png
-      - aws_lambda_11.png
-      - aws_lambda_12.png
-      - aws_lambda_13.png
-      - aws_lambda_14.png
-      - aws_lambda_15.png
-      - aws_lambda_16.png
-      - aws_lambda_17.png
-      - aws_lambda_18.png
-      - aws_lambda_19.png
-      - aws_lambda_20.png
-      - aws_lambda_3.png
-      - aws_lambda_4.png
-      - aws_lambda_8.png
-      - aws_lambda_9.png
-      - axial-coding.png
-      - azure-rag-architecture.png
-      - azure-rag-quickstart-gpt.png
-      - base_woman.png
-      - baseline_agent.png
-      - bigquery_rag_architecture.png
-      - billboard.png
-      - billboard_winter.png
-      - boots copy.png
-      - boots.png
-      - byo_realtime_diagram.png
-      - byo_realtime_starting.png
-      - canvas_lms_list_of_tokens.png
-      - canvas_lms_new_token.png
-      - canvas_lms_sample_conversation.png
-      - canvas_lms_settings_link.png
-      - carbon_cycle_technical_diagram.png
-      - chain_of_thought_fig1.png
-      - chain_of_thought_fig11.png
-      - chain_of_thought_fig3.png
-      - chain_of_thought_fig5.png
-      - chatgpt-auth-config.png
-      - childrens_book_illustration_1.png
-      - childrens_book_illustration_2.png
-      - christmas_collectible_toy_airplane.png
-      - christmas_holiday_card_teddy.png
-      - ci-codex-workflow.png
-      - code-modernization-phases.png
-      - codex-pr.png
-      - codex-workflow.png
-      - codex_action copy.png
-      - codex_action.png
-      - codex_code_review.png
-      - comic-reel.png
-      - comparisons.png
-      - confluence_gpt.png
-      - create_function_app.png
-      - creating-availability-grader.png
-      - creating-feedback-column.png
-      - creating-formatting-grader.png
-      - creating_notion_integration.png
-      - custom-report-workday-01.png
-      - custom-report-workday-02.png
-      - dalle_image.png
-      - data_vis_slide.png
-      - databricks_mcp_architecture.png
-      - databricks_mcp_ui.png
-      - dataset.png
-      - distilling.png
-      - drawings copy.png
-      - drawings.png
-      - edit_logo_year_edit_gpt-image-1.5-logo_1769659071403_0.png
-      - edit_vto_jacket_tryon_gpt-image-1.5-vto_1769658750053_0.png
-      - elbow_chart.png
-      - elt_workflow.png
-      - escalate_06.png
-      - escalate_07.png
-      - eval_dashboard.png
-      - eval_qa_code.png
-      - eval_qa_data_1.png
-      - eval_qa_data_2.png
-      - eval_run_results.png
-      - eval_set_config.png
-      - eval_tools_fail.png
-      - evals_sentiment.png
-      - evals_tool_dashboard.png
-      - evals_websearch_dashboard.png
-      - evaluation-flywheel.png
-      - extract_product.png
-      - failing-workflow.png
-      - faithful-reasoning_fig1.png
-      - faithful-reasoning_fig2.png
-      - faithful-reasoning_fig3.png
-      - faithful-reasoning_fig4.png
-      - faithful-reasoning_fig5.png
-      - faithful-reasoning_fig7.png
-      - faithful-reasoning_tab2.png
-      - faithful-reasoning_tab5.png
-      - feedback.png
-      - filtering-out-completions.png
-      - final_result.png
-      - fine-tuning-job.png
-      - first_feedback.png
-      - first_interaction.png
-      - game_example_1.png
-      - game_example_2.png
-      - gcp-function-middleware-oauthcallback.png
-      - gcp-function-middleware-oauthclient.png
-      - gcp_rag_quickstart_gpt.png
-      - gen_coffee_flyer_generation_gpt-image-1.5_1769657762450_0.png
-      - gen_ui_checkout_mockup_gpt-image-1.5-ui_1769656414221_0.png
-      - get_function_url.png
-      - github-pr-settings copy.png
-      - github-pr-settings.png
-      - gitlab-mr-widget.png
-      - gitlab-pipelines-success.png
-      - google-calendar-action-config.png
-      - google-calendar-action-endpoints.png
-      - google-calendar-callback-settings.png
-      - google-calendar-callback.png
-      - google-calendar-results.png
-      - google-signin.png
-      - gpt-rag-result.png
-      - gpt_actions_box_azuredataflow.png
-      - gpt_actions_box_boxconfig1.png
-      - gpt_actions_box_gptauth.png
-      - gpt_actions_salesforce_credentials.png
-      - gpt_actions_salesforce_manager.png
-      - gpt_actions_salesforce_oauth2.png
-      - gpt_actions_salesforce_scope.png
-      - gpt_actions_salesforce_settings_condensed.png
-      - gpt_actions_salesforce_setup.png
-      - gpt_actions_salesforce_token.png
-      - gptactions_BigQuery_auth.png
-      - gptactions_Gmail_apikey.png
-      - gptactions_Gmail_clientidsecret.png
-      - gptactions_Gmail_enableAPIs.png
-      - gptactions_Gmail_gmailApiTile.png
-      - gptactions_adzviser_oauth.png
-      - gptactions_canvaslms_approvedintegrations.png
-      - gptactions_canvaslms_auth.png
-      - gptactions_canvaslms_integrationslist.png
-      - gptactions_canvaslms_settings.png
-      - gptactions_canvaslms_tokencreate.png
-      - gptactions_gd_api_services_pin.png
-      - gptactions_gd_authorized_redirect_uris.png
-      - gptactions_gd_callbackurl_from_gpt_action.png
-      - gptactions_gd_go_to_create_credentials.png
-      - gptactions_gd_nav_to_enabled_api.png
-      - gptactions_gd_oauth_consent_screen.png
-      - gptactions_gd_oauthcid_and_csecret.png
-      - gptactions_gd_search_google_drive_api.png
-      - gptactions_googleads_search_term_analysis_1.png
-      - gptactions_googleads_search_term_analysis_2.png
-      - gptactions_jira_callback.png
-      - gptactions_jira_clientsecret.png
-      - gptactions_jira_devconsole.png
-      - gptactions_jira_newapplication.png
-      - gptactions_jira_permissions.png
-      - gptactions_jira_placeholder.png
-      - gptactions_jira_redirect.png
-      - gptactions_jira_scopes.png
-      - gptactions_outlook_callback.png
-      - gptactions_outlook_permissionadd.png
-      - gptactions_outlook_permissions.png
-      - gptactions_outlook_redirectconfig.png
-      - gptactions_outlook_redirectinput.png
-      - gptactions_outlook_registerapplication.png
-      - gptactions_outlook_secrets.png
-      - gptactions_outlook_secretvalue.png
-      - gptactions_sql_database_middleware.png
-      - gptactions_trayai_createclientcredential.gif
-      - gptactions_trayai_createoperation.gif
-      - ground-truth-columns.png
-      - image_optimize_1.png
-      - image_optimize_2.png
-      - image_optimize_3.png
-      - image_optimize_4.png
-      - image_optimize_5.png
-      - infographic_coffee_machine copy.png
-      - infographic_coffee_machine.png
-      - infographic_coffee_machine_it.png
-      - infographic_coffee_machine_sp.png
-      - input_image.png
-      - intro_dr.png
-      - jacket.png
-      - jira_comment.png
-      - jira_rule.png
-      - jira_status_change.png
-      - kitchen-chairs.png
-      - kitchen.jpeg
-      - landing_page.png
-      - lang_constraint_en.png
-      - lang_constraint_multi.png
-      - least-to-most_fig1.png
-      - least-to-most_tab11.png
-      - least-to-most_tab4.png
-      - least-to-most_tab9.png
-      - llamaindex_rag_overview.png
-      - lm_cascades_fig1.png
-      - lm_cascades_fig3.png
-      - lm_cascades_fig4.png
-      - lm_cascades_fig5.png
-      - lm_cascades_fig6.png
-      - login_page.png
-      - logo_generation_1.png
-      - logo_generation_2.png
-      - logo_generation_3.png
-      - logo_generation_4.png
-      - logo_sample.png
-      - maieutic_fig2.png
-      - maieutic_fig6.png
-      - maieutic_tab1.png
-      - man_with_blue_hat.png
-      - man_with_flower.png
-      - man_with_flower_no_stripes.png
-      - mcp_dr.png
-      - mcp_eval_data.png
-      - mcp_eval_improved_data.png
-      - mcp_eval_improved_output.png
-      - mcp_eval_output.png
-      - memory_comparison.jpg
-      - mockup_sample.png
-      - motorcycle.png
-      - multi-language.png
-      - multi_agent_codex_workflow.png
-      - multi_agent_collab_GOOGL_analyst_recommendations_trend.png
-      - multi_agent_collab_GOOGL_quarterly_margins.png
-      - multi_agent_collab_GOOGL_quarterly_trends.png
-      - multi_agent_collab_agent_architecture.png
-      - multi_agent_collab_cumulative_return_comparison.png
-      - multi_agent_collab_googl_daily_returns.png
-      - multi_agent_collab_googl_moving_averages.png
-      - multi_agent_collab_googl_rolling_volatility.png
-      - multi_agent_collab_googl_rsi.png
-      - multi_agent_collab_rolling_corr_reg_daily_dgs10.png
-      - multi_agent_collab_rolling_corr_reg_daily_fedfunds.png
-      - multi_agent_collab_rolling_corr_reg_weekly_dgs10.png
-      - multi_agent_collab_rolling_corr_reg_weekly_fedfunds.png
-      - multi_agent_collab_rolling_volatility_comparison.png
-      - multi_agent_trace.png
-      - multi_agent_trace_details.png
-      - oo_aa_image_1_code_interpreter_agents.png
-      - oo_aa_image_2_uml_diagram.png
-      - oob_transcription.png
-      - open-coding.png
-      - openai-cookbook-white.png
-      - openai-cookbook.png
-      - optimizepromptfig1.png
-      - optimizepromptfig2.png
-      - optimizepromptfig3.png
-      - outfit.png
-      - partner_business_logic.png
-      - partner_details_ui.png
-      - partner_development_flywheel.png
-      - partner_eval_variations.png
-      - partner_large_summary_ui.png
-      - partner_mcp_Cookbook.svg
-      - partner_model_improvement_waterfall.png
-      - partner_process_flowchart.png
-      - partner_project_lifecycle.png
-      - partner_summary_ui.png
-      - pharma_network.png
-      - photorealism.png
-      - pilot-candidate.png
-      - pilot-flow-diagram.png
-      - pilot-folder-structure.png
-      - pilot-yaml.png
-      - pinecone-dashboard-2.png
-      - pinecone-dashboard.png
-      - pixels copy.png
-      - pixels.png
-      - pr_quality_and_security_check.png
-      - prompt-optimizer-3-22s.gif
-      - prompt_input.png
-      - prompt_migrator_fig.png
-      - pto-request.png
-      - realistic_valley.png
-      - realtime_api_transcription.png
-      - realtime_eval_page_01_image_01.png
-      - realtime_eval_page_02_image_01.png
-      - realtime_eval_page_03_image_01.png
-      - realtime_eval_page_04_image_01.png
-      - realtime_eval_page_04_image_02.png
-      - realtime_eval_page_05_image_01.png
-      - realtime_eval_page_05_image_02.png
-      - realtime_eval_page_07_image_01.png
-      - realtime_eval_page_07_image_02.png
-      - realtime_eval_page_08_image_01.png
-      - realtime_eval_page_09_image_01.png
-      - realtime_eval_page_10_image_01.png
-      - realtime_eval_page_10_image_02.png
-      - realtime_eval_page_11_image_01.png
-      - realtime_prompting_guide.png
-      - reasoning-turns.png
-      - redshift_gpt.png
-      - repeat_after.png
-      - repeat_before.png
-      - repository_variables.png
-      - responses-diagram.png
-      - responses_cache.png
-      - responses_pinecone_rag.png
-      - retool-new-workflow.png
-      - retool-workflow-1.png
-      - retool-workflow-2.png
-      - retool-workflow-3.png
-      - retool-workflow-4.png
-      - retool-workflow-config.png
-      - retool_api_key.png
-      - retro_dark.png
-      - retro_light.png
-      - rft_dashboard_modelgrader2.png
-      - rft_hacking.png
-      - rft_string_grader.png
-      - sample_flyer.png
-      - sample_hotel_invoice.png
-      - scene.png
-      - search_rerank_answer.png
-      - selection-inference_fig1.png
-      - selection-inference_fig4.png
-      - self-consistency_fig1.png
-      - self-consistency_fig3.png
-      - shampoo.png
-      - sharing_notion_with_GPT.png
-      - simplified_reg_agent.png
-      - snake_game.png
-      - snowflake_direct_oauth.png
-      - solution_1.gif
-      - solution_1_architecture.png
-      - solution_2.gif
-      - solution_2_architecture.png
-      - speech-to-text-not-streaming.png
-      - speech-to-text-streaming.png
-      - star_fig1.png
-      - star_tab1.png
-      - stripe_eval_diagram.png
-      - summarizingSession.jpg
-      - tank_top copy.png
-      - tank_top.png
-      - test_woman.png
-      - test_woman_2.png
-      - test_woman_with_dog.png
-      - text-vs-audio-tokens.png
-      - title_slide.png
-      - tool_no_confirm.png
-      - tool_proactive.png
-      - trace-sk1_partner.png
-      - traces_partner_granular.png
-      - tracing_dashboard_databricks_mcp.png
-      - train1.jpeg
-      - train17.jpeg
-      - train2.jpeg
-      - trimingSession.jpg
-      - ui_farmers_market.png
-      - updated_prompt.png
-      - updated_prompt_feedback.png
-      - verifiers_fig3.png
-      - verifiers_fig5.png
-      - web_search_infographic.png
-      - woman_in_museum copy.png
-      - woman_in_museum.png
-      - workday-api-client.png
-      - workday-cgpt-oauth.png
-      - workday-gpt.png
-      - workflow_check.png
-      - world_knowledge.png
-      - zapier_action_config.png
-      - zapier_ai_actions.png
-      - zero-shot_reasoners_fig1.png
-      - zero-shot_reasoners_fig2.png
-      - zero-shot_reasoners_tab1.png
-      - zero-shot_reasoners_tab5.png
-      openai-cookbook/images/input_images/
-      openai-cookbook/images/output_images/
-      openai-cookbook/images/prompt-caching-201/
-  openclaw-docs/
-    - .i18n/
-    - assets/
-    - automation/
-    - channels/
-    - cli/
-    - concepts/
-    - debug/
-    - diagnostics/
-    - experiments/
-    - gateway/
-    - help/
-    - images/
-    - install/
-    - ja-JP/
-    - nodes/
-    - platforms/
-    - plugins/
-    - providers/
-    - refactor/
-    - reference/
-    - security/
-    - start/
-    - tools/
-    - web/
-    - zh-CN/
-    - CNAME
-    - brave-search.md
-    - ci.md
-    - date-time.md
-    - docs.json
-    - index.md
-    - logging.md
-    - nav-tabs-underline.js
-    - network.md
-    - perplexity.md
-    - pi-dev.md
-    - pi.md
-    - prose.md
-    - style.css
-    - tts.md
-    - vps.md
-    - whatsapp-openclaw-ai-zh.jpg
-    - whatsapp-openclaw.jpg
-    openclaw-docs/.i18n/
-      - README.md
-      - glossary.ja-JP.json
-      - glossary.zh-CN.json
-      - ja-JP.tm.jsonl
-      - zh-CN.tm.jsonl
-    openclaw-docs/assets/
-      - macos-onboarding/
-      - showcase/
-      - sponsors/
-      - install-script.svg
-      - openclaw-logo-text-dark.png
-      - openclaw-logo-text.png
-      - pixel-lobster.svg
-      openclaw-docs/assets/macos-onboarding/
-      openclaw-docs/assets/showcase/
-      openclaw-docs/assets/sponsors/
-    openclaw-docs/automation/
-      - auth-monitoring.md
-      - cron-jobs.md
-      - cron-vs-heartbeat.md
-      - gmail-pubsub.md
-      - hooks.md
-      - poll.md
-      - troubleshooting.md
-      - webhook.md
-    openclaw-docs/channels/
-      - bluebubbles.md
-      - broadcast-groups.md
-      - channel-routing.md
-      - discord.md
-      - feishu.md
-      - googlechat.md
-      - grammy.md
-      - group-messages.md
-      - groups.md
-      - imessage.md
-      - index.md
-      - irc.md
-      - line.md
-      - location.md
-      - matrix.md
-      - mattermost.md
-      - msteams.md
-      - nextcloud-talk.md
-      - nostr.md
-      - pairing.md
-      - signal.md
-      - slack.md
-      - synology-chat.md
-      - telegram.md
-      - tlon.md
-      - troubleshooting.md
-      - twitch.md
-      - whatsapp.md
-      - zalo.md
-      - zalouser.md
-    openclaw-docs/cli/
-      - acp.md
-      - agent.md
-      - agents.md
-      - approvals.md
-      - browser.md
-      - channels.md
-      - clawbot.md
-      - completion.md
-      - config.md
-      - configure.md
-      - cron.md
-      - daemon.md
-      - dashboard.md
-      - devices.md
-      - directory.md
-      - dns.md
-      - docs.md
-      - doctor.md
-      - gateway.md
-      - health.md
-      - hooks.md
-      - index.md
-      - logs.md
-      - memory.md
-      - message.md
-      - models.md
-      - node.md
-      - nodes.md
-      - onboard.md
-      - pairing.md
-      - plugins.md
-      - qr.md
-      - reset.md
-      - sandbox.md
-      - security.md
-      - sessions.md
-      - setup.md
-      - skills.md
-      - status.md
-      - system.md
-      - tui.md
-      - uninstall.md
-      - update.md
-      - voicecall.md
-      - webhooks.md
-    openclaw-docs/concepts/
-      - agent-loop.md
-      - agent-workspace.md
-      - agent.md
-      - architecture.md
-      - compaction.md
-      - context.md
-      - features.md
-      - markdown-formatting.md
-      - memory.md
-      - messages.md
-      - model-failover.md
-      - model-providers.md
-      - models.md
-      - multi-agent.md
-      - oauth.md
-      - presence.md
-      - queue.md
-      - retry.md
-      - session-pruning.md
-      - session-tool.md
-      - session.md
-      - sessions.md
-      - streaming.md
-      - system-prompt.md
-      - timezone.md
-      - typebox.md
-      - typing-indicators.md
-      - usage-tracking.md
-    openclaw-docs/debug/
-      - node-issue.md
-    openclaw-docs/diagnostics/
-      - flags.md
-    openclaw-docs/experiments/
-      - plans/
-      - proposals/
-      - research/
-      - onboarding-config-protocol.md
-      openclaw-docs/experiments/plans/
-      openclaw-docs/experiments/proposals/
-      openclaw-docs/experiments/research/
-    openclaw-docs/gateway/
-      - security/
-      - authentication.md
-      - background-process.md
-      - bonjour.md
-      - bridge-protocol.md
-      - cli-backends.md
-      - configuration-examples.md
-      - configuration-reference.md
-      - configuration.md
-      - discovery.md
-      - doctor.md
-      - gateway-lock.md
-      - health.md
-      - heartbeat.md
-      - index.md
-      - local-models.md
-      - logging.md
-      - multiple-gateways.md
-      - network-model.md
-      - openai-http-api.md
-      - openresponses-http-api.md
-      - pairing.md
-      - protocol.md
-      - remote-gateway-readme.md
-      - remote.md
-      - sandbox-vs-tool-policy-vs-elevated.md
-      - sandboxing.md
-      - tailscale.md
-      - tools-invoke-http-api.md
-      - troubleshooting.md
-      - trusted-proxy-auth.md
-      openclaw-docs/gateway/security/
-    openclaw-docs/help/
-      - debugging.md
-      - environment.md
-      - faq.md
-      - index.md
-      - scripts.md
-      - testing.md
-      - troubleshooting.md
-    openclaw-docs/images/
-      - configure-model-picker-unsearchable.png
-      - feishu-step2-create-app.png
-      - feishu-step3-credentials.png
-      - feishu-step4-permissions.png
-      - feishu-step5-bot-capability.png
-      - feishu-step6-event-subscription.png
-      - groups-flow.svg
-      - mobile-ui-screenshot.png
-    openclaw-docs/install/
-      - ansible.md
-      - bun.md
-      - development-channels.md
-      - docker.md
-      - exe-dev.md
-      - fly.md
-      - gcp.md
-      - hetzner.md
-      - index.md
-      - installer.md
-      - macos-vm.md
-      - migrating.md
-      - nix.md
-      - node.md
-      - northflank.mdx
-      - podman.md
-      - railway.mdx
-      - render.mdx
-      - uninstall.md
-      - updating.md
-    openclaw-docs/ja-JP/
-      - start/
-      - AGENTS.md
-      - index.md
-      openclaw-docs/ja-JP/start/
-    openclaw-docs/nodes/
-      - audio.md
-      - camera.md
-      - images.md
-      - index.md
-      - location-command.md
-      - media-understanding.md
-      - talk.md
-      - troubleshooting.md
-      - voicewake.md
-    openclaw-docs/platforms/
-      - mac/
-      - android.md
-      - digitalocean.md
-      - index.md
-      - ios.md
-      - linux.md
-      - macos.md
-      - oracle.md
-      - raspberry-pi.md
-      - windows.md
-      openclaw-docs/platforms/mac/
-    openclaw-docs/plugins/
-      - agent-tools.md
-      - community.md
-      - manifest.md
-      - voice-call.md
-      - zalouser.md
-    openclaw-docs/providers/
-      - anthropic.md
-      - bedrock.md
-      - claude-max-api-proxy.md
-      - cloudflare-ai-gateway.md
-      - deepgram.md
-      - github-copilot.md
-      - glm.md
-      - huggingface.md
-      - index.md
-      - litellm.md
-      - minimax.md
-      - mistral.md
-      - models.md
-      - moonshot.md
-      - nvidia.md
-      - ollama.md
-      - openai.md
-      - opencode.md
-      - openrouter.md
-      - qianfan.md
-      - qwen.md
-      - synthetic.md
-      - together.md
-      - venice.md
-      - vercel-ai-gateway.md
-      - vllm.md
-      - xiaomi.md
-      - zai.md
-    openclaw-docs/refactor/
-      - clawnet.md
-      - exec-host.md
-      - outbound-session-mirroring.md
-      - plugin-sdk.md
-      - strict-config.md
-    openclaw-docs/reference/
-      - templates/
-      - AGENTS.default.md
-      - RELEASING.md
-      - api-usage-costs.md
-      - credits.md
-      - device-models.md
-      - rpc.md
-      - session-management-compaction.md
-      - test.md
-      - token-use.md
-      - transcript-hygiene.md
-      - wizard.md
-      openclaw-docs/reference/templates/
-    openclaw-docs/security/
-      - CONTRIBUTING-THREAT-MODEL.md
-      - README.md
-      - THREAT-MODEL-ATLAS.md
-      - formal-verification.md
-    openclaw-docs/start/
-      - bootstrapping.md
-      - docs-directory.md
-      - getting-started.md
-      - hubs.md
-      - lore.md
-      - onboarding-overview.md
-      - onboarding.md
-      - openclaw.md
-      - quickstart.md
-      - setup.md
-      - showcase.md
-      - wizard-cli-automation.md
-      - wizard-cli-reference.md
-      - wizard.md
-    openclaw-docs/tools/
-      - agent-send.md
-      - apply-patch.md
-      - browser-linux-troubleshooting.md
-      - browser-login.md
-      - browser.md
-      - chrome-extension.md
-      - clawhub.md
-      - creating-skills.md
-      - elevated.md
-      - exec-approvals.md
-      - exec.md
-      - firecrawl.md
-      - index.md
-      - llm-task.md
-      - lobster.md
-      - loop-detection.md
-      - multi-agent-sandbox-tools.md
-      - plugin.md
-      - reactions.md
-      - skills-config.md
-      - skills.md
-      - slash-commands.md
-      - subagents.md
-      - thinking.md
-      - web.md
-    openclaw-docs/web/
-      - control-ui.md
-      - dashboard.md
-      - index.md
-      - tui.md
-      - webchat.md
-    openclaw-docs/zh-CN/
-      - automation/
-      - channels/
-      - cli/
-      - concepts/
-      - debug/
-      - diagnostics/
-      - experiments/
-      - gateway/
-      - help/
-      - install/
-      - nodes/
-      - platforms/
-      - plugins/
-      - providers/
-      - refactor/
-      - reference/
-      - security/
-      - start/
-      - tools/
-      - web/
-      - AGENTS.md
-      - brave-search.md
-      - date-time.md
-      - index.md
-      - logging.md
-      - network.md
-      - perplexity.md
-      - pi-dev.md
-      - pi.md
-      - prose.md
-      - tts.md
-      - vps.md
-      openclaw-docs/zh-CN/automation/
-      openclaw-docs/zh-CN/channels/
-      openclaw-docs/zh-CN/cli/
-      openclaw-docs/zh-CN/concepts/
-      openclaw-docs/zh-CN/debug/
-      openclaw-docs/zh-CN/diagnostics/
-      openclaw-docs/zh-CN/experiments/
-      openclaw-docs/zh-CN/gateway/
-      openclaw-docs/zh-CN/help/
-      openclaw-docs/zh-CN/install/
-      openclaw-docs/zh-CN/nodes/
-      openclaw-docs/zh-CN/platforms/
-      openclaw-docs/zh-CN/plugins/
-      openclaw-docs/zh-CN/providers/
-      openclaw-docs/zh-CN/refactor/
-      openclaw-docs/zh-CN/reference/
-      openclaw-docs/zh-CN/security/
-      openclaw-docs/zh-CN/start/
-      openclaw-docs/zh-CN/tools/
-      openclaw-docs/zh-CN/web/
-  openclawdbot/
-    - .git/
-    - .vscode/
-    - dist/
-    - node_modules/
-    - public/
-    - src/
-    - tools/
-    - .gitignore
-    - .prettierrc
-    - AGENTS.md
-    - LICENSE
-    - README.md
-    - devvit.json
-    - eslint.config.js
-    - package-lock.json
-    - package.json
-    - tsconfig.json
-    - vite.config.ts
-    openclawdbot/.git/
-      - hooks/
-      - info/
-      - objects/
-      - refs/
-      - HEAD
-      - config
-      openclawdbot/.git/hooks/
-      openclawdbot/.git/info/
-      openclawdbot/.git/objects/
-      openclawdbot/.git/refs/
-    openclawdbot/.vscode/
-      - settings.json
-    openclawdbot/dist/
-      - client/
-      - server/
-      openclawdbot/dist/client/
-      openclawdbot/dist/server/
-    openclawdbot/node_modules/
-      - .bin/
-      - .vite-temp/
-      - @asamuzakjp/
-      - @babel/
-      - @cspotcode/
-      - @csstools/
-      - @devvit/
-      - @esbuild/
-      - @eslint/
-      - @eslint-community/
-      - @hono/
-      - @humanfs/
-      - @humanwhocodes/
-      - @improbable-eng/
-      - @jridgewell/
-      - @nodelib/
-      - @oclif/
-      - @protobuf-ts/
-      - @protobufjs/
-      - @rolldown/
-      - @rollup/
-      - @sec-ant/
-      - @sindresorhus/
-      - @tailwindcss/
-      - @tokenizer/
-      - @tsconfig/
-      - @types/
-      - @typescript-eslint/
-      - @vitejs/
-      - abort-controller/
-      - acorn/
-      - acorn-jsx/
-      - acorn-walk/
-      - agent-base/
-      - ajv/
-      - ansi-escapes/
-      - ansi-regex/
-      - ansi-styles/
-      - ansicolors/
-      - anymatch/
-      - arg/
-      - argparse/
-      - array-union/
-      - astral-regex/
-      - async/
-      - async-lock/
-      - asynckit/
-      - at-least-node/
-      - available-typed-arrays/
-      - balanced-match/
-      - base64-js/
-      - baseline-browser-mapping/
-      - binary-extensions/
-      - bl/
-      - brace-expansion/
-      - braces/
-      - browser-headers/
-      - browserslist/
-      - buffer/
-      - bundle-name/
-      - call-bind/
-      - call-bind-apply-helpers/
-      - call-bound/
-      - callsites/
-      - camel-case/
-      - caniuse-lite/
-      - cardinal/
-      - chalk/
-      - char-regex/
-      - chardet/
-      - chokidar/
-      - clean-git-ref/
-      - clean-stack/
-      - cli-cursor/
-      - cli-progress/
-      - cli-spinners/
-      - cli-width/
-      - clone/
-      - clone-deep/
-      - clsx/
-      - color-convert/
-      - color-name/
-      - combined-stream/
-      - commander/
-      - concat-map/
-      - content-type/
-      - convert-source-map/
-      - core-util-is/
-      - crc-32/
-      - create-require/
-      - cross-spawn/
-      - cssstyle/
-      - csstype/
-      - data-urls/
-      - date-fns/
-      - debug/
-      - decimal.js/
-      - decompress-response/
-      - deep-is/
-      - default-browser/
-      - default-browser-id/
-      - defaults/
-      - define-data-property/
-      - define-lazy-prop/
-      - delayed-stream/
-      - detect-libc/
-      - devvit/
-      - diff/
-      - diff3/
-      - dir-glob/
-      - dot-object/
-      - dotenv/
-      - dunder-proto/
-      - eastasianwidth/
-      - ejs/
-      - electron-to-chromium/
-      - emoji-regex/
-      - enhanced-resolve/
-      - entities/
-      - error-ex/
-      - es-define-property/
-      - es-errors/
-      - es-object-atoms/
-      - es-set-tostringtag/
-      - esbuild/
-      - escalade/
-      - escape-string-regexp/
-      - eslint/
-      - eslint-plugin-react-hooks/
-      - eslint-plugin-react-refresh/
-      - eslint-scope/
-      - eslint-visitor-keys/
-      - espree/
-      - esprima/
-      - esquery/
-      - esrecurse/
-      - estraverse/
-      - esutils/
-      - event-target-shim/
-      - events/
-      - execa/
-      - external-editor/
-      - fast-deep-equal/
-      - fast-glob/
-      - fast-json-stable-stringify/
-      - fast-levenshtein/
-      - fastest-levenshtein/
-      - fastq/
-      - figures/
-      - file-entry-cache/
-      - file-type/
-      - filelist/
-      - fill-range/
-      - find-up/
-      - flat-cache/
-      - flatted/
-      - for-each/
-      - form-data/
-      - fs-extra/
-      - fs.realpath/
-      - function-bind/
-      - gensync/
-      - get-intrinsic/
-      - get-package-type/
-      - get-proto/
-      - get-stream/
-      - glob/
-      - glob-parent/
-      - globals/
-      - globalyzer/
-      - globby/
-      - globrex/
-      - google-protobuf/
-      - gopd/
-      - graceful-fs/
-      - has-flag/
-      - has-property-descriptors/
-      - has-symbols/
-      - has-tostringtag/
-      - hasown/
-      - hermes-estree/
-      - hermes-parser/
-      - hono/
-      - hotscript/
-      - html-encoding-sniffer/
-      - http-call/
-      - http-proxy-agent/
-      - https-proxy-agent/
-      - human-signals/
-      - hyperlinker/
-      - iconv-lite/
-      - ieee754/
-      - ignore/
-      - image-size/
-      - immediate/
-      - import-fresh/
-      - imurmurhash/
-      - indent-string/
-      - inflight/
-      - inherits/
-      - inquirer/
-      - is-arrayish/
-      - is-binary-path/
-      - is-callable/
-      - is-docker/
-      - is-extglob/
-      - is-fullwidth-code-point/
-      - is-glob/
-      - is-inside-container/
-      - is-interactive/
-      - is-number/
-      - is-plain-obj/
-      - is-plain-object/
-      - is-potential-custom-element-name/
-      - is-retry-allowed/
-      - is-stream/
-      - is-typed-array/
-      - is-unicode-supported/
-      - is-wsl/
-      - isarray/
-      - isexe/
-      - isobject/
-      - isomorphic-git/
-      - jake/
-      - jiti/
-      - js-tokens/
-      - js-yaml/
-      - jsdom/
-      - jsesc/
-      - json-buffer/
-      - json-parse-better-errors/
-      - json-schema-traverse/
-      - json-stable-stringify-without-jsonify/
-      - json5/
-      - jsonfile/
-      - jsonschema/
-      - jszip/
-      - keyv/
-      - kind-of/
-      - levn/
-      - lie/
-      - lightningcss/
-      - lightningcss-linux-x64-gnu/
-      - locate-path/
-      - lodash/
-      - lodash.merge/
-      - log-symbols/
-      - long/
-      - lower-case/
-      - lru-cache/
-      - magic-string/
-      - make-error/
-      - math-intrinsics/
-      - merge2/
-      - micromatch/
-      - mime-db/
-      - mime-types/
-      - mimic-fn/
-      - mimic-response/
-      - minimatch/
-      - minimist/
-      - minimisted/
-      - moderndash/
-      - ms/
-      - mustache/
-      - mute-stream/
-      - nanoid/
-      - natural-compare/
-      - natural-orderby/
-      - no-case/
-      - node-releases/
-      - normalize-path/
-      - npm-run-path/
-      - nwsapi/
-      - object-treeify/
-      - once/
-      - onetime/
-      - open/
-      - optionator/
-      - ora/
-      - os-tmpdir/
-      - p-limit/
-      - p-locate/
-      - pako/
-      - parent-module/
-      - parse-json/
-      - parse-ms/
-      - parse5/
-      - pascal-case/
-      - password-prompt/
-      - path-browserify/
-      - path-exists/
-      - path-is-absolute/
-      - path-key/
-      - path-to-regexp/
-      - path-type/
-      - peek-readable/
-      - picocolors/
-      - picomatch/
-      - pify/
-      - possible-typed-array-names/
-      - postcss/
-      - prelude-ls/
-      - prettier/
-      - prettier-plugin-tailwindcss/
-      - pretty-ms/
-      - process/
-      - process-nextick-args/
-      - protobufjs/
-      - psl/
-      - punycode/
-      - querystringify/
-      - queue-microtask/
-      - react/
-      - react-dom/
-      - react-refresh/
-      - readable-stream/
-      - readable-web-to-node-stream/
-      - readdirp/
-      - redeyed/
-      - requires-port/
-      - resolve-from/
-      - restore-cursor/
-      - reusify/
-      - rollup/
-      - rrweb-cssom/
-      - run-applescript/
-      - run-async/
-      - run-parallel/
-      - rxjs/
-      - safe-buffer/
-      - safer-buffer/
-      - saxes/
-      - scheduler/
-      - semver/
-      - set-function-length/
-      - setimmediate/
-      - sha.js/
-      - shallow-clone/
-      - shebang-command/
-      - shebang-regex/
-      - signal-exit/
-      - simple-concat/
-      - simple-get/
-      - slash/
-      - slice-ansi/
-      - source-map-js/
-      - sprintf-js/
-      - stdin-discarder/
-      - string-length/
-      - string-width/
-      - string_decoder/
-      - strip-ansi/
-      - strip-final-newline/
-      - strip-json-comments/
-      - strtok3/
-      - supports-color/
-      - supports-hyperlinks/
-      - symbol-tree/
-      - tailwind-merge/
-      - tailwindcss/
-      - tapable/
-      - through/
-      - tiny-glob/
-      - tinyglobby/
-      - tmp/
-      - to-buffer/
-      - to-regex-range/
-      - token-types/
-      - tough-cookie/
-      - tr46/
-      - ts-api-utils/
-      - ts-node/
-      - ts-poet/
-      - tslib/
-      - tsv/
-      - tunnel-agent/
-      - twirp-ts/
-      - type-check/
-      - type-fest/
-      - typed-array-buffer/
-      - typescript/
-      - typescript-eslint/
-      - undici-types/
-      - unicorn-magic/
-      - universalify/
-      - update-browserslist-db/
-      - uri-js/
-      - url-parse/
-      - util-deprecate/
-      - uuid/
-      - v8-compile-cache-lib/
-      - vite/
-      - w3c-xmlserializer/
-      - wcwidth/
-      - webidl-conversions/
-      - whatwg-encoding/
-      - whatwg-mimetype/
-      - whatwg-url/
-      - which/
-      - which-typed-array/
-      - widest-line/
-      - word-wrap/
-      - wordwrap/
-      - wrap-ansi/
-      - wrappy/
-      - ws/
-      - xml-name-validator/
-      - xmlchars/
-      - yallist/
-      - yaml/
-      - yn/
-      - yocto-queue/
-      - yoctocolors/
-      - zod/
-      - zod-validation-error/
-      - .package-lock.json
-      openclawdbot/node_modules/.bin/
-      openclawdbot/node_modules/.vite-temp/
-      openclawdbot/node_modules/@asamuzakjp/
-      openclawdbot/node_modules/@babel/
-      openclawdbot/node_modules/@cspotcode/
-      openclawdbot/node_modules/@csstools/
-      openclawdbot/node_modules/@devvit/
-      openclawdbot/node_modules/@esbuild/
-      openclawdbot/node_modules/@eslint/
-      openclawdbot/node_modules/@eslint-community/
-      openclawdbot/node_modules/@hono/
-      openclawdbot/node_modules/@humanfs/
-      openclawdbot/node_modules/@humanwhocodes/
-      openclawdbot/node_modules/@improbable-eng/
-      openclawdbot/node_modules/@jridgewell/
-      openclawdbot/node_modules/@nodelib/
-      openclawdbot/node_modules/@oclif/
-      openclawdbot/node_modules/@protobuf-ts/
-      openclawdbot/node_modules/@protobufjs/
-      openclawdbot/node_modules/@rolldown/
-      openclawdbot/node_modules/@rollup/
-      openclawdbot/node_modules/@sec-ant/
-      openclawdbot/node_modules/@sindresorhus/
-      openclawdbot/node_modules/@tailwindcss/
-      openclawdbot/node_modules/@tokenizer/
-      openclawdbot/node_modules/@tsconfig/
-      openclawdbot/node_modules/@types/
-      openclawdbot/node_modules/@typescript-eslint/
-      openclawdbot/node_modules/@vitejs/
-      openclawdbot/node_modules/abort-controller/
-      openclawdbot/node_modules/acorn/
-      openclawdbot/node_modules/acorn-jsx/
-      openclawdbot/node_modules/acorn-walk/
-      openclawdbot/node_modules/agent-base/
-      openclawdbot/node_modules/ajv/
-      openclawdbot/node_modules/ansi-escapes/
-      openclawdbot/node_modules/ansi-regex/
-      openclawdbot/node_modules/ansi-styles/
-      openclawdbot/node_modules/ansicolors/
-      openclawdbot/node_modules/anymatch/
-      openclawdbot/node_modules/arg/
-      openclawdbot/node_modules/argparse/
-      openclawdbot/node_modules/array-union/
-      openclawdbot/node_modules/astral-regex/
-      openclawdbot/node_modules/async/
-      openclawdbot/node_modules/async-lock/
-      openclawdbot/node_modules/asynckit/
-      openclawdbot/node_modules/at-least-node/
-      openclawdbot/node_modules/available-typed-arrays/
-      openclawdbot/node_modules/balanced-match/
-      openclawdbot/node_modules/base64-js/
-      openclawdbot/node_modules/baseline-browser-mapping/
-      openclawdbot/node_modules/binary-extensions/
-      openclawdbot/node_modules/bl/
-      openclawdbot/node_modules/brace-expansion/
-      openclawdbot/node_modules/braces/
-      openclawdbot/node_modules/browser-headers/
-      openclawdbot/node_modules/browserslist/
-      openclawdbot/node_modules/buffer/
-      openclawdbot/node_modules/bundle-name/
-      openclawdbot/node_modules/call-bind/
-      openclawdbot/node_modules/call-bind-apply-helpers/
-      openclawdbot/node_modules/call-bound/
-      openclawdbot/node_modules/callsites/
-      openclawdbot/node_modules/camel-case/
-      openclawdbot/node_modules/caniuse-lite/
-      openclawdbot/node_modules/cardinal/
-      openclawdbot/node_modules/chalk/
-      openclawdbot/node_modules/char-regex/
-      openclawdbot/node_modules/chardet/
-      openclawdbot/node_modules/chokidar/
-      openclawdbot/node_modules/clean-git-ref/
-      openclawdbot/node_modules/clean-stack/
-      openclawdbot/node_modules/cli-cursor/
-      openclawdbot/node_modules/cli-progress/
-      openclawdbot/node_modules/cli-spinners/
-      openclawdbot/node_modules/cli-width/
-      openclawdbot/node_modules/clone/
-      openclawdbot/node_modules/clone-deep/
-      openclawdbot/node_modules/clsx/
-      openclawdbot/node_modules/color-convert/
-      openclawdbot/node_modules/color-name/
-      openclawdbot/node_modules/combined-stream/
-      openclawdbot/node_modules/commander/
-      openclawdbot/node_modules/concat-map/
-      openclawdbot/node_modules/content-type/
-      openclawdbot/node_modules/convert-source-map/
-      openclawdbot/node_modules/core-util-is/
-      openclawdbot/node_modules/crc-32/
-      openclawdbot/node_modules/create-require/
-      openclawdbot/node_modules/cross-spawn/
-      openclawdbot/node_modules/cssstyle/
-      openclawdbot/node_modules/csstype/
-      openclawdbot/node_modules/data-urls/
-      openclawdbot/node_modules/date-fns/
-      openclawdbot/node_modules/debug/
-      openclawdbot/node_modules/decimal.js/
-      openclawdbot/node_modules/decompress-response/
-      openclawdbot/node_modules/deep-is/
-      openclawdbot/node_modules/default-browser/
-      openclawdbot/node_modules/default-browser-id/
-      openclawdbot/node_modules/defaults/
-      openclawdbot/node_modules/define-data-property/
-      openclawdbot/node_modules/define-lazy-prop/
-      openclawdbot/node_modules/delayed-stream/
-      openclawdbot/node_modules/detect-libc/
-      openclawdbot/node_modules/devvit/
-      openclawdbot/node_modules/diff/
-      openclawdbot/node_modules/diff3/
-      openclawdbot/node_modules/dir-glob/
-      openclawdbot/node_modules/dot-object/
-      openclawdbot/node_modules/dotenv/
-      openclawdbot/node_modules/dunder-proto/
-      openclawdbot/node_modules/eastasianwidth/
-      openclawdbot/node_modules/ejs/
-      openclawdbot/node_modules/electron-to-chromium/
-      openclawdbot/node_modules/emoji-regex/
-      openclawdbot/node_modules/enhanced-resolve/
-      openclawdbot/node_modules/entities/
-      openclawdbot/node_modules/error-ex/
-      openclawdbot/node_modules/es-define-property/
-      openclawdbot/node_modules/es-errors/
-      openclawdbot/node_modules/es-object-atoms/
-      openclawdbot/node_modules/es-set-tostringtag/
-      openclawdbot/node_modules/esbuild/
-      openclawdbot/node_modules/escalade/
-      openclawdbot/node_modules/escape-string-regexp/
-      openclawdbot/node_modules/eslint/
-      openclawdbot/node_modules/eslint-plugin-react-hooks/
-      openclawdbot/node_modules/eslint-plugin-react-refresh/
-      openclawdbot/node_modules/eslint-scope/
-      openclawdbot/node_modules/eslint-visitor-keys/
-      openclawdbot/node_modules/espree/
-      openclawdbot/node_modules/esprima/
-      openclawdbot/node_modules/esquery/
-      openclawdbot/node_modules/esrecurse/
-      openclawdbot/node_modules/estraverse/
-      openclawdbot/node_modules/esutils/
-      openclawdbot/node_modules/event-target-shim/
-      openclawdbot/node_modules/events/
-      openclawdbot/node_modules/execa/
-      openclawdbot/node_modules/external-editor/
-      openclawdbot/node_modules/fast-deep-equal/
-      openclawdbot/node_modules/fast-glob/
-      openclawdbot/node_modules/fast-json-stable-stringify/
-      openclawdbot/node_modules/fast-levenshtein/
-      openclawdbot/node_modules/fastest-levenshtein/
-      openclawdbot/node_modules/fastq/
-      openclawdbot/node_modules/figures/
-      openclawdbot/node_modules/file-entry-cache/
-      openclawdbot/node_modules/file-type/
-      openclawdbot/node_modules/filelist/
-      openclawdbot/node_modules/fill-range/
-      openclawdbot/node_modules/find-up/
-      openclawdbot/node_modules/flat-cache/
-      openclawdbot/node_modules/flatted/
-      openclawdbot/node_modules/for-each/
-      openclawdbot/node_modules/form-data/
-      openclawdbot/node_modules/fs-extra/
-      openclawdbot/node_modules/fs.realpath/
-      openclawdbot/node_modules/function-bind/
-      openclawdbot/node_modules/gensync/
-      openclawdbot/node_modules/get-intrinsic/
-      openclawdbot/node_modules/get-package-type/
-      openclawdbot/node_modules/get-proto/
-      openclawdbot/node_modules/get-stream/
-      openclawdbot/node_modules/glob/
-      openclawdbot/node_modules/glob-parent/
-      openclawdbot/node_modules/globals/
-      openclawdbot/node_modules/globalyzer/
-      openclawdbot/node_modules/globby/
-      openclawdbot/node_modules/globrex/
-      openclawdbot/node_modules/google-protobuf/
-      openclawdbot/node_modules/gopd/
-      openclawdbot/node_modules/graceful-fs/
-      openclawdbot/node_modules/has-flag/
-      openclawdbot/node_modules/has-property-descriptors/
-      openclawdbot/node_modules/has-symbols/
-      openclawdbot/node_modules/has-tostringtag/
-      openclawdbot/node_modules/hasown/
-      openclawdbot/node_modules/hermes-estree/
-      openclawdbot/node_modules/hermes-parser/
-      openclawdbot/node_modules/hono/
-      openclawdbot/node_modules/hotscript/
-      openclawdbot/node_modules/html-encoding-sniffer/
-      openclawdbot/node_modules/http-call/
-      openclawdbot/node_modules/http-proxy-agent/
-      openclawdbot/node_modules/https-proxy-agent/
-      openclawdbot/node_modules/human-signals/
-      openclawdbot/node_modules/hyperlinker/
-      openclawdbot/node_modules/iconv-lite/
-      openclawdbot/node_modules/ieee754/
-      openclawdbot/node_modules/ignore/
-      openclawdbot/node_modules/image-size/
-      openclawdbot/node_modules/immediate/
-      openclawdbot/node_modules/import-fresh/
-      openclawdbot/node_modules/imurmurhash/
-      openclawdbot/node_modules/indent-string/
-      openclawdbot/node_modules/inflight/
-      openclawdbot/node_modules/inherits/
-      openclawdbot/node_modules/inquirer/
-      openclawdbot/node_modules/is-arrayish/
-      openclawdbot/node_modules/is-binary-path/
-      openclawdbot/node_modules/is-callable/
-      openclawdbot/node_modules/is-docker/
-      openclawdbot/node_modules/is-extglob/
-      openclawdbot/node_modules/is-fullwidth-code-point/
-      openclawdbot/node_modules/is-glob/
-      openclawdbot/node_modules/is-inside-container/
-      openclawdbot/node_modules/is-interactive/
-      openclawdbot/node_modules/is-number/
-      openclawdbot/node_modules/is-plain-obj/
-      openclawdbot/node_modules/is-plain-object/
-      openclawdbot/node_modules/is-potential-custom-element-name/
-      openclawdbot/node_modules/is-retry-allowed/
-      openclawdbot/node_modules/is-stream/
-      openclawdbot/node_modules/is-typed-array/
-      openclawdbot/node_modules/is-unicode-supported/
-      openclawdbot/node_modules/is-wsl/
-      openclawdbot/node_modules/isarray/
-      openclawdbot/node_modules/isexe/
-      openclawdbot/node_modules/isobject/
-      openclawdbot/node_modules/isomorphic-git/
-      openclawdbot/node_modules/jake/
-      openclawdbot/node_modules/jiti/
-      openclawdbot/node_modules/js-tokens/
-      openclawdbot/node_modules/js-yaml/
-      openclawdbot/node_modules/jsdom/
-      openclawdbot/node_modules/jsesc/
-      openclawdbot/node_modules/json-buffer/
-      openclawdbot/node_modules/json-parse-better-errors/
-      openclawdbot/node_modules/json-schema-traverse/
-      openclawdbot/node_modules/json-stable-stringify-without-jsonify/
-      openclawdbot/node_modules/json5/
-      openclawdbot/node_modules/jsonfile/
-      openclawdbot/node_modules/jsonschema/
-      openclawdbot/node_modules/jszip/
-      openclawdbot/node_modules/keyv/
-      openclawdbot/node_modules/kind-of/
-      openclawdbot/node_modules/levn/
-      openclawdbot/node_modules/lie/
-      openclawdbot/node_modules/lightningcss/
-      openclawdbot/node_modules/lightningcss-linux-x64-gnu/
-      openclawdbot/node_modules/locate-path/
-      openclawdbot/node_modules/lodash/
-      openclawdbot/node_modules/lodash.merge/
-      openclawdbot/node_modules/log-symbols/
-      openclawdbot/node_modules/long/
-      openclawdbot/node_modules/lower-case/
-      openclawdbot/node_modules/lru-cache/
-      openclawdbot/node_modules/magic-string/
-      openclawdbot/node_modules/make-error/
-      openclawdbot/node_modules/math-intrinsics/
-      openclawdbot/node_modules/merge2/
-      openclawdbot/node_modules/micromatch/
-      openclawdbot/node_modules/mime-db/
-      openclawdbot/node_modules/mime-types/
-      openclawdbot/node_modules/mimic-fn/
-      openclawdbot/node_modules/mimic-response/
-      openclawdbot/node_modules/minimatch/
-      openclawdbot/node_modules/minimist/
-      openclawdbot/node_modules/minimisted/
-      openclawdbot/node_modules/moderndash/
-      openclawdbot/node_modules/ms/
-      openclawdbot/node_modules/mustache/
-      openclawdbot/node_modules/mute-stream/
-      openclawdbot/node_modules/nanoid/
-      openclawdbot/node_modules/natural-compare/
-      openclawdbot/node_modules/natural-orderby/
-      openclawdbot/node_modules/no-case/
-      openclawdbot/node_modules/node-releases/
-      openclawdbot/node_modules/normalize-path/
-      openclawdbot/node_modules/npm-run-path/
-      openclawdbot/node_modules/nwsapi/
-      openclawdbot/node_modules/object-treeify/
-      openclawdbot/node_modules/once/
-      openclawdbot/node_modules/onetime/
-      openclawdbot/node_modules/open/
-      openclawdbot/node_modules/optionator/
-      openclawdbot/node_modules/ora/
-      openclawdbot/node_modules/os-tmpdir/
-      openclawdbot/node_modules/p-limit/
-      openclawdbot/node_modules/p-locate/
-      openclawdbot/node_modules/pako/
-      openclawdbot/node_modules/parent-module/
-      openclawdbot/node_modules/parse-json/
-      openclawdbot/node_modules/parse-ms/
-      openclawdbot/node_modules/parse5/
-      openclawdbot/node_modules/pascal-case/
-      openclawdbot/node_modules/password-prompt/
-      openclawdbot/node_modules/path-browserify/
-      openclawdbot/node_modules/path-exists/
-      openclawdbot/node_modules/path-is-absolute/
-      openclawdbot/node_modules/path-key/
-      openclawdbot/node_modules/path-to-regexp/
-      openclawdbot/node_modules/path-type/
-      openclawdbot/node_modules/peek-readable/
-      openclawdbot/node_modules/picocolors/
-      openclawdbot/node_modules/picomatch/
-      openclawdbot/node_modules/pify/
-      openclawdbot/node_modules/possible-typed-array-names/
-      openclawdbot/node_modules/postcss/
-      openclawdbot/node_modules/prelude-ls/
-      openclawdbot/node_modules/prettier/
-      openclawdbot/node_modules/prettier-plugin-tailwindcss/
-      openclawdbot/node_modules/pretty-ms/
-      openclawdbot/node_modules/process/
-      openclawdbot/node_modules/process-nextick-args/
-      openclawdbot/node_modules/protobufjs/
-      openclawdbot/node_modules/psl/
-      openclawdbot/node_modules/punycode/
-      openclawdbot/node_modules/querystringify/
-      openclawdbot/node_modules/queue-microtask/
-      openclawdbot/node_modules/react/
-      openclawdbot/node_modules/react-dom/
-      openclawdbot/node_modules/react-refresh/
-      openclawdbot/node_modules/readable-stream/
-      openclawdbot/node_modules/readable-web-to-node-stream/
-      openclawdbot/node_modules/readdirp/
-      openclawdbot/node_modules/redeyed/
-      openclawdbot/node_modules/requires-port/
-      openclawdbot/node_modules/resolve-from/
-      openclawdbot/node_modules/restore-cursor/
-      openclawdbot/node_modules/reusify/
-      openclawdbot/node_modules/rollup/
-      openclawdbot/node_modules/rrweb-cssom/
-      openclawdbot/node_modules/run-applescript/
-      openclawdbot/node_modules/run-async/
-      openclawdbot/node_modules/run-parallel/
-      openclawdbot/node_modules/rxjs/
-      openclawdbot/node_modules/safe-buffer/
-      openclawdbot/node_modules/safer-buffer/
-      openclawdbot/node_modules/saxes/
-      openclawdbot/node_modules/scheduler/
-      openclawdbot/node_modules/semver/
-      openclawdbot/node_modules/set-function-length/
-      openclawdbot/node_modules/setimmediate/
-      openclawdbot/node_modules/sha.js/
-      openclawdbot/node_modules/shallow-clone/
-      openclawdbot/node_modules/shebang-command/
-      openclawdbot/node_modules/shebang-regex/
-      openclawdbot/node_modules/signal-exit/
-      openclawdbot/node_modules/simple-concat/
-      openclawdbot/node_modules/simple-get/
-      openclawdbot/node_modules/slash/
-      openclawdbot/node_modules/slice-ansi/
-      openclawdbot/node_modules/source-map-js/
-      openclawdbot/node_modules/sprintf-js/
-      openclawdbot/node_modules/stdin-discarder/
-      openclawdbot/node_modules/string-length/
-      openclawdbot/node_modules/string-width/
-      openclawdbot/node_modules/string_decoder/
-      openclawdbot/node_modules/strip-ansi/
-      openclawdbot/node_modules/strip-final-newline/
-      openclawdbot/node_modules/strip-json-comments/
-      openclawdbot/node_modules/strtok3/
-      openclawdbot/node_modules/supports-color/
-      openclawdbot/node_modules/supports-hyperlinks/
-      openclawdbot/node_modules/symbol-tree/
-      openclawdbot/node_modules/tailwind-merge/
-      openclawdbot/node_modules/tailwindcss/
-      openclawdbot/node_modules/tapable/
-      openclawdbot/node_modules/through/
-      openclawdbot/node_modules/tiny-glob/
-      openclawdbot/node_modules/tinyglobby/
-      openclawdbot/node_modules/tmp/
-      openclawdbot/node_modules/to-buffer/
-      openclawdbot/node_modules/to-regex-range/
-      openclawdbot/node_modules/token-types/
-      openclawdbot/node_modules/tough-cookie/
-      openclawdbot/node_modules/tr46/
-      openclawdbot/node_modules/ts-api-utils/
-      openclawdbot/node_modules/ts-node/
-      openclawdbot/node_modules/ts-poet/
-      openclawdbot/node_modules/tslib/
-      openclawdbot/node_modules/tsv/
-      openclawdbot/node_modules/tunnel-agent/
-      openclawdbot/node_modules/twirp-ts/
-      openclawdbot/node_modules/type-check/
-      openclawdbot/node_modules/type-fest/
-      openclawdbot/node_modules/typed-array-buffer/
-      openclawdbot/node_modules/typescript/
-      openclawdbot/node_modules/typescript-eslint/
-      openclawdbot/node_modules/undici-types/
-      openclawdbot/node_modules/unicorn-magic/
-      openclawdbot/node_modules/universalify/
-      openclawdbot/node_modules/update-browserslist-db/
-      openclawdbot/node_modules/uri-js/
-      openclawdbot/node_modules/url-parse/
-      openclawdbot/node_modules/util-deprecate/
-      openclawdbot/node_modules/uuid/
-      openclawdbot/node_modules/v8-compile-cache-lib/
-      openclawdbot/node_modules/vite/
-      openclawdbot/node_modules/w3c-xmlserializer/
-      openclawdbot/node_modules/wcwidth/
-      openclawdbot/node_modules/webidl-conversions/
-      openclawdbot/node_modules/whatwg-encoding/
-      openclawdbot/node_modules/whatwg-mimetype/
-      openclawdbot/node_modules/whatwg-url/
-      openclawdbot/node_modules/which/
-      openclawdbot/node_modules/which-typed-array/
-      openclawdbot/node_modules/widest-line/
-      openclawdbot/node_modules/word-wrap/
-      openclawdbot/node_modules/wordwrap/
-      openclawdbot/node_modules/wrap-ansi/
-      openclawdbot/node_modules/wrappy/
-      openclawdbot/node_modules/ws/
-      openclawdbot/node_modules/xml-name-validator/
-      openclawdbot/node_modules/xmlchars/
-      openclawdbot/node_modules/yallist/
-      openclawdbot/node_modules/yaml/
-      openclawdbot/node_modules/yn/
-      openclawdbot/node_modules/yocto-queue/
-      openclawdbot/node_modules/yoctocolors/
-      openclawdbot/node_modules/zod/
-      openclawdbot/node_modules/zod-validation-error/
-    openclawdbot/public/
-      - snoo.png
-    openclawdbot/src/
-      - client/
-      - server/
-      - shared/
-      openclawdbot/src/client/
-      openclawdbot/src/server/
-      openclawdbot/src/shared/
-    openclawdbot/tools/
-      - tsconfig.base.json
-      - tsconfig.client.json
-      - tsconfig.server.json
-      - tsconfig.shared.json
-      - tsconfig.vite.json
-  orchestrator/
-    - data/
-    - dist/
-    - docs/
-    - logs/
-    - monitoring/
-    - node_modules/
-    - orchestrator/
-    - scripts/
-    - src/
-    - test/
-    - .dockerignore
-    - .env
-    - .env.example
-    - .gitignore
-    - DOCKER_QUICK_REFERENCE.md
-    - Dockerfile
-    - PHASE_2_COMPLETION.md
-    - PHASE_3_COMPLETION.md
-    - README_COMPLETE.md
-    - build-docker.sh
-    - docker-compose.yml
-    - mongo-init.js
-    - orchestrator_config.json
-    - package-lock.json
-    - package.json
-    - test-phase5.js
-    - test-phase5.mjs
-    - tsconfig.json
-    - vitest.config.ts
-    orchestrator/data/
-      - knowledge-base/
-      - snapshots/
-      - orchestrator-state.json
-      orchestrator/data/knowledge-base/
-      orchestrator/data/snapshots/
-    orchestrator/dist/
-      - alerts/
-      - knowledge/
-      - memory/
-      - metrics/
-      - middleware/
-      - persistence/
-      - skills/
-      - agentRegistry.js
-      - alerter.js
-      - config.js
-      - docIndexer.js
-      - index.js
-      - notifier.js
-      - state.js
-      - taskHandlers.js
-      - taskQueue.js
-      - types.js
-      orchestrator/dist/alerts/
-      orchestrator/dist/knowledge/
-      orchestrator/dist/memory/
-      orchestrator/dist/metrics/
-      orchestrator/dist/middleware/
-      orchestrator/dist/persistence/
-      orchestrator/dist/skills/
-    orchestrator/docs/
-      - hostile-audit/
-      - API_REFERENCE.md
-      - DEPLOYMENT_GUIDE.md
-      - DOCKER_DEPLOYMENT.md
-      - LOAD_TEST_REPORT.md
-      orchestrator/docs/hostile-audit/
-    orchestrator/logs/
-    orchestrator/monitoring/
-      - dashboards/
-      - alert-rules.yml
-      - alertmanager.yml
-      - datasources.yml
-      - prometheus.yml
-      - providers.yml
-      orchestrator/monitoring/dashboards/
-    orchestrator/node_modules/
-      - .bin/
-      - .vite/
-      - @ampproject/
-      - @babel/
-      - @bcoe/
-      - @esbuild/
-      - @istanbuljs/
-      - @jest/
-      - @jridgewell/
-      - @mongodb-js/
-      - @nodelib/
-      - @opentelemetry/
-      - @polka/
-      - @rollup/
-      - @sinclair/
-      - @types/
-      - @vitest/
-      - abort-controller/
-      - accepts/
-      - acorn/
-      - acorn-walk/
-      - agentkeepalive/
-      - ansi-styles/
-      - anymatch/
-      - array-flatten/
-      - assertion-error/
-      - asynckit/
-      - balanced-match/
-      - binary-extensions/
-      - bintrees/
-      - body-parser/
-      - brace-expansion/
-      - braces/
-      - bson/
-      - bytes/
-      - cac/
-      - call-bind-apply-helpers/
-      - call-bound/
-      - chai/
-      - check-error/
-      - chokidar/
-      - combined-stream/
-      - concat-map/
-      - confbox/
-      - content-disposition/
-      - content-type/
-      - cookie/
-      - cookie-signature/
-      - cross-spawn/
-      - debug/
-      - deep-eql/
-      - delayed-stream/
-      - depd/
-      - destroy/
-      - diff-sequences/
-      - dunder-proto/
-      - ee-first/
-      - encodeurl/
-      - es-define-property/
-      - es-errors/
-      - es-object-atoms/
-      - es-set-tostringtag/
-      - esbuild/
-      - escape-html/
-      - estree-walker/
-      - etag/
-      - event-target-shim/
-      - eventemitter3/
-      - execa/
-      - express/
-      - express-rate-limit/
-      - fast-glob/
-      - fastq/
-      - fflate/
-      - fill-range/
-      - finalhandler/
-      - flatted/
-      - form-data/
-      - form-data-encoder/
-      - formdata-node/
-      - forwarded/
-      - fresh/
-      - fs.realpath/
-      - function-bind/
-      - get-func-name/
-      - get-intrinsic/
-      - get-proto/
-      - get-stream/
-      - get-tsconfig/
-      - glob/
-      - glob-parent/
-      - gopd/
-      - has-flag/
-      - has-symbols/
-      - has-tostringtag/
-      - hasown/
-      - html-escaper/
-      - http-errors/
-      - human-signals/
-      - humanize-ms/
-      - iconv-lite/
-      - inflight/
-      - inherits/
-      - ip-address/
-      - ipaddr.js/
-      - is-binary-path/
-      - is-extglob/
-      - is-glob/
-      - is-number/
-      - is-stream/
-      - isexe/
-      - istanbul-lib-coverage/
-      - istanbul-lib-report/
-      - istanbul-lib-source-maps/
-      - istanbul-reports/
-      - js-tokens/
-      - local-pkg/
-      - loupe/
-      - magic-string/
-      - magicast/
-      - make-dir/
-      - math-intrinsics/
-      - media-typer/
-      - memory-pager/
-      - merge-descriptors/
-      - merge-stream/
-      - merge2/
-      - methods/
-      - micromatch/
-      - mime/
-      - mime-db/
-      - mime-types/
-      - mimic-fn/
-      - minimatch/
-      - mlly/
-      - mongodb/
-      - mongodb-connection-string-url/
-      - mrmime/
-      - ms/
-      - nanoid/
-      - negotiator/
-      - node-cron/
-      - node-domexception/
-      - node-fetch/
-      - normalize-path/
-      - npm-run-path/
-      - object-inspect/
-      - on-finished/
-      - once/
-      - onetime/
-      - openai/
-      - p-limit/
-      - p-queue/
-      - p-timeout/
-      - parseurl/
-      - path-is-absolute/
-      - path-key/
-      - path-to-regexp/
-      - pathe/
-      - pathval/
-      - picocolors/
-      - picomatch/
-      - pkg-types/
-      - postcss/
-      - pretty-format/
-      - prom-client/
-      - proxy-addr/
-      - punycode/
-      - qs/
-      - queue-microtask/
-      - range-parser/
-      - raw-body/
-      - react-is/
-      - readdirp/
-      - resolve-pkg-maps/
-      - reusify/
-      - rollup/
-      - run-parallel/
-      - safe-buffer/
-      - safer-buffer/
-      - semver/
-      - send/
-      - serve-static/
-      - setprototypeof/
-      - shebang-command/
-      - shebang-regex/
-      - side-channel/
-      - side-channel-list/
-      - side-channel-map/
-      - side-channel-weakmap/
-      - siginfo/
-      - signal-exit/
-      - sirv/
-      - source-map-js/
-      - sparse-bitfield/
-      - stackback/
-      - statuses/
-      - std-env/
-      - strip-final-newline/
-      - strip-literal/
-      - supports-color/
-      - tdigest/
-      - test-exclude/
-      - tinybench/
-      - tinypool/
-      - tinyspy/
-      - to-regex-range/
-      - toidentifier/
-      - totalist/
-      - tr46/
-      - tsx/
-      - type-detect/
-      - type-is/
-      - typescript/
-      - ufo/
-      - undici-types/
-      - unpipe/
-      - utils-merge/
-      - uuid/
-      - vary/
-      - vite/
-      - vite-node/
-      - vitest/
-      - web-streams-polyfill/
-      - webidl-conversions/
-      - whatwg-url/
-      - which/
-      - why-is-node-running/
-      - wrappy/
-      - yaml/
-      - yocto-queue/
-      - zod/
-      - .package-lock.json
-      orchestrator/node_modules/.bin/
-      orchestrator/node_modules/.vite/
-      orchestrator/node_modules/@ampproject/
-      orchestrator/node_modules/@babel/
-      orchestrator/node_modules/@bcoe/
-      orchestrator/node_modules/@esbuild/
-      orchestrator/node_modules/@istanbuljs/
-      orchestrator/node_modules/@jest/
-      orchestrator/node_modules/@jridgewell/
-      orchestrator/node_modules/@mongodb-js/
-      orchestrator/node_modules/@nodelib/
-      orchestrator/node_modules/@opentelemetry/
-      orchestrator/node_modules/@polka/
-      orchestrator/node_modules/@rollup/
-      orchestrator/node_modules/@sinclair/
-      orchestrator/node_modules/@types/
-      orchestrator/node_modules/@vitest/
-      orchestrator/node_modules/abort-controller/
-      orchestrator/node_modules/accepts/
-      orchestrator/node_modules/acorn/
-      orchestrator/node_modules/acorn-walk/
-      orchestrator/node_modules/agentkeepalive/
-      orchestrator/node_modules/ansi-styles/
-      orchestrator/node_modules/anymatch/
-      orchestrator/node_modules/array-flatten/
-      orchestrator/node_modules/assertion-error/
-      orchestrator/node_modules/asynckit/
-      orchestrator/node_modules/balanced-match/
-      orchestrator/node_modules/binary-extensions/
-      orchestrator/node_modules/bintrees/
-      orchestrator/node_modules/body-parser/
-      orchestrator/node_modules/brace-expansion/
-      orchestrator/node_modules/braces/
-      orchestrator/node_modules/bson/
-      orchestrator/node_modules/bytes/
-      orchestrator/node_modules/cac/
-      orchestrator/node_modules/call-bind-apply-helpers/
-      orchestrator/node_modules/call-bound/
-      orchestrator/node_modules/chai/
-      orchestrator/node_modules/check-error/
-      orchestrator/node_modules/chokidar/
-      orchestrator/node_modules/combined-stream/
-      orchestrator/node_modules/concat-map/
-      orchestrator/node_modules/confbox/
-      orchestrator/node_modules/content-disposition/
-      orchestrator/node_modules/content-type/
-      orchestrator/node_modules/cookie/
-      orchestrator/node_modules/cookie-signature/
-      orchestrator/node_modules/cross-spawn/
-      orchestrator/node_modules/debug/
-      orchestrator/node_modules/deep-eql/
-      orchestrator/node_modules/delayed-stream/
-      orchestrator/node_modules/depd/
-      orchestrator/node_modules/destroy/
-      orchestrator/node_modules/diff-sequences/
-      orchestrator/node_modules/dunder-proto/
-      orchestrator/node_modules/ee-first/
-      orchestrator/node_modules/encodeurl/
-      orchestrator/node_modules/es-define-property/
-      orchestrator/node_modules/es-errors/
-      orchestrator/node_modules/es-object-atoms/
-      orchestrator/node_modules/es-set-tostringtag/
-      orchestrator/node_modules/esbuild/
-      orchestrator/node_modules/escape-html/
-      orchestrator/node_modules/estree-walker/
-      orchestrator/node_modules/etag/
-      orchestrator/node_modules/event-target-shim/
-      orchestrator/node_modules/eventemitter3/
-      orchestrator/node_modules/execa/
-      orchestrator/node_modules/express/
-      orchestrator/node_modules/express-rate-limit/
-      orchestrator/node_modules/fast-glob/
-      orchestrator/node_modules/fastq/
-      orchestrator/node_modules/fflate/
-      orchestrator/node_modules/fill-range/
-      orchestrator/node_modules/finalhandler/
-      orchestrator/node_modules/flatted/
-      orchestrator/node_modules/form-data/
-      orchestrator/node_modules/form-data-encoder/
-      orchestrator/node_modules/formdata-node/
-      orchestrator/node_modules/forwarded/
-      orchestrator/node_modules/fresh/
-      orchestrator/node_modules/fs.realpath/
-      orchestrator/node_modules/function-bind/
-      orchestrator/node_modules/get-func-name/
-      orchestrator/node_modules/get-intrinsic/
-      orchestrator/node_modules/get-proto/
-      orchestrator/node_modules/get-stream/
-      orchestrator/node_modules/get-tsconfig/
-      orchestrator/node_modules/glob/
-      orchestrator/node_modules/glob-parent/
-      orchestrator/node_modules/gopd/
-      orchestrator/node_modules/has-flag/
-      orchestrator/node_modules/has-symbols/
-      orchestrator/node_modules/has-tostringtag/
-      orchestrator/node_modules/hasown/
-      orchestrator/node_modules/html-escaper/
-      orchestrator/node_modules/http-errors/
-      orchestrator/node_modules/human-signals/
-      orchestrator/node_modules/humanize-ms/
-      orchestrator/node_modules/iconv-lite/
-      orchestrator/node_modules/inflight/
-      orchestrator/node_modules/inherits/
-      orchestrator/node_modules/ip-address/
-      orchestrator/node_modules/ipaddr.js/
-      orchestrator/node_modules/is-binary-path/
-      orchestrator/node_modules/is-extglob/
-      orchestrator/node_modules/is-glob/
-      orchestrator/node_modules/is-number/
-      orchestrator/node_modules/is-stream/
-      orchestrator/node_modules/isexe/
-      orchestrator/node_modules/istanbul-lib-coverage/
-      orchestrator/node_modules/istanbul-lib-report/
-      orchestrator/node_modules/istanbul-lib-source-maps/
-      orchestrator/node_modules/istanbul-reports/
-      orchestrator/node_modules/js-tokens/
-      orchestrator/node_modules/local-pkg/
-      orchestrator/node_modules/loupe/
-      orchestrator/node_modules/magic-string/
-      orchestrator/node_modules/magicast/
-      orchestrator/node_modules/make-dir/
-      orchestrator/node_modules/math-intrinsics/
-      orchestrator/node_modules/media-typer/
-      orchestrator/node_modules/memory-pager/
-      orchestrator/node_modules/merge-descriptors/
-      orchestrator/node_modules/merge-stream/
-      orchestrator/node_modules/merge2/
-      orchestrator/node_modules/methods/
-      orchestrator/node_modules/micromatch/
-      orchestrator/node_modules/mime/
-      orchestrator/node_modules/mime-db/
-      orchestrator/node_modules/mime-types/
-      orchestrator/node_modules/mimic-fn/
-      orchestrator/node_modules/minimatch/
-      orchestrator/node_modules/mlly/
-      orchestrator/node_modules/mongodb/
-      orchestrator/node_modules/mongodb-connection-string-url/
-      orchestrator/node_modules/mrmime/
-      orchestrator/node_modules/ms/
-      orchestrator/node_modules/nanoid/
-      orchestrator/node_modules/negotiator/
-      orchestrator/node_modules/node-cron/
-      orchestrator/node_modules/node-domexception/
-      orchestrator/node_modules/node-fetch/
-      orchestrator/node_modules/normalize-path/
-      orchestrator/node_modules/npm-run-path/
-      orchestrator/node_modules/object-inspect/
-      orchestrator/node_modules/on-finished/
-      orchestrator/node_modules/once/
-      orchestrator/node_modules/onetime/
-      orchestrator/node_modules/openai/
-      orchestrator/node_modules/p-limit/
-      orchestrator/node_modules/p-queue/
-      orchestrator/node_modules/p-timeout/
-      orchestrator/node_modules/parseurl/
-      orchestrator/node_modules/path-is-absolute/
-      orchestrator/node_modules/path-key/
-      orchestrator/node_modules/path-to-regexp/
-      orchestrator/node_modules/pathe/
-      orchestrator/node_modules/pathval/
-      orchestrator/node_modules/picocolors/
-      orchestrator/node_modules/picomatch/
-      orchestrator/node_modules/pkg-types/
-      orchestrator/node_modules/postcss/
-      orchestrator/node_modules/pretty-format/
-      orchestrator/node_modules/prom-client/
-      orchestrator/node_modules/proxy-addr/
-      orchestrator/node_modules/punycode/
-      orchestrator/node_modules/qs/
-      orchestrator/node_modules/queue-microtask/
-      orchestrator/node_modules/range-parser/
-      orchestrator/node_modules/raw-body/
-      orchestrator/node_modules/react-is/
-      orchestrator/node_modules/readdirp/
-      orchestrator/node_modules/resolve-pkg-maps/
-      orchestrator/node_modules/reusify/
-      orchestrator/node_modules/rollup/
-      orchestrator/node_modules/run-parallel/
-      orchestrator/node_modules/safe-buffer/
-      orchestrator/node_modules/safer-buffer/
-      orchestrator/node_modules/semver/
-      orchestrator/node_modules/send/
-      orchestrator/node_modules/serve-static/
-      orchestrator/node_modules/setprototypeof/
-      orchestrator/node_modules/shebang-command/
-      orchestrator/node_modules/shebang-regex/
-      orchestrator/node_modules/side-channel/
-      orchestrator/node_modules/side-channel-list/
-      orchestrator/node_modules/side-channel-map/
-      orchestrator/node_modules/side-channel-weakmap/
-      orchestrator/node_modules/siginfo/
-      orchestrator/node_modules/signal-exit/
-      orchestrator/node_modules/sirv/
-      orchestrator/node_modules/source-map-js/
-      orchestrator/node_modules/sparse-bitfield/
-      orchestrator/node_modules/stackback/
-      orchestrator/node_modules/statuses/
-      orchestrator/node_modules/std-env/
-      orchestrator/node_modules/strip-final-newline/
-      orchestrator/node_modules/strip-literal/
-      orchestrator/node_modules/supports-color/
-      orchestrator/node_modules/tdigest/
-      orchestrator/node_modules/test-exclude/
-      orchestrator/node_modules/tinybench/
-      orchestrator/node_modules/tinypool/
-      orchestrator/node_modules/tinyspy/
-      orchestrator/node_modules/to-regex-range/
-      orchestrator/node_modules/toidentifier/
-      orchestrator/node_modules/totalist/
-      orchestrator/node_modules/tr46/
-      orchestrator/node_modules/tsx/
-      orchestrator/node_modules/type-detect/
-      orchestrator/node_modules/type-is/
-      orchestrator/node_modules/typescript/
-      orchestrator/node_modules/ufo/
-      orchestrator/node_modules/undici-types/
-      orchestrator/node_modules/unpipe/
-      orchestrator/node_modules/utils-merge/
-      orchestrator/node_modules/uuid/
-      orchestrator/node_modules/vary/
-      orchestrator/node_modules/vite/
-      orchestrator/node_modules/vite-node/
-      orchestrator/node_modules/vitest/
-      orchestrator/node_modules/web-streams-polyfill/
-      orchestrator/node_modules/webidl-conversions/
-      orchestrator/node_modules/whatwg-url/
-      orchestrator/node_modules/which/
-      orchestrator/node_modules/why-is-node-running/
-      orchestrator/node_modules/wrappy/
-      orchestrator/node_modules/yaml/
-      orchestrator/node_modules/yocto-queue/
-      orchestrator/node_modules/zod/
-    orchestrator/orchestrator/
-      - mongo-init.js/
-      - monitoring/
-      orchestrator/orchestrator/mongo-init.js/
-      orchestrator/orchestrator/monitoring/
-    orchestrator/scripts/
-    orchestrator/src/
-      - alerts/
-      - knowledge/
-      - memory/
-      - metrics/
-      - middleware/
-      - persistence/
-      - skills/
-      - agentRegistry.ts
-      - alerter.ts
-      - config.ts
-      - docIndexer.ts
-      - index.ts
-      - notifier.ts
-      - skillAudit.ts.bak
-      - state.ts
-      - taskHandlers.ts
-      - taskQueue.ts
-      - toolGate.ts.bak
-      - types.ts
-      orchestrator/src/alerts/
-      orchestrator/src/knowledge/
-      orchestrator/src/memory/
-      orchestrator/src/metrics/
-      orchestrator/src/middleware/
-      orchestrator/src/persistence/
-      orchestrator/src/skills/
-    orchestrator/test/
-      - .tmp/
-      - fixtures/
-      - helpers/
-      - integration/
-      - load/
-      - fixtures.ts
-      - helpers.ts
-      - integration.test.ts
-      - load.test.ts
-      orchestrator/test/.tmp/
-      orchestrator/test/fixtures/
-      orchestrator/test/helpers/
-      orchestrator/test/integration/
-      orchestrator/test/load/
-  scripts/
-    - sync_openai_cookbook.sh
-  skills/
-    - documentParser.ts
-    - index.ts
-    - normalizer.ts
-    - sourceFetch.ts
-    - testRunner.ts
-    - workspacePatch.ts
-  systemd/
-    - doc-specialist.service
-    - orchestrator.service
-    - reddit-helper.service
+.
+├── .dockerignore
+├── .git
+│   ├── COMMIT_EDITMSG
+│   ├── FETCH_HEAD
+│   ├── HEAD
+│   ├── branches
+│   ├── config
+│   ├── description
+│   ├── hooks
+│   │   ├── applypatch-msg.sample
+│   │   ├── commit-msg.sample
+│   │   ├── fsmonitor-watchman.sample
+│   │   ├── post-update.sample
+│   │   ├── pre-applypatch.sample
+│   │   ├── pre-commit.sample
+│   │   ├── pre-merge-commit.sample
+│   │   ├── pre-push.sample
+│   │   ├── pre-rebase.sample
+│   │   ├── pre-receive.sample
+│   │   ├── prepare-commit-msg.sample
+│   │   ├── push-to-checkout.sample
+│   │   ├── sendemail-validate.sample
+│   │   └── update.sample
+│   ├── index
+│   ├── info
+│   │   └── exclude
+│   ├── logs
+│   │   ├── HEAD
+│   │   └── refs
+│   ├── objects
+│   │   ├── 00
+│   │   ├── 01
+│   │   ├── 02
+│   │   ├── 03
+│   │   ├── 04
+│   │   ├── 05
+│   │   ├── 06
+│   │   ├── 07
+│   │   ├── 08
+│   │   ├── 09
+│   │   ├── 0a
+│   │   ├── 0b
+│   │   ├── 0c
+│   │   ├── 0d
+│   │   ├── 0e
+│   │   ├── 0f
+│   │   ├── 10
+│   │   ├── 11
+│   │   ├── 12
+│   │   ├── 13
+│   │   ├── 14
+│   │   ├── 15
+│   │   ├── 16
+│   │   ├── 17
+│   │   ├── 18
+│   │   ├── 19
+│   │   ├── 1a
+│   │   ├── 1b
+│   │   ├── 1c
+│   │   ├── 1d
+│   │   ├── 1e
+│   │   ├── 1f
+│   │   ├── 20
+│   │   ├── 21
+│   │   ├── 22
+│   │   ├── 23
+│   │   ├── 24
+│   │   ├── 25
+│   │   ├── 26
+│   │   ├── 27
+│   │   ├── 28
+│   │   ├── 29
+│   │   ├── 2a
+│   │   ├── 2b
+│   │   ├── 2c
+│   │   ├── 2d
+│   │   ├── 2e
+│   │   ├── 2f
+│   │   ├── 30
+│   │   ├── 31
+│   │   ├── 32
+│   │   ├── 33
+│   │   ├── 34
+│   │   ├── 35
+│   │   ├── 36
+│   │   ├── 37
+│   │   ├── 38
+│   │   ├── 39
+│   │   ├── 3a
+│   │   ├── 3b
+│   │   ├── 3c
+│   │   ├── 3d
+│   │   ├── 3e
+│   │   ├── 3f
+│   │   ├── 40
+│   │   ├── 41
+│   │   ├── 42
+│   │   ├── 43
+│   │   ├── 44
+│   │   ├── 45
+│   │   ├── 46
+│   │   ├── 47
+│   │   ├── 48
+│   │   ├── 49
+│   │   ├── 4a
+│   │   ├── 4b
+│   │   ├── 4c
+│   │   ├── 4d
+│   │   ├── 4e
+│   │   ├── 4f
+│   │   ├── 50
+│   │   ├── 51
+│   │   ├── 52
+│   │   ├── 53
+│   │   ├── 54
+│   │   ├── 55
+│   │   ├── 56
+│   │   ├── 57
+│   │   ├── 58
+│   │   ├── 59
+│   │   ├── 5a
+│   │   ├── 5b
+│   │   ├── 5c
+│   │   ├── 5d
+│   │   ├── 5e
+│   │   ├── 5f
+│   │   ├── 60
+│   │   ├── 61
+│   │   ├── 62
+│   │   ├── 63
+│   │   ├── 64
+│   │   ├── 65
+│   │   ├── 66
+│   │   ├── 67
+│   │   ├── 68
+│   │   ├── 69
+│   │   ├── 6a
+│   │   ├── 6b
+│   │   ├── 6c
+│   │   ├── 6d
+│   │   ├── 6e
+│   │   ├── 6f
+│   │   ├── 70
+│   │   ├── 71
+│   │   ├── 72
+│   │   ├── 73
+│   │   ├── 74
+│   │   ├── 75
+│   │   ├── 76
+│   │   ├── 77
+│   │   ├── 78
+│   │   ├── 79
+│   │   ├── 7a
+│   │   ├── 7b
+│   │   ├── 7c
+│   │   ├── 7d
+│   │   ├── 7e
+│   │   ├── 7f
+│   │   ├── 80
+│   │   ├── 81
+│   │   ├── 82
+│   │   ├── 83
+│   │   ├── 84
+│   │   ├── 85
+│   │   ├── 86
+│   │   ├── 87
+│   │   ├── 88
+│   │   ├── 89
+│   │   ├── 8a
+│   │   ├── 8b
+│   │   ├── 8c
+│   │   ├── 8d
+│   │   ├── 8e
+│   │   ├── 8f
+│   │   ├── 90
+│   │   ├── 91
+│   │   ├── 92
+│   │   ├── 93
+│   │   ├── 94
+│   │   ├── 95
+│   │   ├── 96
+│   │   ├── 97
+│   │   ├── 98
+│   │   ├── 99
+│   │   ├── 9a
+│   │   ├── 9b
+│   │   ├── 9c
+│   │   ├── 9d
+│   │   ├── 9e
+│   │   ├── 9f
+│   │   ├── a0
+│   │   ├── a1
+│   │   ├── a2
+│   │   ├── a3
+│   │   ├── a4
+│   │   ├── a5
+│   │   ├── a6
+│   │   ├── a7
+│   │   ├── a8
+│   │   ├── a9
+│   │   ├── aa
+│   │   ├── ab
+│   │   ├── ac
+│   │   ├── ad
+│   │   ├── ae
+│   │   ├── af
+│   │   ├── b0
+│   │   ├── b1
+│   │   ├── b2
+│   │   ├── b3
+│   │   ├── b4
+│   │   ├── b5
+│   │   ├── b6
+│   │   ├── b7
+│   │   ├── b8
+│   │   ├── b9
+│   │   ├── ba
+│   │   ├── bb
+│   │   ├── bc
+│   │   ├── bd
+│   │   ├── be
+│   │   ├── bf
+│   │   ├── c0
+│   │   ├── c1
+│   │   ├── c2
+│   │   ├── c3
+│   │   ├── c4
+│   │   ├── c5
+│   │   ├── c6
+│   │   ├── c7
+│   │   ├── c8
+│   │   ├── c9
+│   │   ├── ca
+│   │   ├── cb
+│   │   ├── cc
+│   │   ├── cd
+│   │   ├── ce
+│   │   ├── cf
+│   │   ├── d0
+│   │   ├── d1
+│   │   ├── d2
+│   │   ├── d3
+│   │   ├── d4
+│   │   ├── d5
+│   │   ├── d6
+│   │   ├── d7
+│   │   ├── d8
+│   │   ├── d9
+│   │   ├── da
+│   │   ├── db
+│   │   ├── dc
+│   │   ├── dd
+│   │   ├── de
+│   │   ├── df
+│   │   ├── e0
+│   │   ├── e1
+│   │   ├── e2
+│   │   ├── e3
+│   │   ├── e4
+│   │   ├── e5
+│   │   ├── e6
+│   │   ├── e7
+│   │   ├── e8
+│   │   ├── e9
+│   │   ├── ea
+│   │   ├── eb
+│   │   ├── ec
+│   │   ├── ed
+│   │   ├── ee
+│   │   ├── ef
+│   │   ├── f0
+│   │   ├── f1
+│   │   ├── f2
+│   │   ├── f3
+│   │   ├── f4
+│   │   ├── f5
+│   │   ├── f6
+│   │   ├── f7
+│   │   ├── f8
+│   │   ├── f9
+│   │   ├── fa
+│   │   ├── fb
+│   │   ├── fc
+│   │   ├── fd
+│   │   ├── fe
+│   │   ├── ff
+│   │   ├── info
+│   │   └── pack
+│   ├── packed-refs
+│   ├── refs
+│   │   ├── heads
+│   │   ├── remotes
+│   │   └── tags
+│   └── worktrees
+│       └── openclaw-push
+├── .github
+│   ├── copilot-instructions.md
+│   └── workflows
+│       ├── deploy.yml
+│       └── test.yml
+├── .gitignore
+├── .openclaw
+│   └── workspace-state.json
+├── .pi
+├── AGENTS.md
+├── BOOTSTRAP.md
+├── CHANGELOG.md
+├── DEPLOYMENT.md
+├── Dockerfile
+├── ENGAGEMENT_OS.md
+├── HEARTBEAT.md
+├── IDENTITY.md
+├── MEMORY.md
+├── OPENCLAW-FLOW.png
+├── OPENCLAW_CONTEXT_ANCHOR.md
+├── QUICKSTART.md
+├── RADAR.md
+├── README.md
+├── RUNTIME_ENGAGEMENT_OS.md
+├── SOUL.md
+├── TOOLS.md
+├── USER.md
+├── agents
+│   ├── AGENT_TEMPLATE
+│   │   ├── HEARTBEAT.md
+│   │   ├── IDENTITY.md
+│   │   ├── POLICY.md
+│   │   ├── README.md
+│   │   ├── ROLE.md
+│   │   ├── SCOPE.md
+│   │   ├── SOUL.md
+│   │   ├── TOOLS.md
+│   │   ├── USER.md
+│   │   ├── agent.config.json
+│   │   ├── package.json
+│   │   └── src
+│   ├── README.md
+│   ├── build-refactor-agent
+│   │   ├── HEARTBEAT.md
+│   │   ├── IDENTITY.md
+│   │   ├── POLICY.md
+│   │   ├── README.md
+│   │   ├── ROLE.md
+│   │   ├── SCOPE.md
+│   │   ├── SOUL.md
+│   │   ├── TOOLS.md
+│   │   ├── USER.md
+│   │   ├── agent.config.json
+│   │   ├── package.json
+│   │   └── src
+│   ├── content-agent
+│   │   ├── HEARTBEAT.md
+│   │   ├── IDENTITY.md
+│   │   ├── POLICY.md
+│   │   ├── README.md
+│   │   ├── ROLE.md
+│   │   ├── SCOPE.md
+│   │   ├── SOUL.md
+│   │   ├── TOOLS.md
+│   │   ├── USER.md
+│   │   ├── agent.config.json
+│   │   ├── package.json
+│   │   └── src
+│   ├── data-extraction-agent
+│   │   ├── HEARTBEAT.md
+│   │   ├── IDENTITY.md
+│   │   ├── POLICY.md
+│   │   ├── README.md
+│   │   ├── ROLE.md
+│   │   ├── SCOPE.md
+│   │   ├── SOUL.md
+│   │   ├── TOOLS.md
+│   │   ├── USER.md
+│   │   ├── agent.config.json
+│   │   ├── package.json
+│   │   └── src
+│   ├── doc-specialist
+│   │   ├── .env
+│   │   ├── HEARTBEAT.md
+│   │   ├── IDENTITY.md
+│   │   ├── POLICY.md
+│   │   ├── README.md
+│   │   ├── ROLE.md
+│   │   ├── SCOPE.md
+│   │   ├── SOUL.md
+│   │   ├── TOOLS.md
+│   │   ├── USER.md
+│   │   ├── agent.config.json
+│   │   └── src
+│   ├── integration-agent
+│   │   ├── HEARTBEAT.md
+│   │   ├── IDENTITY.md
+│   │   ├── POLICY.md
+│   │   ├── README.md
+│   │   ├── ROLE.md
+│   │   ├── SCOPE.md
+│   │   ├── SOUL.md
+│   │   ├── TOOLS.md
+│   │   ├── USER.md
+│   │   ├── agent.config.json
+│   │   ├── package.json
+│   │   └── src
+│   ├── market-research-agent
+│   │   ├── HEARTBEAT.md
+│   │   ├── IDENTITY.md
+│   │   ├── POLICY.md
+│   │   ├── README.md
+│   │   ├── ROLE.md
+│   │   ├── SCOPE.md
+│   │   ├── SOUL.md
+│   │   ├── TOOLS.md
+│   │   ├── USER.md
+│   │   ├── agent.config.json
+│   │   ├── package.json
+│   │   └── src
+│   ├── normalization-agent
+│   │   ├── HEARTBEAT.md
+│   │   ├── IDENTITY.md
+│   │   ├── POLICY.md
+│   │   ├── README.md
+│   │   ├── ROLE.md
+│   │   ├── SCOPE.md
+│   │   ├── SOUL.md
+│   │   ├── TOOLS.md
+│   │   ├── USER.md
+│   │   ├── agent.config.json
+│   │   ├── package.json
+│   │   └── src
+│   ├── qa-verification-agent
+│   │   ├── HEARTBEAT.md
+│   │   ├── IDENTITY.md
+│   │   ├── POLICY.md
+│   │   ├── README.md
+│   │   ├── ROLE.md
+│   │   ├── SCOPE.md
+│   │   ├── SOUL.md
+│   │   ├── TOOLS.md
+│   │   ├── USER.md
+│   │   ├── agent.config.json
+│   │   ├── package.json
+│   │   └── src
+│   ├── reddit-helper
+│   │   ├── HEARTBEAT.md
+│   │   ├── IDENTITY.md
+│   │   ├── POLICY.md
+│   │   ├── README.md
+│   │   ├── ROLE.md
+│   │   ├── SCOPE.md
+│   │   ├── SOUL.md
+│   │   ├── TOOLS.md
+│   │   ├── USER.md
+│   │   ├── agent.config.json
+│   │   ├── src
+│   │   └── test-real-cookbook.ts
+│   ├── security-agent
+│   │   ├── HEARTBEAT.md
+│   │   ├── IDENTITY.md
+│   │   ├── POLICY.md
+│   │   ├── README.md
+│   │   ├── ROLE.md
+│   │   ├── SCOPE.md
+│   │   ├── SOUL.md
+│   │   ├── TOOLS.md
+│   │   ├── USER.md
+│   │   ├── agent.config.json
+│   │   ├── package.json
+│   │   └── src
+│   ├── shared
+│   │   ├── HEARTBEAT.md
+│   │   ├── IDENTITY.md
+│   │   ├── SOUL.md
+│   │   ├── TOOLS.md
+│   │   ├── USER.md
+│   │   └── telemetry.ts
+│   ├── skill-audit-agent
+│   │   ├── HEARTBEAT.md
+│   │   ├── IDENTITY.md
+│   │   ├── POLICY.md
+│   │   ├── README.md
+│   │   ├── ROLE.md
+│   │   ├── SCOPE.md
+│   │   ├── SOUL.md
+│   │   ├── TOOLS.md
+│   │   ├── USER.md
+│   │   ├── agent.config.json
+│   │   ├── package.json
+│   │   └── src
+│   ├── summarization-agent
+│   │   ├── HEARTBEAT.md
+│   │   ├── IDENTITY.md
+│   │   ├── POLICY.md
+│   │   ├── README.md
+│   │   ├── ROLE.md
+│   │   ├── SCOPE.md
+│   │   ├── SOUL.md
+│   │   ├── TOOLS.md
+│   │   ├── USER.md
+│   │   ├── agent.config.json
+│   │   ├── package.json
+│   │   └── src
+│   └── system-monitor-agent
+│       ├── HEARTBEAT.md
+│       ├── IDENTITY.md
+│       ├── POLICY.md
+│       ├── README.md
+│       ├── ROLE.md
+│       ├── SCOPE.md
+│       ├── SOUL.md
+│       ├── TOOLS.md
+│       ├── USER.md
+│       ├── agent.config.json
+│       ├── package.json
+│       └── src
+├── docker-compose.yml
+├── docs
+│   ├── CLAWDBOT_MILESTONES.md
+│   ├── GOVERNANCE_REPO_HYGIENE.md
+│   ├── INDEX.md
+│   ├── MEMORY_SYSTEM_GUIDE.md
+│   ├── NAVIGATION.md
+│   ├── OPENCLAW_KB
+│   │   ├── 00_SYSTEM_TRUTH.md
+│   │   ├── 01_CONTROL_PLANE.md
+│   │   ├── 02_GATEWAY_AND_POLICY.md
+│   │   ├── 03_AGENT_ISOLATION.md
+│   │   ├── 04_SKILLS_AND_SUPPLY_CHAIN.md
+│   │   ├── 05_MEMORY_CONTEXT_PERSISTENCE.md
+│   │   ├── 06_LIFECYCLE_AND_SCHEDULING.md
+│   │   ├── 07_INVARIANTS_AND_RISKS.md
+│   │   ├── 08_CLAIMS_VS_REALITY.md
+│   │   ├── AGENT_ROLES.md
+│   │   ├── ARCHITECTURE.md
+│   │   ├── CLASSIFICATION.md
+│   │   ├── QA_VERIFICATION_MATRIX.md
+│   │   ├── README.md
+│   │   ├── governance
+│   │   ├── operations
+│   │   └── security
+│   ├── OPERATOR_GUIDE.md
+│   ├── OPTION_A_IMPLEMENTATION_ROADMAP.md
+│   ├── README.md
+│   ├── SUMMARY.md
+│   ├── SYSTEM_ARCHITECTURE.mmd
+│   ├── SYSTEM_DIAGRAM_PROMPT.md
+│   ├── WEBHOOK_SIGNING_CONTRACT.md
+│   ├── concepts
+│   │   └── architecture.md
+│   ├── guides
+│   │   ├── adding-tasks.md
+│   │   ├── configuration.md
+│   │   ├── monitoring.md
+│   │   └── running-agents.md
+│   ├── operations
+│   │   ├── DOCUMENTATION_COMPLETE.md
+│   │   ├── DOCUMENT_AUDIT.md
+│   │   ├── IMPLEMENTATION_COMPLETE.md
+│   │   ├── MILESTONE_INGEST_CONTRACT.md
+│   │   ├── MILESTONE_PIPELINE_RUNBOOK.md
+│   │   ├── PRD_GOVERNANCE_REMEDIATION.md
+│   │   ├── SPRINT_TO_COMPLETION.md
+│   │   ├── backup-recovery.md
+│   │   ├── clawdbot-milestone-delivery-plan.md
+│   │   ├── deployment.md
+│   │   ├── orchestrator-status.md
+│   │   ├── orchestrator_documentation.md
+│   │   └── orchestrator_workflow_plan.md
+│   ├── reference
+│   │   ├── api.md
+│   │   ├── state-schema.md
+│   │   └── task-types.md
+│   ├── repo-folder-tree-depth3.txt
+│   ├── start
+│   │   ├── architecture-overview.md
+│   │   ├── getting-started.md
+│   │   └── quickstart.md
+│   └── troubleshooting
+│       ├── common-issues.md
+│       └── debugging.md
+├── governance
+│   ├── INVARIANT_MATRIX.md
+│   └── RUNTIME_GOVERNANCE.md
+├── logs
+│   ├── archive
+│   │   ├── devvit-submissions.1771598480.jsonl
+│   │   └── reddit-drafts.1771598480.jsonl
+│   ├── audits
+│   │   └── context-anchor
+│   ├── build-refactor-agent-service.json
+│   ├── content-agent-service.json
+│   ├── data-extraction-agent-service.json
+│   ├── devvit-submissions.jsonl
+│   ├── doc-specialist-service.json
+│   ├── draft-approvals.json
+│   ├── draft-digest-state.json
+│   ├── integration-agent-service.json
+│   ├── knowledge-packs
+│   │   ├── knowledge-pack-1771590702482.json
+│   │   ├── knowledge-pack-1771711710790.json
+│   │   ├── knowledge-pack-1771713121652.json
+│   │   ├── knowledge-pack-1771713278550.json
+│   │   ├── knowledge-pack-1771714226637.json
+│   │   ├── knowledge-pack-1771868930635.json
+│   │   ├── knowledge-pack-1771868950267.json
+│   │   ├── knowledge-pack-1771868962083.json
+│   │   ├── knowledge-pack-1771870126099.json
+│   │   └── knowledge-pack-1771871250791.json
+│   ├── live-dispatch-runs.jsonl
+│   ├── manual-post-queue.jsonl
+│   ├── market-research-agent-service.json
+│   ├── milestones.jsonl
+│   ├── normalization-agent-service.json
+│   ├── qa-verification-agent-service.json
+│   ├── reddit-drafts.jsonl
+│   ├── reddit-helper-service.json
+│   ├── security-agent-service.json
+│   ├── skill-audit-agent-service.json
+│   ├── summarization-agent-service.json
+│   ├── sync_openai_cookbook.log
+│   ├── sync_openclaw_docs.log
+│   ├── system-monitor-agent-service.json
+│   └── template-agent-service.json
+├── memory
+│   ├── 2026-02-19.md
+│   ├── 2026-02-21-0601.md
+│   ├── 2026-02-21.md
+│   ├── 2026-02-22.md
+│   └── 2026-02-23.md
+├── node_modules
+│   ├── .bin
+│   │   ├── esbuild -> ../esbuild/bin/esbuild
+│   │   └── tsx -> ../tsx/dist/cli.mjs
+│   ├── .package-lock.json
+│   ├── @esbuild
+│   │   └── linux-x64
+│   ├── esbuild
+│   │   ├── LICENSE.md
+│   │   ├── README.md
+│   │   ├── bin
+│   │   ├── install.js
+│   │   ├── lib
+│   │   └── package.json
+│   ├── get-tsconfig
+│   │   ├── LICENSE
+│   │   ├── README.md
+│   │   ├── dist
+│   │   └── package.json
+│   ├── resolve-pkg-maps
+│   │   ├── LICENSE
+│   │   ├── README.md
+│   │   ├── dist
+│   │   └── package.json
+│   └── tsx
+│       ├── LICENSE
+│       ├── README.md
+│       ├── dist
+│       └── package.json
+├── openai-cookbook
+│   ├── .git
+│   │   ├── HEAD
+│   │   ├── branches
+│   │   ├── config
+│   │   ├── description
+│   │   ├── hooks
+│   │   ├── index
+│   │   ├── info
+│   │   ├── logs
+│   │   ├── objects
+│   │   ├── packed-refs
+│   │   ├── refs
+│   │   └── shallow
+│   ├── .gitignore
+│   ├── AGENTS.md
+│   ├── CONTRIBUTING.md
+│   ├── LICENSE
+│   ├── README.md
+│   ├── articles
+│   │   ├── codex_exec_plans.md
+│   │   ├── gpt-oss
+│   │   ├── gpt-oss-safeguard-guide.md
+│   │   ├── how_to_work_with_large_language_models.md
+│   │   ├── openai-harmony.md
+│   │   ├── related_resources.md
+│   │   ├── techniques_to_improve_reliability.md
+│   │   ├── text_comparison_examples.md
+│   │   ├── what_is_new_with_dalle_3.mdx
+│   │   └── what_makes_documentation_good.md
+│   ├── authors.yaml
+│   ├── examples
+│   │   ├── Assistants_API_overview_python.ipynb
+│   │   ├── Build_a_coding_agent_with_GPT-5.1.ipynb
+│   │   ├── Chat_finetuning_data_prep.ipynb
+│   │   ├── Classification_using_embeddings.ipynb
+│   │   ├── Clustering.ipynb
+│   │   ├── Clustering_for_transaction_classification.ipynb
+│   │   ├── Code_search_using_embeddings.ipynb
+│   │   ├── Context_summarization_with_realtime_api.ipynb
+│   │   ├── Creating_slides_with_Assistants_API_and_DALL-E3.ipynb
+│   │   ├── Custom-LLM-as-a-Judge.ipynb
+│   │   ├── Customizing_embeddings.ipynb
+│   │   ├── Data-intensive-Realtime-apps.ipynb
+│   │   ├── Data_extraction_transformation.ipynb
+│   │   ├── Developing_hallucination_guardrails.ipynb
+│   │   ├── Embedding_Wikipedia_articles_for_search.ipynb
+│   │   ├── Embedding_long_inputs.ipynb
+│   │   ├── Enhance_your_prompts_with_meta_prompting.ipynb
+│   │   ├── Entity_extraction_for_long_documents.ipynb
+│   │   ├── File_Search_Responses.ipynb
+│   │   ├── Fine-tuned_classification.ipynb
+│   │   ├── Fine_tuning_direct_preference_optimization_guide.ipynb
+│   │   ├── Fine_tuning_for_function_calling.ipynb
+│   │   ├── Function_calling_finding_nearby_places.ipynb
+│   │   ├── Function_calling_with_an_OpenAPI_spec.ipynb
+│   │   ├── GPT_with_vision_for_video_understanding.ipynb
+│   │   ├── Generate_Images_With_GPT_Image.ipynb
+│   │   ├── Generate_Images_With_High_Input_Fidelity.ipynb
+│   │   ├── Get_embeddings_from_dataset.ipynb
+│   │   ├── How_to_build_a_tool-using_agent_with_Langchain.ipynb
+│   │   ├── How_to_build_an_agent_with_the_node_sdk.mdx
+│   │   ├── How_to_call_functions_for_knowledge_retrieval.ipynb
+│   │   ├── How_to_call_functions_with_chat_models.ipynb
+│   │   ├── How_to_combine_GPT4o_with_RAG_Outfit_Assistant.ipynb
+│   │   ├── How_to_count_tokens_with_tiktoken.ipynb
+│   │   ├── How_to_finetune_chat_models.ipynb
+│   │   ├── How_to_format_inputs_to_ChatGPT_models.ipynb
+│   │   ├── How_to_handle_rate_limits.ipynb
+│   │   ├── How_to_stream_completions.ipynb
+│   │   ├── How_to_use_guardrails.ipynb
+│   │   ├── How_to_use_moderation.ipynb
+│   │   ├── Leveraging_model_distillation_to_fine-tune_a_model.ipynb
+│   │   ├── Multiclass_classification_for_transactions.ipynb
+│   │   ├── Named_Entity_Recognition_to_enrich_text.ipynb
+│   │   ├── Optimize_Prompts.ipynb
+│   │   ├── Orchestrating_agents.ipynb
+│   │   ├── Parse_PDF_docs_for_RAG.ipynb
+│   │   ├── Prompt_Caching101.ipynb
+│   │   ├── Prompt_Caching_201.ipynb
+│   │   ├── Prompt_migration_guide.ipynb
+│   │   ├── Question_answering_using_a_search_API.ipynb
+│   │   ├── Question_answering_using_embeddings.ipynb
+│   │   ├── RAG_with_graph_db.ipynb
+│   │   ├── Realtime_eval_guide.ipynb
+│   │   ├── Realtime_out_of_band_transcription.ipynb
+│   │   ├── Realtime_prompting_guide.ipynb
+│   │   ├── Recommendation_using_embeddings.ipynb
+│   │   ├── Regression_using_embeddings.ipynb
+│   │   ├── Reinforcement_Fine_Tuning.ipynb
+│   │   ├── Reproducible_outputs_with_the_seed_parameter.ipynb
+│   │   ├── SDG1.ipynb
+│   │   ├── Search_reranking_with_cross-encoders.ipynb
+│   │   ├── Semantic_text_search_using_embeddings.ipynb
+│   │   ├── Speech_transcription_methods.ipynb
+│   │   ├── Structured_Outputs_Intro.ipynb
+│   │   ├── Structured_outputs_multi_agent.ipynb
+│   │   ├── Summarizing_long_documents.ipynb
+│   │   ├── Tag_caption_images_with_GPT4V.ipynb
+│   │   ├── Unit_test_writing_using_a_multi-step_prompt.ipynb
+│   │   ├── Unit_test_writing_using_a_multi-step_prompt_with_older_completions_API.ipynb
+│   │   ├── User_and_product_embeddings.ipynb
+│   │   ├── Using_embeddings.ipynb
+│   │   ├── Using_logprobs.ipynb
+│   │   ├── Using_tool_required_for_customer_service.ipynb
+│   │   ├── Visualizing_embeddings_in_2D.ipynb
+│   │   ├── Visualizing_embeddings_in_3D.ipynb
+│   │   ├── Whisper_correct_misspelling.ipynb
+│   │   ├── Whisper_processing_guide.ipynb
+│   │   ├── Whisper_prompting_guide.ipynb
+│   │   ├── Zero-shot_classification_with_embeddings.ipynb
+│   │   ├── agentkit
+│   │   ├── agents_sdk
+│   │   ├── api_request_parallel_processor.py
+│   │   ├── azure
+│   │   ├── batch_processing.ipynb
+│   │   ├── book_translation
+│   │   ├── building_w_rt_mini
+│   │   ├── chatgpt
+│   │   ├── codex
+│   │   ├── completions_usage_api.ipynb
+│   │   ├── custom_image_embedding_search.ipynb
+│   │   ├── dalle
+│   │   ├── data
+│   │   ├── deep_research_api
+│   │   ├── evals
+│   │   ├── evaluation
+│   │   ├── fine-tuned_qa
+│   │   ├── gpt-5
+│   │   ├── gpt4-1_prompting_guide.ipynb
+│   │   ├── gpt4o
+│   │   ├── imgs
+│   │   ├── mcp
+│   │   ├── mermaid
+│   │   ├── multimodal
+│   │   ├── o-series
+│   │   ├── o1
+│   │   ├── object_oriented_agentic_approach
+│   │   ├── partners
+│   │   ├── reasoning_function_calls.ipynb
+│   │   ├── responses_api
+│   │   ├── skills_in_api.ipynb
+│   │   ├── sora
+│   │   ├── stripe_model_eval
+│   │   ├── third_party
+│   │   ├── utils
+│   │   ├── vector_databases
+│   │   └── voice_solutions
+│   ├── images
+│   │   ├── 01_alti_agent_governance.png
+│   │   ├── 01_benefit_of_temporal_kb.jpg
+│   │   ├── 02_alti_stack.png
+│   │   ├── 02_question_types_for_temporal_kbs.jpg
+│   │   ├── 03_alti_promptfoo_dash.png
+│   │   ├── 03_statement_invalidation.png
+│   │   ├── 04_temporal_agent.png
+│   │   ├── 05_temporal_agent_arch.png
+│   │   ├── 06_temporal_agent_chunker.png
+│   │   ├── 07_temporal_agent_class.png
+│   │   ├── 08_invalidation_agent.png
+│   │   ├── 09_full_pipeline.png
+│   │   ├── 10_multi_step_retrieval.png
+│   │   ├── 11_retrieval_agent.png
+│   │   ├── 12_spectrum_of_tools.png
+│   │   ├── 2.2_model_evolution.png
+│   │   ├── 3A_rag_hierarchical_router.png
+│   │   ├── 3A_rag_task_card.png
+│   │   ├── 3B_coscientist_architecture.png
+│   │   ├── 3B_reasoning_task_card.png
+│   │   ├── 3C_insurance_architecture.png
+│   │   ├── 3C_insurance_form.png
+│   │   ├── 3C_insurance_task_card.png
+│   │   ├── 3D_model_selection_flowchart.png
+│   │   ├── Custom-LLM-as-a-Judge-Output.png
+│   │   ├── Custom-LLM-as-a-Judge-Partial-Credit.gif
+│   │   ├── Custom-LLM-as-a-Judge-Reasoning.png
+│   │   ├── ELT_table.png
+│   │   ├── NotRealCorp_chart.png
+│   │   ├── Supplies_20240322_220858_Raven_Scan_3_jpeg.rf.50852940734939c8838819d7795e1756.jpg
+│   │   ├── System_flow_partner_mcp.png
+│   │   ├── Traces-1_partner.png
+│   │   ├── Traces-2_partner.png
+│   │   ├── add_label.png
+│   │   ├── agent_dr.png
+│   │   ├── agent_log_traces.png
+│   │   ├── agent_trace_details.png
+│   │   ├── agents_sdk_transcription.png
+│   │   ├── app_assistant_voice_agents.png
+│   │   ├── app_assistant_voice_agents_arch.png
+│   │   ├── app_assistant_voice_agents_arch_2.png
+│   │   ├── app_assistant_voice_agents_trace.png
+│   │   ├── assistants_overview_assistants_dashboard.png
+│   │   ├── assistants_overview_assistants_playground.png
+│   │   ├── assistants_overview_diagram.png
+│   │   ├── assistants_overview_enable_code_interpreter.png
+│   │   ├── assistants_overview_enable_function.png
+│   │   ├── assistants_overview_enable_retrieval.png
+│   │   ├── assistants_overview_new_assistant.png
+│   │   ├── aws_lambda_1.png
+│   │   ├── aws_lambda_10.png
+│   │   ├── aws_lambda_11.png
+│   │   ├── aws_lambda_12.png
+│   │   ├── aws_lambda_13.png
+│   │   ├── aws_lambda_14.png
+│   │   ├── aws_lambda_15.png
+│   │   ├── aws_lambda_16.png
+│   │   ├── aws_lambda_17.png
+│   │   ├── aws_lambda_18.png
+│   │   ├── aws_lambda_19.png
+│   │   ├── aws_lambda_20.png
+│   │   ├── aws_lambda_3.png
+│   │   ├── aws_lambda_4.png
+│   │   ├── aws_lambda_8.png
+│   │   ├── aws_lambda_9.png
+│   │   ├── axial-coding.png
+│   │   ├── azure-rag-architecture.png
+│   │   ├── azure-rag-quickstart-gpt.png
+│   │   ├── base_woman.png
+│   │   ├── baseline_agent.png
+│   │   ├── bigquery_rag_architecture.png
+│   │   ├── billboard.png
+│   │   ├── billboard_winter.png
+│   │   ├── boots copy.png
+│   │   ├── boots.png
+│   │   ├── byo_realtime_diagram.png
+│   │   ├── byo_realtime_starting.png
+│   │   ├── canvas_lms_list_of_tokens.png
+│   │   ├── canvas_lms_new_token.png
+│   │   ├── canvas_lms_sample_conversation.png
+│   │   ├── canvas_lms_settings_link.png
+│   │   ├── carbon_cycle_technical_diagram.png
+│   │   ├── chain_of_thought_fig1.png
+│   │   ├── chain_of_thought_fig11.png
+│   │   ├── chain_of_thought_fig3.png
+│   │   ├── chain_of_thought_fig5.png
+│   │   ├── chatgpt-auth-config.png
+│   │   ├── childrens_book_illustration_1.png
+│   │   ├── childrens_book_illustration_2.png
+│   │   ├── christmas_collectible_toy_airplane.png
+│   │   ├── christmas_holiday_card_teddy.png
+│   │   ├── ci-codex-workflow.png
+│   │   ├── code-modernization-phases.png
+│   │   ├── codex-pr.png
+│   │   ├── codex-workflow.png
+│   │   ├── codex_action copy.png
+│   │   ├── codex_action.png
+│   │   ├── codex_code_review.png
+│   │   ├── comic-reel.png
+│   │   ├── comparisons.png
+│   │   ├── confluence_gpt.png
+│   │   ├── create_function_app.png
+│   │   ├── creating-availability-grader.png
+│   │   ├── creating-feedback-column.png
+│   │   ├── creating-formatting-grader.png
+│   │   ├── creating_notion_integration.png
+│   │   ├── custom-report-workday-01.png
+│   │   ├── custom-report-workday-02.png
+│   │   ├── dalle_image.png
+│   │   ├── data_vis_slide.png
+│   │   ├── databricks_mcp_architecture.png
+│   │   ├── databricks_mcp_ui.png
+│   │   ├── dataset.png
+│   │   ├── distilling.png
+│   │   ├── drawings copy.png
+│   │   ├── drawings.png
+│   │   ├── edit_logo_year_edit_gpt-image-1.5-logo_1769659071403_0.png
+│   │   ├── edit_vto_jacket_tryon_gpt-image-1.5-vto_1769658750053_0.png
+│   │   ├── elbow_chart.png
+│   │   ├── elt_workflow.png
+│   │   ├── escalate_06.png
+│   │   ├── escalate_07.png
+│   │   ├── eval_dashboard.png
+│   │   ├── eval_qa_code.png
+│   │   ├── eval_qa_data_1.png
+│   │   ├── eval_qa_data_2.png
+│   │   ├── eval_run_results.png
+│   │   ├── eval_set_config.png
+│   │   ├── eval_tools_fail.png
+│   │   ├── evals_sentiment.png
+│   │   ├── evals_tool_dashboard.png
+│   │   ├── evals_websearch_dashboard.png
+│   │   ├── evaluation-flywheel.png
+│   │   ├── extract_product.png
+│   │   ├── failing-workflow.png
+│   │   ├── faithful-reasoning_fig1.png
+│   │   ├── faithful-reasoning_fig2.png
+│   │   ├── faithful-reasoning_fig3.png
+│   │   ├── faithful-reasoning_fig4.png
+│   │   ├── faithful-reasoning_fig5.png
+│   │   ├── faithful-reasoning_fig7.png
+│   │   ├── faithful-reasoning_tab2.png
+│   │   ├── faithful-reasoning_tab5.png
+│   │   ├── feedback.png
+│   │   ├── filtering-out-completions.png
+│   │   ├── final_result.png
+│   │   ├── fine-tuning-job.png
+│   │   ├── first_feedback.png
+│   │   ├── first_interaction.png
+│   │   ├── game_example_1.png
+│   │   ├── game_example_2.png
+│   │   ├── gcp-function-middleware-oauthcallback.png
+│   │   ├── gcp-function-middleware-oauthclient.png
+│   │   ├── gcp_rag_quickstart_gpt.png
+│   │   ├── gen_coffee_flyer_generation_gpt-image-1.5_1769657762450_0.png
+│   │   ├── gen_ui_checkout_mockup_gpt-image-1.5-ui_1769656414221_0.png
+│   │   ├── get_function_url.png
+│   │   ├── github-pr-settings copy.png
+│   │   ├── github-pr-settings.png
+│   │   ├── gitlab-mr-widget.png
+│   │   ├── gitlab-pipelines-success.png
+│   │   ├── google-calendar-action-config.png
+│   │   ├── google-calendar-action-endpoints.png
+│   │   ├── google-calendar-callback-settings.png
+│   │   ├── google-calendar-callback.png
+│   │   ├── google-calendar-results.png
+│   │   ├── google-signin.png
+│   │   ├── gpt-rag-result.png
+│   │   ├── gpt_actions_box_azuredataflow.png
+│   │   ├── gpt_actions_box_boxconfig1.png
+│   │   ├── gpt_actions_box_gptauth.png
+│   │   ├── gpt_actions_salesforce_credentials.png
+│   │   ├── gpt_actions_salesforce_manager.png
+│   │   ├── gpt_actions_salesforce_oauth2.png
+│   │   ├── gpt_actions_salesforce_scope.png
+│   │   ├── gpt_actions_salesforce_settings_condensed.png
+│   │   ├── gpt_actions_salesforce_setup.png
+│   │   ├── gpt_actions_salesforce_token.png
+│   │   ├── gptactions_BigQuery_auth.png
+│   │   ├── gptactions_Gmail_apikey.png
+│   │   ├── gptactions_Gmail_clientidsecret.png
+│   │   ├── gptactions_Gmail_enableAPIs.png
+│   │   ├── gptactions_Gmail_gmailApiTile.png
+│   │   ├── gptactions_adzviser_oauth.png
+│   │   ├── gptactions_canvaslms_approvedintegrations.png
+│   │   ├── gptactions_canvaslms_auth.png
+│   │   ├── gptactions_canvaslms_integrationslist.png
+│   │   ├── gptactions_canvaslms_settings.png
+│   │   ├── gptactions_canvaslms_tokencreate.png
+│   │   ├── gptactions_gd_api_services_pin.png
+│   │   ├── gptactions_gd_authorized_redirect_uris.png
+│   │   ├── gptactions_gd_callbackurl_from_gpt_action.png
+│   │   ├── gptactions_gd_go_to_create_credentials.png
+│   │   ├── gptactions_gd_nav_to_enabled_api.png
+│   │   ├── gptactions_gd_oauth_consent_screen.png
+│   │   ├── gptactions_gd_oauthcid_and_csecret.png
+│   │   ├── gptactions_gd_search_google_drive_api.png
+│   │   ├── gptactions_googleads_search_term_analysis_1.png
+│   │   ├── gptactions_googleads_search_term_analysis_2.png
+│   │   ├── gptactions_jira_callback.png
+│   │   ├── gptactions_jira_clientsecret.png
+│   │   ├── gptactions_jira_devconsole.png
+│   │   ├── gptactions_jira_newapplication.png
+│   │   ├── gptactions_jira_permissions.png
+│   │   ├── gptactions_jira_placeholder.png
+│   │   ├── gptactions_jira_redirect.png
+│   │   ├── gptactions_jira_scopes.png
+│   │   ├── gptactions_outlook_callback.png
+│   │   ├── gptactions_outlook_permissionadd.png
+│   │   ├── gptactions_outlook_permissions.png
+│   │   ├── gptactions_outlook_redirectconfig.png
+│   │   ├── gptactions_outlook_redirectinput.png
+│   │   ├── gptactions_outlook_registerapplication.png
+│   │   ├── gptactions_outlook_secrets.png
+│   │   ├── gptactions_outlook_secretvalue.png
+│   │   ├── gptactions_sql_database_middleware.png
+│   │   ├── gptactions_trayai_createclientcredential.gif
+│   │   ├── gptactions_trayai_createoperation.gif
+│   │   ├── ground-truth-columns.png
+│   │   ├── image_optimize_1.png
+│   │   ├── image_optimize_2.png
+│   │   ├── image_optimize_3.png
+│   │   ├── image_optimize_4.png
+│   │   ├── image_optimize_5.png
+│   │   ├── infographic_coffee_machine copy.png
+│   │   ├── infographic_coffee_machine.png
+│   │   ├── infographic_coffee_machine_it.png
+│   │   ├── infographic_coffee_machine_sp.png
+│   │   ├── input_image.png
+│   │   ├── input_images
+│   │   ├── intro_dr.png
+│   │   ├── jacket.png
+│   │   ├── jira_comment.png
+│   │   ├── jira_rule.png
+│   │   ├── jira_status_change.png
+│   │   ├── kitchen-chairs.png
+│   │   ├── kitchen.jpeg
+│   │   ├── landing_page.png
+│   │   ├── lang_constraint_en.png
+│   │   ├── lang_constraint_multi.png
+│   │   ├── least-to-most_fig1.png
+│   │   ├── least-to-most_tab11.png
+│   │   ├── least-to-most_tab4.png
+│   │   ├── least-to-most_tab9.png
+│   │   ├── llamaindex_rag_overview.png
+│   │   ├── lm_cascades_fig1.png
+│   │   ├── lm_cascades_fig3.png
+│   │   ├── lm_cascades_fig4.png
+│   │   ├── lm_cascades_fig5.png
+│   │   ├── lm_cascades_fig6.png
+│   │   ├── login_page.png
+│   │   ├── logo_generation_1.png
+│   │   ├── logo_generation_2.png
+│   │   ├── logo_generation_3.png
+│   │   ├── logo_generation_4.png
+│   │   ├── logo_sample.png
+│   │   ├── long_horizon_cli_session_stats.jpg
+│   │   ├── long_horizon_codex_app_main_workspace.jpg
+│   │   ├── long_horizon_codex_reads_plans_file.jpg
+│   │   ├── long_horizon_comments_pinned_threads.jpg
+│   │   ├── long_horizon_design_desk_ui.jpeg
+│   │   ├── long_horizon_documentation_status_updates.jpg
+│   │   ├── long_horizon_implement_md_runbook_prompt.jpg
+│   │   ├── long_horizon_kickoff_prompt_to_codex.jpg
+│   │   ├── long_horizon_lint_fix_iteration.jpg
+│   │   ├── long_horizon_live_collaboration_demo.jpg
+│   │   ├── long_horizon_metr_time_horizon_chart.jpg
+│   │   ├── long_horizon_milestone_verification_commands.jpg
+│   │   ├── long_horizon_quality_commands.jpg
+│   │   ├── long_horizon_replay_timeline_panel.jpg
+│   │   ├── long_horizon_session_summary_dashboard.jpg
+│   │   ├── long_horizon_snapshots_history_panel.jpg
+│   │   ├── maieutic_fig2.png
+│   │   ├── maieutic_fig6.png
+│   │   ├── maieutic_tab1.png
+│   │   ├── man_with_blue_hat.png
+│   │   ├── man_with_flower.png
+│   │   ├── man_with_flower_no_stripes.png
+│   │   ├── mcp_dr.png
+│   │   ├── mcp_eval_data.png
+│   │   ├── mcp_eval_improved_data.png
+│   │   ├── mcp_eval_improved_output.png
+│   │   ├── mcp_eval_output.png
+│   │   ├── memory_comparison.jpg
+│   │   ├── mockup_sample.png
+│   │   ├── motorcycle.png
+│   │   ├── multi-language.png
+│   │   ├── multi_agent_codex_workflow.png
+│   │   ├── multi_agent_collab_GOOGL_analyst_recommendations_trend.png
+│   │   ├── multi_agent_collab_GOOGL_quarterly_margins.png
+│   │   ├── multi_agent_collab_GOOGL_quarterly_trends.png
+│   │   ├── multi_agent_collab_agent_architecture.png
+│   │   ├── multi_agent_collab_cumulative_return_comparison.png
+│   │   ├── multi_agent_collab_googl_daily_returns.png
+│   │   ├── multi_agent_collab_googl_moving_averages.png
+│   │   ├── multi_agent_collab_googl_rolling_volatility.png
+│   │   ├── multi_agent_collab_googl_rsi.png
+│   │   ├── multi_agent_collab_rolling_corr_reg_daily_dgs10.png
+│   │   ├── multi_agent_collab_rolling_corr_reg_daily_fedfunds.png
+│   │   ├── multi_agent_collab_rolling_corr_reg_weekly_dgs10.png
+│   │   ├── multi_agent_collab_rolling_corr_reg_weekly_fedfunds.png
+│   │   ├── multi_agent_collab_rolling_volatility_comparison.png
+│   │   ├── multi_agent_trace.png
+│   │   ├── multi_agent_trace_details.png
+│   │   ├── oo_aa_image_1_code_interpreter_agents.png
+│   │   ├── oo_aa_image_2_uml_diagram.png
+│   │   ├── oob_transcription.png
+│   │   ├── open-coding.png
+│   │   ├── openai-cookbook-white.png
+│   │   ├── openai-cookbook.png
+│   │   ├── optimizepromptfig1.png
+│   │   ├── optimizepromptfig2.png
+│   │   ├── optimizepromptfig3.png
+│   │   ├── outfit.png
+│   │   ├── output_images
+│   │   ├── partner_business_logic.png
+│   │   ├── partner_details_ui.png
+│   │   ├── partner_development_flywheel.png
+│   │   ├── partner_eval_variations.png
+│   │   ├── partner_large_summary_ui.png
+│   │   ├── partner_mcp_Cookbook.svg
+│   │   ├── partner_model_improvement_waterfall.png
+│   │   ├── partner_process_flowchart.png
+│   │   ├── partner_project_lifecycle.png
+│   │   ├── partner_summary_ui.png
+│   │   ├── pharma_network.png
+│   │   ├── photorealism.png
+│   │   ├── pilot-candidate.png
+│   │   ├── pilot-flow-diagram.png
+│   │   ├── pilot-folder-structure.png
+│   │   ├── pilot-yaml.png
+│   │   ├── pinecone-dashboard-2.png
+│   │   ├── pinecone-dashboard.png
+│   │   ├── pixels copy.png
+│   │   ├── pixels.png
+│   │   ├── pr_quality_and_security_check.png
+│   │   ├── prompt-caching-201
+│   │   ├── prompt-optimizer-3-22s.gif
+│   │   ├── prompt_input.png
+│   │   ├── prompt_migrator_fig.png
+│   │   ├── pto-request.png
+│   │   ├── realistic_valley.png
+│   │   ├── realtime_api_transcription.png
+│   │   ├── realtime_eval_page_01_image_01.png
+│   │   ├── realtime_eval_page_02_image_01.png
+│   │   ├── realtime_eval_page_03_image_01.png
+│   │   ├── realtime_eval_page_04_image_01.png
+│   │   ├── realtime_eval_page_04_image_02.png
+│   │   ├── realtime_eval_page_05_image_01.png
+│   │   ├── realtime_eval_page_05_image_02.png
+│   │   ├── realtime_eval_page_07_image_01.png
+│   │   ├── realtime_eval_page_07_image_02.png
+│   │   ├── realtime_eval_page_08_image_01.png
+│   │   ├── realtime_eval_page_09_image_01.png
+│   │   ├── realtime_eval_page_10_image_01.png
+│   │   ├── realtime_eval_page_10_image_02.png
+│   │   ├── realtime_eval_page_11_image_01.png
+│   │   ├── realtime_prompting_guide.png
+│   │   ├── reasoning-turns.png
+│   │   ├── redshift_gpt.png
+│   │   ├── repeat_after.png
+│   │   ├── repeat_before.png
+│   │   ├── repository_variables.png
+│   │   ├── responses-diagram.png
+│   │   ├── responses_cache.png
+│   │   ├── responses_pinecone_rag.png
+│   │   ├── retool-new-workflow.png
+│   │   ├── retool-workflow-1.png
+│   │   ├── retool-workflow-2.png
+│   │   ├── retool-workflow-3.png
+│   │   ├── retool-workflow-4.png
+│   │   ├── retool-workflow-config.png
+│   │   ├── retool_api_key.png
+│   │   ├── retro_dark.png
+│   │   ├── retro_light.png
+│   │   ├── rft_dashboard_modelgrader2.png
+│   │   ├── rft_hacking.png
+│   │   ├── rft_string_grader.png
+│   │   ├── sample_flyer.png
+│   │   ├── sample_hotel_invoice.png
+│   │   ├── scene.png
+│   │   ├── search_rerank_answer.png
+│   │   ├── selection-inference_fig1.png
+│   │   ├── selection-inference_fig4.png
+│   │   ├── self-consistency_fig1.png
+│   │   ├── self-consistency_fig3.png
+│   │   ├── shampoo.png
+│   │   ├── sharing_notion_with_GPT.png
+│   │   ├── simplified_reg_agent.png
+│   │   ├── snake_game.png
+│   │   ├── snowflake_direct_oauth.png
+│   │   ├── solution_1.gif
+│   │   ├── solution_1_architecture.png
+│   │   ├── solution_2.gif
+│   │   ├── solution_2_architecture.png
+│   │   ├── speech-to-text-not-streaming.png
+│   │   ├── speech-to-text-streaming.png
+│   │   ├── star_fig1.png
+│   │   ├── star_tab1.png
+│   │   ├── stripe_eval_diagram.png
+│   │   ├── summarizingSession.jpg
+│   │   ├── tank_top copy.png
+│   │   ├── tank_top.png
+│   │   ├── test_woman.png
+│   │   ├── test_woman_2.png
+│   │   ├── test_woman_with_dog.png
+│   │   ├── text-vs-audio-tokens.png
+│   │   ├── title_slide.png
+│   │   ├── tool_no_confirm.png
+│   │   ├── tool_proactive.png
+│   │   ├── trace-sk1_partner.png
+│   │   ├── traces_partner_granular.png
+│   │   ├── tracing_dashboard_databricks_mcp.png
+│   │   ├── train1.jpeg
+│   │   ├── train17.jpeg
+│   │   ├── train2.jpeg
+│   │   ├── trimingSession.jpg
+│   │   ├── ui_farmers_market.png
+│   │   ├── updated_prompt.png
+│   │   ├── updated_prompt_feedback.png
+│   │   ├── verifiers_fig3.png
+│   │   ├── verifiers_fig5.png
+│   │   ├── web_search_infographic.png
+│   │   ├── woman_in_museum copy.png
+│   │   ├── woman_in_museum.png
+│   │   ├── workday-api-client.png
+│   │   ├── workday-cgpt-oauth.png
+│   │   ├── workday-gpt.png
+│   │   ├── workflow_check.png
+│   │   ├── world_knowledge.png
+│   │   ├── zapier_action_config.png
+│   │   ├── zapier_ai_actions.png
+│   │   ├── zero-shot_reasoners_fig1.png
+│   │   ├── zero-shot_reasoners_fig2.png
+│   │   ├── zero-shot_reasoners_tab1.png
+│   │   └── zero-shot_reasoners_tab5.png
+│   └── registry.yaml
+├── openclaw-docs
+│   ├── .i18n
+│   │   ├── README.md
+│   │   ├── glossary.ja-JP.json
+│   │   ├── glossary.zh-CN.json
+│   │   ├── ja-JP.tm.jsonl
+│   │   └── zh-CN.tm.jsonl
+│   ├── CNAME
+│   ├── assets
+│   │   ├── install-script.svg
+│   │   ├── macos-onboarding
+│   │   ├── openclaw-logo-text-dark.png
+│   │   ├── openclaw-logo-text.png
+│   │   ├── pixel-lobster.svg
+│   │   ├── showcase
+│   │   └── sponsors
+│   ├── automation
+│   │   ├── auth-monitoring.md
+│   │   ├── cron-jobs.md
+│   │   ├── cron-vs-heartbeat.md
+│   │   ├── gmail-pubsub.md
+│   │   ├── hooks.md
+│   │   ├── poll.md
+│   │   ├── troubleshooting.md
+│   │   └── webhook.md
+│   ├── brave-search.md
+│   ├── channels
+│   │   ├── bluebubbles.md
+│   │   ├── broadcast-groups.md
+│   │   ├── channel-routing.md
+│   │   ├── discord.md
+│   │   ├── feishu.md
+│   │   ├── googlechat.md
+│   │   ├── group-messages.md
+│   │   ├── groups.md
+│   │   ├── imessage.md
+│   │   ├── index.md
+│   │   ├── irc.md
+│   │   ├── line.md
+│   │   ├── location.md
+│   │   ├── matrix.md
+│   │   ├── mattermost.md
+│   │   ├── msteams.md
+│   │   ├── nextcloud-talk.md
+│   │   ├── nostr.md
+│   │   ├── pairing.md
+│   │   ├── signal.md
+│   │   ├── slack.md
+│   │   ├── synology-chat.md
+│   │   ├── telegram.md
+│   │   ├── tlon.md
+│   │   ├── troubleshooting.md
+│   │   ├── twitch.md
+│   │   ├── whatsapp.md
+│   │   ├── zalo.md
+│   │   └── zalouser.md
+│   ├── ci.md
+│   ├── cli
+│   │   ├── acp.md
+│   │   ├── agent.md
+│   │   ├── agents.md
+│   │   ├── approvals.md
+│   │   ├── browser.md
+│   │   ├── channels.md
+│   │   ├── clawbot.md
+│   │   ├── completion.md
+│   │   ├── config.md
+│   │   ├── configure.md
+│   │   ├── cron.md
+│   │   ├── daemon.md
+│   │   ├── dashboard.md
+│   │   ├── devices.md
+│   │   ├── directory.md
+│   │   ├── dns.md
+│   │   ├── docs.md
+│   │   ├── doctor.md
+│   │   ├── gateway.md
+│   │   ├── health.md
+│   │   ├── hooks.md
+│   │   ├── index.md
+│   │   ├── logs.md
+│   │   ├── memory.md
+│   │   ├── message.md
+│   │   ├── models.md
+│   │   ├── node.md
+│   │   ├── nodes.md
+│   │   ├── onboard.md
+│   │   ├── pairing.md
+│   │   ├── plugins.md
+│   │   ├── qr.md
+│   │   ├── reset.md
+│   │   ├── sandbox.md
+│   │   ├── secrets.md
+│   │   ├── security.md
+│   │   ├── sessions.md
+│   │   ├── setup.md
+│   │   ├── skills.md
+│   │   ├── status.md
+│   │   ├── system.md
+│   │   ├── tui.md
+│   │   ├── uninstall.md
+│   │   ├── update.md
+│   │   ├── voicecall.md
+│   │   └── webhooks.md
+│   ├── concepts
+│   │   ├── agent-loop.md
+│   │   ├── agent-workspace.md
+│   │   ├── agent.md
+│   │   ├── architecture.md
+│   │   ├── compaction.md
+│   │   ├── context.md
+│   │   ├── features.md
+│   │   ├── markdown-formatting.md
+│   │   ├── memory.md
+│   │   ├── messages.md
+│   │   ├── model-failover.md
+│   │   ├── model-providers.md
+│   │   ├── models.md
+│   │   ├── multi-agent.md
+│   │   ├── oauth.md
+│   │   ├── presence.md
+│   │   ├── queue.md
+│   │   ├── retry.md
+│   │   ├── session-pruning.md
+│   │   ├── session-tool.md
+│   │   ├── session.md
+│   │   ├── sessions.md
+│   │   ├── streaming.md
+│   │   ├── system-prompt.md
+│   │   ├── timezone.md
+│   │   ├── typebox.md
+│   │   ├── typing-indicators.md
+│   │   └── usage-tracking.md
+│   ├── date-time.md
+│   ├── debug
+│   │   └── node-issue.md
+│   ├── design
+│   │   └── kilo-gateway-integration.md
+│   ├── diagnostics
+│   │   └── flags.md
+│   ├── docs.json
+│   ├── experiments
+│   │   ├── onboarding-config-protocol.md
+│   │   ├── plans
+│   │   ├── proposals
+│   │   └── research
+│   ├── gateway
+│   │   ├── authentication.md
+│   │   ├── background-process.md
+│   │   ├── bonjour.md
+│   │   ├── bridge-protocol.md
+│   │   ├── cli-backends.md
+│   │   ├── configuration-examples.md
+│   │   ├── configuration-reference.md
+│   │   ├── configuration.md
+│   │   ├── discovery.md
+│   │   ├── doctor.md
+│   │   ├── gateway-lock.md
+│   │   ├── health.md
+│   │   ├── heartbeat.md
+│   │   ├── index.md
+│   │   ├── local-models.md
+│   │   ├── logging.md
+│   │   ├── multiple-gateways.md
+│   │   ├── network-model.md
+│   │   ├── openai-http-api.md
+│   │   ├── openresponses-http-api.md
+│   │   ├── pairing.md
+│   │   ├── protocol.md
+│   │   ├── remote-gateway-readme.md
+│   │   ├── remote.md
+│   │   ├── sandbox-vs-tool-policy-vs-elevated.md
+│   │   ├── sandboxing.md
+│   │   ├── secrets-plan-contract.md
+│   │   ├── secrets.md
+│   │   ├── security
+│   │   ├── tailscale.md
+│   │   ├── tools-invoke-http-api.md
+│   │   ├── troubleshooting.md
+│   │   └── trusted-proxy-auth.md
+│   ├── help
+│   │   ├── debugging.md
+│   │   ├── environment.md
+│   │   ├── faq.md
+│   │   ├── index.md
+│   │   ├── scripts.md
+│   │   ├── testing.md
+│   │   └── troubleshooting.md
+│   ├── images
+│   │   ├── configure-model-picker-unsearchable.png
+│   │   ├── feishu-step2-create-app.png
+│   │   ├── feishu-step3-credentials.png
+│   │   ├── feishu-step4-permissions.png
+│   │   ├── feishu-step5-bot-capability.png
+│   │   ├── feishu-step6-event-subscription.png
+│   │   ├── groups-flow.svg
+│   │   └── mobile-ui-screenshot.png
+│   ├── index.md
+│   ├── install
+│   │   ├── ansible.md
+│   │   ├── bun.md
+│   │   ├── development-channels.md
+│   │   ├── docker.md
+│   │   ├── exe-dev.md
+│   │   ├── fly.md
+│   │   ├── gcp.md
+│   │   ├── hetzner.md
+│   │   ├── index.md
+│   │   ├── installer.md
+│   │   ├── macos-vm.md
+│   │   ├── migrating.md
+│   │   ├── nix.md
+│   │   ├── node.md
+│   │   ├── northflank.mdx
+│   │   ├── podman.md
+│   │   ├── railway.mdx
+│   │   ├── render.mdx
+│   │   ├── uninstall.md
+│   │   └── updating.md
+│   ├── ja-JP
+│   │   ├── AGENTS.md
+│   │   ├── index.md
+│   │   └── start
+│   ├── logging.md
+│   ├── nav-tabs-underline.js
+│   ├── network.md
+│   ├── nodes
+│   │   ├── audio.md
+│   │   ├── camera.md
+│   │   ├── images.md
+│   │   ├── index.md
+│   │   ├── location-command.md
+│   │   ├── media-understanding.md
+│   │   ├── talk.md
+│   │   ├── troubleshooting.md
+│   │   └── voicewake.md
+│   ├── perplexity.md
+│   ├── pi-dev.md
+│   ├── pi.md
+│   ├── platforms
+│   │   ├── android.md
+│   │   ├── digitalocean.md
+│   │   ├── index.md
+│   │   ├── ios.md
+│   │   ├── linux.md
+│   │   ├── mac
+│   │   ├── macos.md
+│   │   ├── oracle.md
+│   │   ├── raspberry-pi.md
+│   │   └── windows.md
+│   ├── plugins
+│   │   ├── agent-tools.md
+│   │   ├── community.md
+│   │   ├── manifest.md
+│   │   ├── voice-call.md
+│   │   └── zalouser.md
+│   ├── prose.md
+│   ├── providers
+│   │   ├── anthropic.md
+│   │   ├── bedrock.md
+│   │   ├── claude-max-api-proxy.md
+│   │   ├── cloudflare-ai-gateway.md
+│   │   ├── deepgram.md
+│   │   ├── github-copilot.md
+│   │   ├── glm.md
+│   │   ├── huggingface.md
+│   │   ├── index.md
+│   │   ├── kilocode.md
+│   │   ├── litellm.md
+│   │   ├── minimax.md
+│   │   ├── mistral.md
+│   │   ├── models.md
+│   │   ├── moonshot.md
+│   │   ├── nvidia.md
+│   │   ├── ollama.md
+│   │   ├── openai.md
+│   │   ├── opencode.md
+│   │   ├── openrouter.md
+│   │   ├── qianfan.md
+│   │   ├── qwen.md
+│   │   ├── synthetic.md
+│   │   ├── together.md
+│   │   ├── venice.md
+│   │   ├── vercel-ai-gateway.md
+│   │   ├── vllm.md
+│   │   ├── xiaomi.md
+│   │   └── zai.md
+│   ├── refactor
+│   │   ├── clawnet.md
+│   │   ├── exec-host.md
+│   │   ├── outbound-session-mirroring.md
+│   │   ├── plugin-sdk.md
+│   │   └── strict-config.md
+│   ├── reference
+│   │   ├── AGENTS.default.md
+│   │   ├── RELEASING.md
+│   │   ├── api-usage-costs.md
+│   │   ├── credits.md
+│   │   ├── device-models.md
+│   │   ├── prompt-caching.md
+│   │   ├── rpc.md
+│   │   ├── session-management-compaction.md
+│   │   ├── templates
+│   │   ├── test.md
+│   │   ├── token-use.md
+│   │   ├── transcript-hygiene.md
+│   │   └── wizard.md
+│   ├── security
+│   │   ├── CONTRIBUTING-THREAT-MODEL.md
+│   │   ├── README.md
+│   │   ├── THREAT-MODEL-ATLAS.md
+│   │   └── formal-verification.md
+│   ├── start
+│   │   ├── bootstrapping.md
+│   │   ├── docs-directory.md
+│   │   ├── getting-started.md
+│   │   ├── hubs.md
+│   │   ├── lore.md
+│   │   ├── onboarding-overview.md
+│   │   ├── onboarding.md
+│   │   ├── openclaw.md
+│   │   ├── quickstart.md
+│   │   ├── setup.md
+│   │   ├── showcase.md
+│   │   ├── wizard-cli-automation.md
+│   │   ├── wizard-cli-reference.md
+│   │   └── wizard.md
+│   ├── style.css
+│   ├── tools
+│   │   ├── acp-agents.md
+│   │   ├── agent-send.md
+│   │   ├── apply-patch.md
+│   │   ├── browser-linux-troubleshooting.md
+│   │   ├── browser-login.md
+│   │   ├── browser.md
+│   │   ├── chrome-extension.md
+│   │   ├── clawhub.md
+│   │   ├── creating-skills.md
+│   │   ├── elevated.md
+│   │   ├── exec-approvals.md
+│   │   ├── exec.md
+│   │   ├── firecrawl.md
+│   │   ├── index.md
+│   │   ├── llm-task.md
+│   │   ├── lobster.md
+│   │   ├── loop-detection.md
+│   │   ├── multi-agent-sandbox-tools.md
+│   │   ├── plugin.md
+│   │   ├── reactions.md
+│   │   ├── skills-config.md
+│   │   ├── skills.md
+│   │   ├── slash-commands.md
+│   │   ├── subagents.md
+│   │   ├── thinking.md
+│   │   └── web.md
+│   ├── tts.md
+│   ├── vps.md
+│   ├── web
+│   │   ├── control-ui.md
+│   │   ├── dashboard.md
+│   │   ├── index.md
+│   │   ├── tui.md
+│   │   └── webchat.md
+│   ├── whatsapp-openclaw-ai-zh.jpg
+│   ├── whatsapp-openclaw.jpg
+│   └── zh-CN
+│       ├── AGENTS.md
+│       ├── automation
+│       ├── brave-search.md
+│       ├── channels
+│       ├── cli
+│       ├── concepts
+│       ├── date-time.md
+│       ├── debug
+│       ├── diagnostics
+│       ├── experiments
+│       ├── gateway
+│       ├── help
+│       ├── index.md
+│       ├── install
+│       ├── logging.md
+│       ├── network.md
+│       ├── nodes
+│       ├── perplexity.md
+│       ├── pi-dev.md
+│       ├── pi.md
+│       ├── platforms
+│       ├── plugins
+│       ├── prose.md
+│       ├── providers
+│       ├── refactor
+│       ├── reference
+│       ├── security
+│       ├── start
+│       ├── tools
+│       ├── tts.md
+│       ├── vps.md
+│       └── web
+├── openclawdbot
+│   ├── .env
+│   ├── .gitignore
+│   ├── .prettierrc
+│   ├── .vscode
+│   │   └── settings.json
+│   ├── AGENTS.md
+│   ├── LICENSE
+│   ├── README.md
+│   ├── devvit.json
+│   ├── dist
+│   │   ├── client
+│   │   ├── server
+│   │   └── types
+│   ├── eslint.config.js
+│   ├── node_modules
+│   │   ├── .bin
+│   │   ├── .package-lock.json
+│   │   ├── .vite-temp
+│   │   ├── @asamuzakjp
+│   │   ├── @babel
+│   │   ├── @cspotcode
+│   │   ├── @csstools
+│   │   ├── @devvit
+│   │   ├── @esbuild
+│   │   ├── @eslint
+│   │   ├── @eslint-community
+│   │   ├── @hono
+│   │   ├── @humanfs
+│   │   ├── @humanwhocodes
+│   │   ├── @improbable-eng
+│   │   ├── @jridgewell
+│   │   ├── @nodelib
+│   │   ├── @oclif
+│   │   ├── @protobuf-ts
+│   │   ├── @protobufjs
+│   │   ├── @rolldown
+│   │   ├── @rollup
+│   │   ├── @sec-ant
+│   │   ├── @sindresorhus
+│   │   ├── @standard-schema
+│   │   ├── @tailwindcss
+│   │   ├── @tokenizer
+│   │   ├── @tsconfig
+│   │   ├── @types
+│   │   ├── @typescript-eslint
+│   │   ├── @vitejs
+│   │   ├── @vitest
+│   │   ├── abort-controller
+│   │   ├── acorn
+│   │   ├── acorn-jsx
+│   │   ├── acorn-walk
+│   │   ├── agent-base
+│   │   ├── ajv
+│   │   ├── ansi-escapes
+│   │   ├── ansi-regex
+│   │   ├── ansi-styles
+│   │   ├── ansicolors
+│   │   ├── anymatch
+│   │   ├── arg
+│   │   ├── argparse
+│   │   ├── array-union
+│   │   ├── assertion-error
+│   │   ├── astral-regex
+│   │   ├── async
+│   │   ├── async-lock
+│   │   ├── asynckit
+│   │   ├── at-least-node
+│   │   ├── available-typed-arrays
+│   │   ├── balanced-match
+│   │   ├── base64-js
+│   │   ├── baseline-browser-mapping
+│   │   ├── binary-extensions
+│   │   ├── bl
+│   │   ├── brace-expansion
+│   │   ├── braces
+│   │   ├── browser-headers
+│   │   ├── browserslist
+│   │   ├── buffer
+│   │   ├── bundle-name
+│   │   ├── call-bind
+│   │   ├── call-bind-apply-helpers
+│   │   ├── call-bound
+│   │   ├── callsites
+│   │   ├── camel-case
+│   │   ├── caniuse-lite
+│   │   ├── cardinal
+│   │   ├── chai
+│   │   ├── chalk
+│   │   ├── char-regex
+│   │   ├── chardet
+│   │   ├── chokidar
+│   │   ├── clean-git-ref
+│   │   ├── clean-stack
+│   │   ├── cli-cursor
+│   │   ├── cli-progress
+│   │   ├── cli-spinners
+│   │   ├── cli-width
+│   │   ├── clone
+│   │   ├── clone-deep
+│   │   ├── clsx
+│   │   ├── color-convert
+│   │   ├── color-name
+│   │   ├── combined-stream
+│   │   ├── commander
+│   │   ├── concat-map
+│   │   ├── content-type
+│   │   ├── convert-source-map
+│   │   ├── core-util-is
+│   │   ├── crc-32
+│   │   ├── create-require
+│   │   ├── cross-spawn
+│   │   ├── cssstyle
+│   │   ├── csstype
+│   │   ├── data-urls
+│   │   ├── date-fns
+│   │   ├── debug
+│   │   ├── decimal.js
+│   │   ├── decompress-response
+│   │   ├── deep-is
+│   │   ├── default-browser
+│   │   ├── default-browser-id
+│   │   ├── defaults
+│   │   ├── define-data-property
+│   │   ├── define-lazy-prop
+│   │   ├── delayed-stream
+│   │   ├── detect-libc
+│   │   ├── devvit
+│   │   ├── diff
+│   │   ├── diff3
+│   │   ├── dir-glob
+│   │   ├── dot-object
+│   │   ├── dotenv
+│   │   ├── dunder-proto
+│   │   ├── eastasianwidth
+│   │   ├── ejs
+│   │   ├── electron-to-chromium
+│   │   ├── emoji-regex
+│   │   ├── enhanced-resolve
+│   │   ├── entities
+│   │   ├── error-ex
+│   │   ├── es-define-property
+│   │   ├── es-errors
+│   │   ├── es-module-lexer
+│   │   ├── es-object-atoms
+│   │   ├── es-set-tostringtag
+│   │   ├── esbuild
+│   │   ├── escalade
+│   │   ├── escape-string-regexp
+│   │   ├── eslint
+│   │   ├── eslint-plugin-react-hooks
+│   │   ├── eslint-plugin-react-refresh
+│   │   ├── eslint-scope
+│   │   ├── eslint-visitor-keys
+│   │   ├── espree
+│   │   ├── esprima
+│   │   ├── esquery
+│   │   ├── esrecurse
+│   │   ├── estraverse
+│   │   ├── estree-walker
+│   │   ├── esutils
+│   │   ├── event-target-shim
+│   │   ├── events
+│   │   ├── execa
+│   │   ├── expect-type
+│   │   ├── external-editor
+│   │   ├── fast-deep-equal
+│   │   ├── fast-glob
+│   │   ├── fast-json-stable-stringify
+│   │   ├── fast-levenshtein
+│   │   ├── fastest-levenshtein
+│   │   ├── fastq
+│   │   ├── figures
+│   │   ├── file-entry-cache
+│   │   ├── file-type
+│   │   ├── filelist
+│   │   ├── fill-range
+│   │   ├── find-up
+│   │   ├── flat-cache
+│   │   ├── flatted
+│   │   ├── for-each
+│   │   ├── form-data
+│   │   ├── fs-extra
+│   │   ├── fs.realpath
+│   │   ├── function-bind
+│   │   ├── gensync
+│   │   ├── get-intrinsic
+│   │   ├── get-package-type
+│   │   ├── get-proto
+│   │   ├── get-stream
+│   │   ├── glob
+│   │   ├── glob-parent
+│   │   ├── globals
+│   │   ├── globalyzer
+│   │   ├── globby
+│   │   ├── globrex
+│   │   ├── google-protobuf
+│   │   ├── gopd
+│   │   ├── graceful-fs
+│   │   ├── has-flag
+│   │   ├── has-property-descriptors
+│   │   ├── has-symbols
+│   │   ├── has-tostringtag
+│   │   ├── hasown
+│   │   ├── hermes-estree
+│   │   ├── hermes-parser
+│   │   ├── hono
+│   │   ├── hotscript
+│   │   ├── html-encoding-sniffer
+│   │   ├── http-call
+│   │   ├── http-proxy-agent
+│   │   ├── https-proxy-agent
+│   │   ├── human-signals
+│   │   ├── hyperlinker
+│   │   ├── iconv-lite
+│   │   ├── ieee754
+│   │   ├── ignore
+│   │   ├── image-size
+│   │   ├── immediate
+│   │   ├── import-fresh
+│   │   ├── imurmurhash
+│   │   ├── indent-string
+│   │   ├── inflight
+│   │   ├── inherits
+│   │   ├── inquirer
+│   │   ├── is-arrayish
+│   │   ├── is-binary-path
+│   │   ├── is-callable
+│   │   ├── is-docker
+│   │   ├── is-extglob
+│   │   ├── is-fullwidth-code-point
+│   │   ├── is-glob
+│   │   ├── is-inside-container
+│   │   ├── is-interactive
+│   │   ├── is-number
+│   │   ├── is-plain-obj
+│   │   ├── is-plain-object
+│   │   ├── is-potential-custom-element-name
+│   │   ├── is-retry-allowed
+│   │   ├── is-stream
+│   │   ├── is-typed-array
+│   │   ├── is-unicode-supported
+│   │   ├── is-wsl
+│   │   ├── isarray
+│   │   ├── isexe
+│   │   ├── isobject
+│   │   ├── isomorphic-git
+│   │   ├── jake
+│   │   ├── jiti
+│   │   ├── js-tokens
+│   │   ├── js-yaml
+│   │   ├── jsdom
+│   │   ├── jsesc
+│   │   ├── json-buffer
+│   │   ├── json-parse-better-errors
+│   │   ├── json-schema-traverse
+│   │   ├── json-stable-stringify-without-jsonify
+│   │   ├── json5
+│   │   ├── jsonfile
+│   │   ├── jsonschema
+│   │   ├── jszip
+│   │   ├── keyv
+│   │   ├── kind-of
+│   │   ├── levn
+│   │   ├── lie
+│   │   ├── lightningcss
+│   │   ├── lightningcss-linux-x64-gnu
+│   │   ├── lightningcss-linux-x64-musl
+│   │   ├── locate-path
+│   │   ├── lodash
+│   │   ├── lodash.merge
+│   │   ├── log-symbols
+│   │   ├── long
+│   │   ├── lower-case
+│   │   ├── lru-cache
+│   │   ├── magic-string
+│   │   ├── make-error
+│   │   ├── math-intrinsics
+│   │   ├── merge2
+│   │   ├── micromatch
+│   │   ├── mime-db
+│   │   ├── mime-types
+│   │   ├── mimic-fn
+│   │   ├── mimic-response
+│   │   ├── minimatch
+│   │   ├── minimist
+│   │   ├── minimisted
+│   │   ├── moderndash
+│   │   ├── ms
+│   │   ├── mustache
+│   │   ├── mute-stream
+│   │   ├── nanoid
+│   │   ├── natural-compare
+│   │   ├── natural-orderby
+│   │   ├── no-case
+│   │   ├── node-releases
+│   │   ├── normalize-path
+│   │   ├── npm-run-path
+│   │   ├── nwsapi
+│   │   ├── object-treeify
+│   │   ├── obug
+│   │   ├── once
+│   │   ├── onetime
+│   │   ├── open
+│   │   ├── optionator
+│   │   ├── ora
+│   │   ├── os-tmpdir
+│   │   ├── p-limit
+│   │   ├── p-locate
+│   │   ├── pako
+│   │   ├── parent-module
+│   │   ├── parse-json
+│   │   ├── parse-ms
+│   │   ├── parse5
+│   │   ├── pascal-case
+│   │   ├── password-prompt
+│   │   ├── path-browserify
+│   │   ├── path-exists
+│   │   ├── path-is-absolute
+│   │   ├── path-key
+│   │   ├── path-to-regexp
+│   │   ├── path-type
+│   │   ├── pathe
+│   │   ├── peek-readable
+│   │   ├── picocolors
+│   │   ├── picomatch
+│   │   ├── pify
+│   │   ├── possible-typed-array-names
+│   │   ├── postcss
+│   │   ├── prelude-ls
+│   │   ├── prettier
+│   │   ├── prettier-plugin-tailwindcss
+│   │   ├── pretty-ms
+│   │   ├── process
+│   │   ├── process-nextick-args
+│   │   ├── protobufjs
+│   │   ├── psl
+│   │   ├── punycode
+│   │   ├── querystringify
+│   │   ├── queue-microtask
+│   │   ├── react
+│   │   ├── react-dom
+│   │   ├── react-refresh
+│   │   ├── readable-stream
+│   │   ├── readable-web-to-node-stream
+│   │   ├── readdirp
+│   │   ├── redeyed
+│   │   ├── requires-port
+│   │   ├── resolve-from
+│   │   ├── restore-cursor
+│   │   ├── reusify
+│   │   ├── rollup
+│   │   ├── rrweb-cssom
+│   │   ├── run-applescript
+│   │   ├── run-async
+│   │   ├── run-parallel
+│   │   ├── rxjs
+│   │   ├── safe-buffer
+│   │   ├── safer-buffer
+│   │   ├── saxes
+│   │   ├── scheduler
+│   │   ├── semver
+│   │   ├── set-function-length
+│   │   ├── setimmediate
+│   │   ├── sha.js
+│   │   ├── shallow-clone
+│   │   ├── shebang-command
+│   │   ├── shebang-regex
+│   │   ├── siginfo
+│   │   ├── signal-exit
+│   │   ├── simple-concat
+│   │   ├── simple-get
+│   │   ├── slash
+│   │   ├── slice-ansi
+│   │   ├── source-map-js
+│   │   ├── sprintf-js
+│   │   ├── stackback
+│   │   ├── std-env
+│   │   ├── stdin-discarder
+│   │   ├── string-length
+│   │   ├── string-width
+│   │   ├── string_decoder
+│   │   ├── strip-ansi
+│   │   ├── strip-final-newline
+│   │   ├── strip-json-comments
+│   │   ├── strtok3
+│   │   ├── supports-color
+│   │   ├── supports-hyperlinks
+│   │   ├── symbol-tree
+│   │   ├── tailwind-merge
+│   │   ├── tailwindcss
+│   │   ├── tapable
+│   │   ├── through
+│   │   ├── tiny-glob
+│   │   ├── tinybench
+│   │   ├── tinyexec
+│   │   ├── tinyglobby
+│   │   ├── tinyrainbow
+│   │   ├── tmp
+│   │   ├── to-buffer
+│   │   ├── to-regex-range
+│   │   ├── token-types
+│   │   ├── tough-cookie
+│   │   ├── tr46
+│   │   ├── ts-api-utils
+│   │   ├── ts-node
+│   │   ├── ts-poet
+│   │   ├── tslib
+│   │   ├── tsv
+│   │   ├── tunnel-agent
+│   │   ├── twirp-ts
+│   │   ├── type-check
+│   │   ├── type-fest
+│   │   ├── typed-array-buffer
+│   │   ├── typescript
+│   │   ├── typescript-eslint
+│   │   ├── undici-types
+│   │   ├── unicorn-magic
+│   │   ├── universalify
+│   │   ├── update-browserslist-db
+│   │   ├── uri-js
+│   │   ├── url-parse
+│   │   ├── util-deprecate
+│   │   ├── uuid
+│   │   ├── v8-compile-cache-lib
+│   │   ├── vite
+│   │   ├── vitest
+│   │   ├── w3c-xmlserializer
+│   │   ├── wcwidth
+│   │   ├── webidl-conversions
+│   │   ├── whatwg-encoding
+│   │   ├── whatwg-mimetype
+│   │   ├── whatwg-url
+│   │   ├── which
+│   │   ├── which-typed-array
+│   │   ├── why-is-node-running
+│   │   ├── widest-line
+│   │   ├── word-wrap
+│   │   ├── wordwrap
+│   │   ├── wrap-ansi
+│   │   ├── wrappy
+│   │   ├── ws
+│   │   ├── xml-name-validator
+│   │   ├── xmlchars
+│   │   ├── yallist
+│   │   ├── yn
+│   │   ├── yocto-queue
+│   │   ├── yoctocolors
+│   │   ├── zod
+│   │   └── zod-validation-error
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── public
+│   │   └── snoo.png
+│   ├── src
+│   │   ├── client
+│   │   ├── server
+│   │   └── shared
+│   ├── tools
+│   │   ├── tsconfig.base.json
+│   │   ├── tsconfig.client.json
+│   │   ├── tsconfig.server.json
+│   │   ├── tsconfig.shared.json
+│   │   └── tsconfig.vite.json
+│   ├── tsconfig.json
+│   └── vite.config.ts
+├── operations
+│   └── RUNBOOK_BOUNDARIES.md
+├── orchestrator
+│   ├── .dockerignore
+│   ├── .env
+│   ├── .env.example
+│   ├── .gitignore
+│   ├── DOCKER_QUICK_REFERENCE.md
+│   ├── Dockerfile
+│   ├── PHASE_2_COMPLETION.md
+│   ├── PHASE_3_COMPLETION.md
+│   ├── README.md
+│   ├── README_COMPLETE.md
+│   ├── build-docker.sh
+│   ├── data
+│   │   ├── knowledge-base
+│   │   ├── milestones-feed.json
+│   │   ├── orchestrator-state.json
+│   │   ├── snapshots
+│   │   └── test-write
+│   ├── dist
+│   │   ├── agentRegistry.js
+│   │   ├── alerter.js
+│   │   ├── alerts
+│   │   ├── approvalGate.js
+│   │   ├── config.js
+│   │   ├── docIndexer.js
+│   │   ├── index.js
+│   │   ├── knowledge
+│   │   ├── memory
+│   │   ├── metrics
+│   │   ├── middleware
+│   │   ├── milestones
+│   │   ├── notifier.js
+│   │   ├── openapi.js
+│   │   ├── persistence
+│   │   ├── skillAudit.js
+│   │   ├── skills
+│   │   ├── state.js
+│   │   ├── taskHandlers.js
+│   │   ├── taskQueue.js
+│   │   ├── toolGate.js
+│   │   └── types.js
+│   ├── docker-compose.yml
+│   ├── docs
+│   │   ├── API_REFERENCE.md
+│   │   ├── DEPLOYMENT_GUIDE.md
+│   │   ├── DOCKER_DEPLOYMENT.md
+│   │   ├── DOC_UPDATE_WORKFLOW.md
+│   │   ├── LOAD_TEST_REPORT.md
+│   │   └── hostile-audit
+│   ├── logs
+│   │   └── milestones.jsonl
+│   ├── mongo-init.js
+│   ├── monitoring
+│   │   ├── alert-rules.yml
+│   │   ├── alertmanager.yml
+│   │   ├── dashboards
+│   │   ├── datasources.yml
+│   │   ├── prometheus.yml
+│   │   └── providers.yml
+│   ├── node_modules
+│   │   ├── .bin
+│   │   ├── .package-lock.json
+│   │   ├── .vite
+│   │   ├── @ampproject
+│   │   ├── @babel
+│   │   ├── @bcoe
+│   │   ├── @esbuild
+│   │   ├── @istanbuljs
+│   │   ├── @jest
+│   │   ├── @jridgewell
+│   │   ├── @mongodb-js
+│   │   ├── @nodelib
+│   │   ├── @opentelemetry
+│   │   ├── @polka
+│   │   ├── @rollup
+│   │   ├── @sinclair
+│   │   ├── @types
+│   │   ├── @vitest
+│   │   ├── abort-controller
+│   │   ├── accepts
+│   │   ├── acorn
+│   │   ├── acorn-walk
+│   │   ├── agentkeepalive
+│   │   ├── ansi-styles
+│   │   ├── anymatch
+│   │   ├── array-flatten
+│   │   ├── assertion-error
+│   │   ├── asynckit
+│   │   ├── balanced-match
+│   │   ├── binary-extensions
+│   │   ├── bintrees
+│   │   ├── body-parser
+│   │   ├── brace-expansion
+│   │   ├── braces
+│   │   ├── bson
+│   │   ├── bytes
+│   │   ├── cac
+│   │   ├── call-bind-apply-helpers
+│   │   ├── call-bound
+│   │   ├── chai
+│   │   ├── check-error
+│   │   ├── chokidar
+│   │   ├── combined-stream
+│   │   ├── concat-map
+│   │   ├── confbox
+│   │   ├── content-disposition
+│   │   ├── content-type
+│   │   ├── cookie
+│   │   ├── cookie-signature
+│   │   ├── cross-spawn
+│   │   ├── debug
+│   │   ├── deep-eql
+│   │   ├── delayed-stream
+│   │   ├── depd
+│   │   ├── destroy
+│   │   ├── diff-sequences
+│   │   ├── dunder-proto
+│   │   ├── ee-first
+│   │   ├── encodeurl
+│   │   ├── es-define-property
+│   │   ├── es-errors
+│   │   ├── es-object-atoms
+│   │   ├── es-set-tostringtag
+│   │   ├── esbuild
+│   │   ├── escape-html
+│   │   ├── estree-walker
+│   │   ├── etag
+│   │   ├── event-target-shim
+│   │   ├── eventemitter3
+│   │   ├── execa
+│   │   ├── express
+│   │   ├── express-rate-limit
+│   │   ├── fast-glob
+│   │   ├── fastq
+│   │   ├── fflate
+│   │   ├── fill-range
+│   │   ├── finalhandler
+│   │   ├── flatted
+│   │   ├── form-data
+│   │   ├── form-data-encoder
+│   │   ├── formdata-node
+│   │   ├── forwarded
+│   │   ├── fresh
+│   │   ├── fs.realpath
+│   │   ├── function-bind
+│   │   ├── get-func-name
+│   │   ├── get-intrinsic
+│   │   ├── get-proto
+│   │   ├── get-stream
+│   │   ├── get-tsconfig
+│   │   ├── glob
+│   │   ├── glob-parent
+│   │   ├── gopd
+│   │   ├── has-flag
+│   │   ├── has-symbols
+│   │   ├── has-tostringtag
+│   │   ├── hasown
+│   │   ├── html-escaper
+│   │   ├── http-errors
+│   │   ├── human-signals
+│   │   ├── humanize-ms
+│   │   ├── iconv-lite
+│   │   ├── inflight
+│   │   ├── inherits
+│   │   ├── ip-address
+│   │   ├── ipaddr.js
+│   │   ├── is-binary-path
+│   │   ├── is-extglob
+│   │   ├── is-glob
+│   │   ├── is-number
+│   │   ├── is-stream
+│   │   ├── isexe
+│   │   ├── istanbul-lib-coverage
+│   │   ├── istanbul-lib-report
+│   │   ├── istanbul-lib-source-maps
+│   │   ├── istanbul-reports
+│   │   ├── js-tokens
+│   │   ├── local-pkg
+│   │   ├── loupe
+│   │   ├── magic-string
+│   │   ├── magicast
+│   │   ├── make-dir
+│   │   ├── math-intrinsics
+│   │   ├── media-typer
+│   │   ├── memory-pager
+│   │   ├── merge-descriptors
+│   │   ├── merge-stream
+│   │   ├── merge2
+│   │   ├── methods
+│   │   ├── micromatch
+│   │   ├── mime
+│   │   ├── mime-db
+│   │   ├── mime-types
+│   │   ├── mimic-fn
+│   │   ├── minimatch
+│   │   ├── mlly
+│   │   ├── mongodb
+│   │   ├── mongodb-connection-string-url
+│   │   ├── mrmime
+│   │   ├── ms
+│   │   ├── nanoid
+│   │   ├── negotiator
+│   │   ├── node-cron
+│   │   ├── node-domexception
+│   │   ├── node-fetch
+│   │   ├── normalize-path
+│   │   ├── npm-run-path
+│   │   ├── object-inspect
+│   │   ├── on-finished
+│   │   ├── once
+│   │   ├── onetime
+│   │   ├── openai
+│   │   ├── p-limit
+│   │   ├── p-queue
+│   │   ├── p-timeout
+│   │   ├── parseurl
+│   │   ├── path-is-absolute
+│   │   ├── path-key
+│   │   ├── path-to-regexp
+│   │   ├── pathe
+│   │   ├── pathval
+│   │   ├── picocolors
+│   │   ├── picomatch
+│   │   ├── pkg-types
+│   │   ├── postcss
+│   │   ├── pretty-format
+│   │   ├── prom-client
+│   │   ├── proxy-addr
+│   │   ├── punycode
+│   │   ├── qs
+│   │   ├── queue-microtask
+│   │   ├── range-parser
+│   │   ├── raw-body
+│   │   ├── react-is
+│   │   ├── readdirp
+│   │   ├── resolve-pkg-maps
+│   │   ├── reusify
+│   │   ├── rollup
+│   │   ├── run-parallel
+│   │   ├── safe-buffer
+│   │   ├── safer-buffer
+│   │   ├── semver
+│   │   ├── send
+│   │   ├── serve-static
+│   │   ├── setprototypeof
+│   │   ├── shebang-command
+│   │   ├── shebang-regex
+│   │   ├── side-channel
+│   │   ├── side-channel-list
+│   │   ├── side-channel-map
+│   │   ├── side-channel-weakmap
+│   │   ├── siginfo
+│   │   ├── signal-exit
+│   │   ├── sirv
+│   │   ├── source-map-js
+│   │   ├── sparse-bitfield
+│   │   ├── stackback
+│   │   ├── statuses
+│   │   ├── std-env
+│   │   ├── strip-final-newline
+│   │   ├── strip-literal
+│   │   ├── supports-color
+│   │   ├── tdigest
+│   │   ├── test-exclude
+│   │   ├── tinybench
+│   │   ├── tinypool
+│   │   ├── tinyspy
+│   │   ├── to-regex-range
+│   │   ├── toidentifier
+│   │   ├── totalist
+│   │   ├── tr46
+│   │   ├── tsx
+│   │   ├── type-detect
+│   │   ├── type-is
+│   │   ├── typescript
+│   │   ├── ufo
+│   │   ├── undici-types
+│   │   ├── unpipe
+│   │   ├── utils-merge
+│   │   ├── uuid
+│   │   ├── vary
+│   │   ├── vite
+│   │   ├── vite-node
+│   │   ├── vitest
+│   │   ├── web-streams-polyfill
+│   │   ├── webidl-conversions
+│   │   ├── whatwg-url
+│   │   ├── which
+│   │   ├── why-is-node-running
+│   │   ├── wrappy
+│   │   ├── yaml
+│   │   ├── yocto-queue
+│   │   └── zod
+│   ├── openapi.json
+│   ├── orchestrator
+│   │   ├── mongo-init.js
+│   │   └── monitoring
+│   ├── orchestrator_config.json
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── scripts
+│   │   ├── backfill-milestones.ts
+│   │   ├── check-doc-sync.mjs
+│   │   ├── generate-openapi.ts
+│   │   ├── live-rate-shaped-dispatch.ts
+│   │   └── push-feed.sh
+│   ├── src
+│   │   ├── agentRegistry.ts
+│   │   ├── alerter.ts
+│   │   ├── alerts
+│   │   ├── approvalGate.ts
+│   │   ├── config.ts
+│   │   ├── docIndexer.ts
+│   │   ├── index.ts
+│   │   ├── knowledge
+│   │   ├── memory
+│   │   ├── metrics
+│   │   ├── middleware
+│   │   ├── milestones
+│   │   ├── notifier.ts
+│   │   ├── openapi.ts
+│   │   ├── persistence
+│   │   ├── skillAudit.ts
+│   │   ├── skillAudit.ts.bak
+│   │   ├── skills
+│   │   ├── state.ts
+│   │   ├── taskHandlers.ts
+│   │   ├── taskQueue.ts
+│   │   ├── toolGate.ts
+│   │   ├── toolGate.ts.bak
+│   │   └── types.ts
+│   ├── test
+│   │   ├── .tmp
+│   │   ├── fixtures
+│   │   ├── fixtures.ts
+│   │   ├── gap7-key-rotation.test.ts
+│   │   ├── helpers
+│   │   ├── helpers.ts
+│   │   ├── integration
+│   │   ├── integration.test.ts
+│   │   ├── load
+│   │   ├── load.test.ts
+│   │   ├── milestones.e2e.test.ts
+│   │   ├── milestones.test.ts
+│   │   └── toolgate.runtime.test.ts
+│   ├── test-phase5.js
+│   ├── test-phase5.mjs
+│   ├── tsconfig.json
+│   └── vitest.config.ts
+├── orchestrator_config.json
+├── orchestrator_state.json
+├── package-lock.json
+├── package.json
+├── rss_filter_config.json
+├── run_drift_validation.sh
+├── scripts
+│   ├── audit_context_anchor_recon.sh
+│   ├── check-doc-drift.sh
+│   └── sync_openai_cookbook.sh
+├── security
+│   ├── DRIFT_RISK_REGISTER.md
+│   └── TRUST_BOUNDARIES_AND_THREATS.md
+├── skills
+│   ├── documentParser.ts
+│   ├── index.ts
+│   ├── normalizer.ts
+│   ├── sourceFetch.ts
+│   ├── testRunner.ts
+│   └── workspacePatch.ts
+├── sync_docs_sources.sh
+├── sync_openai_cookbook.sh
+├── sync_openclaw_docs.sh
+├── systemd
+│   ├── build-refactor-agent.service
+│   ├── content-agent.service
+│   ├── data-extraction-agent.service
+│   ├── doc-specialist.service
+│   ├── integration-agent.service
+│   ├── market-research-agent.service
+│   ├── normalization-agent.service
+│   ├── orchestrator.service
+│   ├── qa-verification-agent.service
+│   ├── reddit-helper.service
+│   ├── security-agent.service
+│   ├── skill-audit-agent.service
+│   ├── summarization-agent.service
+│   └── system-monitor-agent.service
+├── test-nightly-batch.ts
+└── test-send-digest.ts
+
+1160 directories, 1338 files

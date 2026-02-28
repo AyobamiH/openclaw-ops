@@ -303,7 +303,7 @@ The orchestrator includes built-in alerting:
 1. **Error accumulation**: Task failures tracked across retries
 2. **Critical alerts**: After 3 consecutive failures
 3. **Email notifications**: Optional via environment variables
-4. **Slack integration**: Optional webhook (see ERROR_ALERTS.md)
+4. **Slack integration**: Optional webhook (see `docs/guides/monitoring.md`)
 
 Configure alerts in `.service` file:
 ```ini

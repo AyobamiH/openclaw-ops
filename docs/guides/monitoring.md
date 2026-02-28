@@ -5,185 +5,142 @@ summary: "Check system health and observe what the orchestrator is doing."
 
 # Monitoring & Observability
 
+Use this guide for runtime health, scheduled-task visibility, and alerting. This
+is the canonical monitoring document; the old root `MONITORING.md` and
+`ERROR_ALERTS.md` surfaces are absorbed here.
+
+## Canonical Paths
+
+The default configured paths are:
+
+- state file: `orchestrator_state.json`
+- logs directory: `logs/`
+- digest output: `logs/digests/`
+
+When local configuration changes those paths, follow `orchestrator_config.json`.
+
 ## Live Logs
 
 ```bash
-# Watch all logs
 tail -f logs/orchestrator.log
-
-# Watch specific task
 grep "heartbeat" logs/orchestrator.log | tail -10
-
-# Watch errors
-grep "error\|ERROR" logs/orchestrator.log
+grep "error\\|ERROR" logs/orchestrator.log
 ```
 
----
+## State Checks
 
-## System State
-
-The orchestrator persists its state to `orchestrator.state.json` after every change.
-
-### View Current State
+The orchestrator persists current runtime state to `orchestrator_state.json`.
 
 ```bash
-# Pretty-printed
-cat logs/orchestrator.state.json | jq
-
-# Specific fields
-cat logs/orchestrator.state.json | jq '.lastStartedAt'
-cat logs/orchestrator.state.json | jq '.taskHistory | length'
-cat logs/orchestrator.state.json | jq '.taskHistory[-5:]'
+cat orchestrator_state.json | jq
+cat orchestrator_state.json | jq '.lastStartedAt'
+cat orchestrator_state.json | jq '.taskHistory | length'
+cat orchestrator_state.json | jq '.taskHistory[-5:]'
 ```
 
-### State Fields
+Useful fields to watch:
 
-| Field | Purpose |
-|-------|---------|
-| `lastStartedAt` | When system was last started |
-| `tasksProcessed` | Total tasks completed |
-| `taskHistory` | Last 50 tasks (with status, timing, results) |
-| `docsIndexed` | Indexed documentation files |
-| `redditResponses` | Last 100 Reddit engagement records |
-| `rssDrafts` | Last 200 RSS items evaluated |
-| `deployedAgents` | Agents deployed this session |
+- `lastStartedAt`
+- `taskHistory`
+- `redditResponses`
+- `rssDrafts`
+- `driftRepairs`
+- `deployedAgents`
 
-### Heartbeat Check
+## Heartbeat Health
 
-Heartbeats run every 5 minutes. Check if the system is alive:
+Heartbeats are expected every 5 minutes.
 
 ```bash
-# Get last heartbeat timestamp
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.type=="heartbeat")' | tail -1
-
-# Should be recent (within last 5-10 minutes)
+cat orchestrator_state.json | jq '.taskHistory[] | select(.type=="heartbeat") | .timestamp' | tail -1
 ```
 
----
+If the latest heartbeat is stale, treat it as a runtime health warning and
+check process liveness immediately.
 
-## Task Monitoring
+## Scheduled Task Monitoring
 
-### Recent Tasks
+The default recurring tasks are:
+
+- `nightly-batch`
+- `send-digest`
+- `heartbeat`
+
+Watch the relevant events:
 
 ```bash
-# View last 5 tasks
-cat logs/orchestrator.state.json | jq '.taskHistory[-5:]'
-
-# Filter by status
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.status=="error")'
-
-# Filter by type
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.type=="doc-sync")'
+grep -E "nightly-batch|send-digest|heartbeat" logs/orchestrator.log | tail -20
+cat orchestrator_state.json | jq '.taskHistory[-10:]'
+ls -lah logs/digests/digest-*.json
 ```
 
-### Task Structure
+When `nightly-batch` runs, verify:
 
-```json
-{
-  "type": "doc-sync",
-  "status": "completed",
-  "timestamp": "2025-01-10T14:32:48.123Z",
-  "durationMs": 5234,
-  "result": {
-    "filesIndexed": 42,
-    "changeDetected": true,
-    "knowledgePackGenerated": true
-  }
-}
-```
+- a digest file was created in `logs/digests/`
+- the task appears in `taskHistory`
+- the next `send-digest` task completed or logged a clear failure
 
----
-
-## Agent Activity
-
-Check what agents have run:
+## Task And Agent Visibility
 
 ```bash
-# Agents deployed
-cat logs/orchestrator.state.json | jq '.deployedAgents'
-
-# Tasks that spawned agents
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.type=="drift-repair" or .type=="reddit-response")'
+cat orchestrator_state.json | jq '.taskHistory[] | select(.result=="error")'
+cat orchestrator_state.json | jq '.taskHistory[] | select(.type=="drift-repair" or .type=="reddit-response")'
+cat orchestrator_state.json | jq '.deployedAgents'
 ```
 
----
+This gives you recent failures, agent-heavy task flows, and the current
+deployment memory tracked by the runtime.
 
-## Performance Metrics
+## Alerts
 
-### Average Task Duration
+The orchestrator supports built-in alerting for failure accumulation and
+critical runtime problems.
+
+Common environment variables:
 
 ```bash
-cat logs/orchestrator.state.json | jq '.taskHistory | map(.durationMs) | add / length'
+export ALERTS_ENABLED=true
+export ALERT_SEVERITY_THRESHOLD=error
+export SLACK_ERROR_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+export ALERT_EMAIL_TO=ops@example.com
+export EMAIL_API_URL=https://your-email-service/send
+export EMAIL_API_KEY=your-api-key
 ```
 
-### Success Rate
+Alert behavior to expect:
+
+- repeated task failures escalate in severity
+- missed heartbeat windows should be treated as critical
+- notification delivery failures should still appear in logs even when the
+  external channel fails
+
+## Quick Health Pass
 
 ```bash
-cat logs/orchestrator.state.json | jq '[.taskHistory[] | select(.status=="completed")] | length / .taskHistory | length * 100'
+ps aux | grep "node\\|tsx" | grep -v grep
+ls -la logs/
+stat orchestrator_state.json
+cat orchestrator_state.json | jq '.taskHistory[] | select(.type=="heartbeat") | .timestamp' | tail -1
 ```
 
----
+## Common Failure Patterns
 
-## Health Checks
+- No heartbeat for more than 10-15 minutes:
+  check if the orchestrator process is down or hung.
+- Missing digest file after `nightly-batch`:
+  check `logs/orchestrator.log` and `orchestrator_state.json` for batch errors.
+- Notification expected but nothing arrived:
+  verify webhook/email configuration and look for notifier errors in the log.
+- State file or log growth looks abnormal:
+  inspect `taskHistory`, queue-related arrays, and artifact retention.
 
-Run a quick system health check:
+## Escalation Rule
 
-```bash
-# 1. Check process is running
-ps aux | grep "node\|tsx" | grep -v grep
+When runtime health looks wrong:
 
-# 2. Check logs directory exists and has recent files
-ls -la logs/ && echo "---" && find logs/ -mmin -30
-
-# 3. Check state file is recent
-stat logs/orchestrator.state.json | grep Modify
-
-# 4. Check heartbeat is recent
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.type=="heartbeat") | .timestamp' | tail -1
-```
-
----
-
-## Dashboards
-
-Create simple monitoring scripts:
-
-```bash
-#!/bin/bash
-# monitor.sh
-
-echo "=== Orchestrator Health ==="
-echo "Last heartbeat:"
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.type=="heartbeat") | .timestamp' | tail -1
-
-echo
-echo "Recent errors:"
-grep ERROR logs/orchestrator.log | tail -3
-
-echo
-echo "Tasks in last hour:"
-cat logs/orchestrator.state.json | jq '.taskHistory | map(select(.timestamp > env.ONEHOUR_AGO)) | length'
-
-echo
-echo "Agent deployments:"
-cat logs/orchestrator.state.json | jq '.deployedAgents | length'
-```
-
----
-
-## Alerting
-
-Monitor for common failure patterns:
-
-```bash
-# No heartbeats in 30 minutes → system may be hung
-grep heartbeat logs/orchestrator.log | tail -1
-
-# Too many errors → check task handlers
-grep error logs/orchestrator.state.json | jq 'length'
-
-# Growing state file → may need pruning
-du -h logs/orchestrator.state.json
-```
-
-See [Common Issues](../troubleshooting/common-issues.md) for what to do when something looks wrong.
+1. Check process liveness.
+2. Check the latest heartbeat.
+3. Check the most recent failing task record.
+4. Inspect notifier errors if alerts did not arrive.
+5. Use [Common Issues](../troubleshooting/common-issues.md) and
+   [Debugging](../troubleshooting/debugging.md) for deeper recovery.

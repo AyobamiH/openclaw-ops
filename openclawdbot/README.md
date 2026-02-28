@@ -57,6 +57,9 @@ Validation commands:
   becomes fully live.
 - Code and app config are the source of truth. This README is the subproject
   entrypoint, not the canonical contract for every route.
+- Material app code/config changes should update the appropriate existing `.md`
+  file in the same change set and reference the affected routes, views, or
+  config paths where useful.
 - For the milestone pipeline contract, use `../docs/CLAWDBOT_MILESTONES.md`,
   `../docs/operations/MILESTONE_INGEST_CONTRACT.md`, and
   `../docs/operations/MILESTONE_PIPELINE_RUNBOOK.md`.

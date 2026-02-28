@@ -9,6 +9,10 @@ Use this file when you know your goal but not the right document.
 
 For the canonical file map, start with [INDEX.md](./INDEX.md).
 
+When implementation changes materially, update the appropriate existing `.md`
+file in the same change set and cross-reference the relevant code/config paths
+where it helps prevent drift.
+
 ## I Need Current Runtime Truth
 
 1. [../OPENCLAW_CONTEXT_ANCHOR.md](../OPENCLAW_CONTEXT_ANCHOR.md)

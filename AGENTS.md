@@ -43,6 +43,9 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 - When someone says "remember this" → update `memory/YYYY-MM-DD.md` or relevant file
 - When you learn a lesson → update AGENTS.md, TOOLS.md, or the relevant skill
 - When you make a mistake → document it so future-you doesn't repeat it
+- When you change code or config materially → update the appropriate existing
+  `.md` file in the same change set and reference the relevant paths where it
+  helps prevent drift
 - **Text > Brain** 📝
 
 ## Safety

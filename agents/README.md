@@ -72,3 +72,7 @@ Runtime standard:
 Every agent folder should keep its local governance primitives (`ROLE.md`,
 `SCOPE.md`, `POLICY.md`, `TOOLS.md`) aligned with
 `../docs/GOVERNANCE_REPO_HYGIENE.md`.
+
+Material agent code/config changes should update the appropriate existing `.md`
+file in the same change set and reference the affected task, runtime, or config
+paths where useful.

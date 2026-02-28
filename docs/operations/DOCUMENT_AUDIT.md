@@ -74,11 +74,12 @@ used as active truth:
 
 | Path | Why keep it | Why it is not canonical |
 |---|---|---|
-| `DOCUMENTATION_COMPLETE.md` | records a past docs build-out milestone | claims completion while docs continued to evolve |
-| `IMPLEMENTATION_COMPLETE.md` | records a past delivery milestone | scope is narrow and no longer reflects full runtime state |
-| `orchestrator_documentation.md` | legacy summary of older orchestrator docs | duplicated and drifted from `docs/` |
-| `orchestrator_status.md` | dated operational snapshot | tied to 2026-02-19 assumptions |
-| `orchestrator_workflow_plan.md` | original workflow planning note | largely superseded by current sprint and code |
+| `docs/operations/DOCUMENTATION_COMPLETE.md` | records a past docs build-out milestone | claims completion while docs continued to evolve |
+| `docs/operations/IMPLEMENTATION_COMPLETE.md` | records a past delivery milestone | scope is narrow and no longer reflects full runtime state |
+| `docs/operations/orchestrator_documentation.md` | legacy summary of older orchestrator docs | duplicated and drifted from `docs/` |
+| `docs/operations/orchestrator-status.md` | dated operational snapshot | tied to 2026-02-19 assumptions |
+| `docs/operations/orchestrator_workflow_plan.md` | original workflow planning note | largely superseded by current sprint and code |
+| `docs/operations/PRD_GOVERNANCE_REMEDIATION.md` | historical governance gap record | useful as dated evidence, not live truth |
 | `orchestrator/PHASE_2_COMPLETION.md` | phase evidence | phase snapshot only |
 | `orchestrator/PHASE_3_COMPLETION.md` | phase evidence | phase snapshot only |
 
@@ -103,7 +104,7 @@ used as active truth:
    - app feed route
    - idempotency and rejection handling
 6. `DOCUMENTATION_COMPLETE.md`, `IMPLEMENTATION_COMPLETE.md`,
-   `orchestrator_documentation.md`, `orchestrator_status.md`, and
+   `orchestrator_documentation.md`, `orchestrator-status.md`, and
    `orchestrator_workflow_plan.md` were easy to mistake for active truth.
 7. `openclawdbot/README.md` was still the stock Devvit starter and did not
    describe the actual milestone app.
@@ -120,6 +121,8 @@ used as active truth:
     ToolGate, and SkillAudit moved from planned to implemented.
 13. The KB generated layer had unnecessary overlap across architecture,
     control-plane, gateway, lifecycle, and skills summaries.
+14. The workspace root had too many documentation-only Markdown files, which
+    made the entry surface noisier than necessary.
 
 ### Still intentionally not audited in depth
 
@@ -133,6 +136,17 @@ used as active truth:
    has the same implementation maturity behind that shared format.
 4. mirrored upstream docs:
    first-party freshness rules do not apply to imported mirrors.
+
+## Root Layout Rule
+
+Keep the workspace root compact:
+
+- root Markdown should be limited to public entrypoints and live workspace
+  context/bootstrap files
+- topic docs, historical snapshots, and operational references belong under
+  `docs/` or a relevant subproject directory
+- when an existing doc can absorb a change, update it instead of creating a new
+  Markdown file
 
 ## Retire vs Keep Rules
 
@@ -160,8 +174,8 @@ A document becomes a retire candidate only when:
 - it adds no historical or audit value
 - it is fully superseded by another file
 
-No retire/delete action is taken in this audit. This pass only classifies and
-demotes.
+Retire/delete is allowed only when the content has been fully absorbed into an
+existing canonical document and navigation has been updated accordingly.
 
 ## Remaining Unfinished Work
 
@@ -169,14 +183,15 @@ This is the current work that still appears open after comparing docs to code:
 
 1. Keep the KB classification register current as the runtime evolves so the KB
    does not drift back into mixed-status ambiguity.
-2. Decide whether `docs/SYSTEM_DIAGRAM_PROMPT.md` should remain a prompt-only
+2. Keep the compact root-doc rule enforced as future docs evolve.
+3. Decide whether `docs/SYSTEM_DIAGRAM_PROMPT.md` should remain a prompt-only
    artifact or gain a generated diagram asset.
-3. Continue repo-wide sprint closure from
+4. Continue repo-wide sprint closure from
    `docs/operations/SPRINT_TO_COMPLETION.md`, especially:
    - docs truth alignment
    - public GitHub experience hardening
    - final operational hardening checks
-4. Platform-side Devvit review/publish remains outside source control. The app
+5. Platform-side Devvit review/publish remains outside source control. The app
    can be uploaded and submitted, but Reddit review still gates full publish.
 
 ## Verification Notes

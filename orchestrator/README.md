@@ -46,5 +46,8 @@ Useful targeted checks:
   you have intentionally reconciled their port/container overlap.
 - Code and config are the source of truth. This README is a current entrypoint,
   not a replacement for the implementation.
+- Material orchestrator code/config changes should update the appropriate
+  existing `.md` file in the same change set and reference the affected runtime
+  paths where useful.
 - The active documentation surface for runtime and operations lives under
   `../docs/`.

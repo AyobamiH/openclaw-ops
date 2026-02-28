@@ -10,6 +10,12 @@ This is the authoritative file map for the first-party OpenClaw workspace docs.
 If a doc is not listed here as active, do not assume it is canonical. Check the
 audit register first.
 
+Anti-drift rule:
+
+- when code or config changes materially, update the appropriate existing
+  canonical `.md` file in the same change set and reference the relevant paths
+  where useful
+
 ## Canonical Navigation
 
 | File | Purpose |
@@ -71,11 +77,12 @@ audit register first.
 
 These are not canonical, but they are still useful as historical evidence:
 
-- [../DOCUMENTATION_COMPLETE.md](../DOCUMENTATION_COMPLETE.md)
-- [../IMPLEMENTATION_COMPLETE.md](../IMPLEMENTATION_COMPLETE.md)
-- [../orchestrator_documentation.md](../orchestrator_documentation.md)
-- [../orchestrator_status.md](../orchestrator_status.md)
-- [../orchestrator_workflow_plan.md](../orchestrator_workflow_plan.md)
+- [operations/DOCUMENTATION_COMPLETE.md](./operations/DOCUMENTATION_COMPLETE.md)
+- [operations/IMPLEMENTATION_COMPLETE.md](./operations/IMPLEMENTATION_COMPLETE.md)
+- [operations/orchestrator_documentation.md](./operations/orchestrator_documentation.md)
+- [operations/orchestrator-status.md](./operations/orchestrator-status.md)
+- [operations/orchestrator_workflow_plan.md](./operations/orchestrator_workflow_plan.md)
+- [operations/PRD_GOVERNANCE_REMEDIATION.md](./operations/PRD_GOVERNANCE_REMEDIATION.md)
 
 ## Root Workspace Companions
 

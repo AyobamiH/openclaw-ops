@@ -272,6 +272,55 @@ File paths referenced in documentation must be full repository-relative paths.
 
 ---
 
+## Documentation Placement Rules
+
+Documentation must be compact, updated in place, and easy to navigate.
+
+### Update Existing Docs First
+
+Before creating any new Markdown file:
+
+1. Identify the canonical existing file for that topic.
+2. Update that file if it can reasonably absorb the change.
+3. Only create a new document when no existing canonical doc can hold the
+   content without becoming misleading or overloaded.
+
+Mandatory anti-drift rule:
+
+- every material code or config change must update the appropriate existing
+  `.md` file in the same change set
+- that documentation update should reference the affected code/config paths when
+  it materially improves traceability
+
+Preference order:
+
+- update canonical docs under `docs/`
+- update subproject entrypoints (`orchestrator/README.md`,
+  `openclawdbot/README.md`, `agents/README.md`)
+- create a new file only as a last resort
+
+### Keep Root Markdown Compact
+
+Root-level Markdown is reserved for:
+
+- public entrypoints such as `README.md`, `QUICKSTART.md`, `DEPLOYMENT.md`,
+  `CHANGELOG.md`, and `OPENCLAW_CONTEXT_ANCHOR.md`
+- workspace bootstrap/context files intentionally read in-place by the agent
+  workspace layer (for example `AGENTS.md`, `BOOTSTRAP.md`, `SOUL.md`,
+  `IDENTITY.md`, `USER.md`, `TOOLS.md`, `HEARTBEAT.md`, `MEMORY.md`, and live
+  runtime doctrine files)
+
+Historical docs, audits, runbooks, and topic-specific reference material should
+live under `docs/` or the relevant subproject directory, not at repo root.
+
+### Rearrangement Rule
+
+If a root-level Markdown file is not part of the reserved root set above and it
+is still worth keeping, move it into the appropriate existing documentation area
+instead of leaving it at root.
+
+---
+
 ## Agent Primitive Requirements
 
 All agent directories under `workspace/agents/*` must contain:

@@ -52,7 +52,7 @@ if (orchestratorTouched.length === 0) {
 
 const errors = [];
 
-const requiredGlobal = ["orchestrator_status.md"];
+const requiredGlobal = ["docs/operations/orchestrator-status.md"];
 if (!hasAll(changedFiles, requiredGlobal)) {
   errors.push(
     `Missing required status update file(s): ${requiredGlobal.join(", ")}\n` +

@@ -47,15 +47,16 @@ This file summarizes the current state of the first-party OpenClaw docs after th
 These remain in the repo because they preserve earlier phase evidence, but they
 are not the primary operating surface:
 
-- [../DOCUMENTATION_COMPLETE.md](../DOCUMENTATION_COMPLETE.md)
-- [../IMPLEMENTATION_COMPLETE.md](../IMPLEMENTATION_COMPLETE.md)
-- [../orchestrator_documentation.md](../orchestrator_documentation.md)
-- [../orchestrator_status.md](../orchestrator_status.md)
-- [../orchestrator_workflow_plan.md](../orchestrator_workflow_plan.md)
+- [operations/DOCUMENTATION_COMPLETE.md](./operations/DOCUMENTATION_COMPLETE.md)
+- [operations/IMPLEMENTATION_COMPLETE.md](./operations/IMPLEMENTATION_COMPLETE.md)
+- [operations/orchestrator_documentation.md](./operations/orchestrator_documentation.md)
+- [operations/orchestrator-status.md](./operations/orchestrator-status.md)
+- [operations/orchestrator_workflow_plan.md](./operations/orchestrator_workflow_plan.md)
+- [operations/PRD_GOVERNANCE_REMEDIATION.md](./operations/PRD_GOVERNANCE_REMEDIATION.md)
 
 ## Remaining Work
 
-1. Deeper freshness review for `docs/OPENCLAW_KB/**`
-2. Subproject doc link pass (`orchestrator/`, `openclawdbot/`, agents)
+1. Keep the compact root-doc policy intact as docs evolve
+2. Keep the KB classification and navigation surfaces current
 3. Final repo-wide closure work tracked in
    [operations/SPRINT_TO_COMPLETION.md](./operations/SPRINT_TO_COMPLETION.md)

@@ -2,6 +2,10 @@
 
 Use this checklist **for every implementation turn** touching orchestrator runtime/config.
 
+Rule: every material code/config change must update the appropriate existing
+`.md` file in the same change set and reference the affected runtime paths where
+that improves traceability.
+
 ## 1) Implement code change
 
 Update implementation files first.
@@ -10,7 +14,7 @@ Update implementation files first.
 
 Always update:
 
-- `orchestrator_status.md`
+- `docs/operations/orchestrator-status.md`
 
 Capture:
 

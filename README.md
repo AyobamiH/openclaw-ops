@@ -4,6 +4,13 @@ Production-style, self-hosted multi-agent runtime for OpenClaw operations.
 
 This repository is the workspace control plane: it runs an orchestrator, manages specialized agents, indexes local doc mirrors, generates knowledge packs, and supports both API-driven and service-driven execution paths.
 
+Documentation discipline:
+
+- every material code or config change should update the appropriate existing
+  `.md` file in the same change set
+- those doc updates should reference the relevant code/config paths where useful
+  to prevent drift
+
 ## GitHub Navigation Tabs
 
 Use this as the top-level navigation model when publishing the repo.
@@ -14,7 +21,7 @@ Use this as the top-level navigation model when publishing the repo.
 | Quick Start | Get running fast with local dev | `QUICKSTART.md` |
 | Docker + Deploy | Containerized and system deployment paths | `DEPLOYMENT.md`, `docs/operations/deployment.md` |
 | Operations | Day-2 operations, boundaries, runbooks | `docs/OPERATOR_GUIDE.md`, `docs/operations/MILESTONE_PIPELINE_RUNBOOK.md` |
-| Architecture | Technical and non-technical system explanation | `docs/concepts/architecture.md`, `ARCHITECTURE_NONTECHNICAL.md` |
+| Architecture | Technical and non-technical system explanation | `docs/concepts/architecture.md`, `docs/start/architecture-overview.md` |
 | Milestones + Reddit | Milestone pipeline: emit → sign → ingest → Reddit feed | `docs/CLAWDBOT_MILESTONES.md`, `docs/operations/MILESTONE_PIPELINE_RUNBOOK.md` |
 | Sprint To Completion | Active implementation plan to close known gaps | `docs/operations/SPRINT_TO_COMPLETION.md` |
 | Documentation Audit | Canonical vs historical doc classification | `docs/operations/DOCUMENT_AUDIT.md` |
