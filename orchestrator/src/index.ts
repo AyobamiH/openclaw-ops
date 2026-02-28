@@ -11,7 +11,12 @@ import cron from "node-cron";
 import { startMetricsServer } from "./metrics/index.js";
 import { onApprovalCompleted, onApprovalRequested } from "./metrics/index.js";
 import { alertHandler } from "./alerts/alert-handler.js";
-import { memoryScheduler } from "./memory/scheduler.js";
+// memoryScheduler: loaded dynamically at runtime (private module, gitignored).
+// Falls back to a no-op so the public build compiles and CI passes.
+let memoryScheduler: { start(): void; stop(): Promise<void> | void } = {
+  start: () => console.log('[orchestrator] Memory scheduler not available in this build'),
+  stop:  () => {},
+};
 import { knowledgeIntegration } from "./knowledge/integration.js";
 import { PersistenceIntegration } from "./persistence/index.js";
 import { getAgentRegistry } from "./agentRegistry.js";
@@ -190,6 +195,12 @@ async function bootstrap() {
   // Verify security posture FIRST
   verifySecurityPosture();
   const fastStartMode = process.env.ORCHESTRATOR_FAST_START === 'true';
+
+  // Attempt to load the private memory scheduler (gitignored). No-op fallback if absent.
+  try {
+    const mod = await import('./memory/scheduler.js');
+    memoryScheduler = mod.memoryScheduler;
+  } catch { /* private module not present — no-op fallback remains active */ }
 
   const config = await loadConfig();
   await mkdir(config.logsDir, { recursive: true });

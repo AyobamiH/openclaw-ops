@@ -3,8 +3,6 @@
  * Memory consolidation feeds knowledge base automatically
  */
 
-import { memoryScheduler } from '../memory/scheduler.js';
-import { consolidationEngine } from '../memory/consolidation-engine.js';
 import { knowledgeOrchestrator } from './orchestrator.js';
 
 export class KnowledgeIntegration {
