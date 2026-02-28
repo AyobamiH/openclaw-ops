@@ -34,12 +34,17 @@ jobs:
       - name: Check docs drift contracts
         run: bash scripts/check-doc-drift.sh
 
-      - name: Run orchestrator tests
+      - name: Run orchestrator fixture tests
         run: |
           cd orchestrator
           npm run test:unit:fixtures
+          echo "✅ Orchestrator fixture tests passed"
+
+      - name: Run orchestrator live integration test
+        run: |
+          cd orchestrator
           npm run test:integration
-          echo "✅ Orchestrator tests passed"
+          echo "✅ Orchestrator live integration test passed"
 
       - name: Validate agent test files
         run: |
