@@ -46,6 +46,27 @@
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/milestone-feed-url"
+      },
+      {
+        "label": "Start Milestone Scheduler",
+        "description": "Register the every-minute feed poll job (run once after install/update)",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/start-milestone-scheduler"
+      },
+      {
+        "label": "Force Poll Milestones Now",
+        "description": "Immediately fetch the GitHub feed and load any new milestones",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/force-poll-milestones"
+      },
+      {
+        "label": "Reset Milestone Defaults",
+        "description": "Reset feed URL + secret to built-in defaults and restart scheduler",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/reset-defaults"
       }
     ]
   },
@@ -53,6 +74,14 @@
     "exampleForm": "/internal/form/example-submit",
     "milestoneSecretForm": "/internal/form/milestone-secret-submit",
     "milestoneFeedUrlForm": "/internal/form/milestone-feed-url-submit"
+  },
+  "permissions": {
+    "http": {
+      "enable": true,
+      "domains": ["raw.githubusercontent.com", "github.com"]
+    },
+    "redis": true,
+    "realtime": true
   },
   "scheduler": {
     "tasks": {

@@ -7,9 +7,9 @@ import { SIGNING_SECRET_REDIS_KEY } from './forms';
 const FEED_KEY = 'milestones:feed';
 const SEEN_KEY_PREFIX = 'milestone:seen:';
 const MAX_FEED_ITEMS = 50;
-const FEED_URL_REDIS_KEY = 'milestones:feed-url';
+export const FEED_URL_REDIS_KEY = 'milestones:feed-url';
 const LAST_POLL_KEY = 'milestones:last-poll';
-const REALTIME_CHANNEL = 'milestones-feed';
+const REALTIME_CHANNEL = 'milestones_feed';
 
 type FeedEntry = {
   idempotencyKey: string;
@@ -48,35 +48,30 @@ function verifyEntry(entry: FeedEntry, secret: string): boolean {
   return diff === 0;
 }
 
-export const schedulerRoutes = new Hono();
+export type PollResult = { ok: true; added: number } | { ok: false; reason: string };
 
-/** Called by the Devvit scheduler every minute */
-schedulerRoutes.post('/poll-milestones', async (c) => {
+export async function runPoll(): Promise<PollResult> {
   const feedUrl = await redis.get(FEED_URL_REDIS_KEY);
-  if (!feedUrl) {
-    console.log('[scheduler] milestones:feed-url not set — skipping poll');
-    return c.json({ ok: false, reason: 'no feed url configured' }, 200);
-  }
+  if (!feedUrl) return { ok: false, reason: 'feed URL not configured' };
 
   const secret = await redis.get(SIGNING_SECRET_REDIS_KEY);
-  if (!secret) {
-    console.log('[scheduler] signing secret not set — skipping poll');
-    return c.json({ ok: false, reason: 'no signing secret' }, 200);
-  }
+  if (!secret) return { ok: false, reason: 'signing secret not configured' };
+
+  console.log('[scheduler] polling feed:', feedUrl);
 
   let remoteFeed: RemoteFeed;
   try {
-    const res = await fetch(feedUrl, { signal: AbortSignal.timeout(10_000) });
+    const res = await fetch(feedUrl);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     remoteFeed = (await res.json()) as RemoteFeed;
   } catch (err) {
-    console.warn('[scheduler] feed fetch failed:', (err as Error).message);
-    return c.json({ ok: false, reason: 'fetch failed' }, 200);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[scheduler] feed fetch failed:', msg);
+    return { ok: false, reason: `fetch failed: ${msg}` };
   }
 
   await redis.set(LAST_POLL_KEY, new Date().toISOString());
 
-  // Read local feed (JSON array stored as string)
   const feedStr = await redis.get(FEED_KEY);
   const localFeed: MilestoneEvent[] = feedStr ? (JSON.parse(feedStr) as MilestoneEvent[]) : [];
 
@@ -87,7 +82,7 @@ schedulerRoutes.post('/poll-milestones', async (c) => {
     if (already) continue;
 
     if (!verifyEntry(entry, secret)) {
-      console.warn('[scheduler] signature mismatch for key', entry.idempotencyKey);
+      console.warn('[scheduler] signature mismatch, skipping', entry.idempotencyKey);
       continue;
     }
 
@@ -98,17 +93,22 @@ schedulerRoutes.post('/poll-milestones', async (c) => {
     try {
       await realtime.send(REALTIME_CHANNEL, msg);
     } catch {
-      // Non-fatal — no clients connected
+      // Non-fatal
     }
     added++;
   }
 
   if (added > 0) {
-    // Keep only the last MAX_FEED_ITEMS
-    const trimmed = localFeed.slice(-MAX_FEED_ITEMS);
-    await redis.set(FEED_KEY, JSON.stringify(trimmed));
+    await redis.set(FEED_KEY, JSON.stringify(localFeed.slice(-MAX_FEED_ITEMS)));
   }
 
-  console.log(`[scheduler] poll complete — ${added} new milestones added`);
-  return c.json({ ok: true, added }, 200);
+  console.log(`[scheduler] poll complete — ${added} new milestones added (${remoteFeed.entries.length} entries in feed)`);
+  return { ok: true, added };
+}
+
+export const schedulerRoutes = new Hono();
+
+schedulerRoutes.post('/poll-milestones', async (c) => {
+  const result = await runPoll();
+  return c.json(result, 200);
 });

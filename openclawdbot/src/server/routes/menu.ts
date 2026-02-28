@@ -1,8 +1,15 @@
 import { Hono } from 'hono';
 import type { UiResponse } from '@devvit/web/shared';
 import type { Form } from '@devvit/shared-types/shared/form.js';
-import { context } from '@devvit/web/server';
+import { context, scheduler, redis } from '@devvit/web/server';
 import { createPost } from '../core/post';
+import { runPoll, FEED_URL_REDIS_KEY } from './scheduler';
+import { SIGNING_SECRET_REDIS_KEY } from './forms';
+
+const DEFAULT_FEED_URL =
+  'https://raw.githubusercontent.com/AyobamiH/openclaw-ops/master/orchestrator/data/milestones-feed.json';
+const DEFAULT_SIGNING_SECRET =
+  '96a9cb3cbfcd8f54ffd3255c5ab526dec5c5acf343eda62751bac5e682ebade3';
 
 export const menu = new Hono();
 
@@ -94,4 +101,57 @@ menu.post('/milestone-feed-url', async (c) => {
     },
     200
   );
+});
+
+menu.post('/start-milestone-scheduler', async (c) => {
+  try {
+    await scheduler.runJob({ name: 'pollMilestoneFeed', cron: '* * * * *' });
+    return c.json<UiResponse>(
+      { showToast: { text: 'Milestone scheduler started — polling every minute.', appearance: 'success' } },
+      200
+    );
+  } catch (err) {
+    return c.json<UiResponse>(
+      { showToast: `Scheduler start failed: ${(err as Error).message}` },
+      200
+    );
+  }
+});
+
+menu.post('/force-poll-milestones', async (c) => {
+  try {
+    const result = await runPoll();
+    if (result.ok) {
+      return c.json<UiResponse>(
+        { showToast: { text: `Poll complete — ${result.added} new milestone(s) loaded.`, appearance: 'success' } },
+        200
+      );
+    }
+    return c.json<UiResponse>(
+      { showToast: `Poll failed: ${result.reason}` },
+      200
+    );
+  } catch (err) {
+    return c.json<UiResponse>(
+      { showToast: `Poll error: ${(err as Error).message}` },
+      200
+    );
+  }
+});
+
+menu.post('/reset-defaults', async (c) => {
+  try {
+    await redis.set(FEED_URL_REDIS_KEY, DEFAULT_FEED_URL);
+    await redis.set(SIGNING_SECRET_REDIS_KEY, DEFAULT_SIGNING_SECRET);
+    await scheduler.runJob({ name: 'pollMilestoneFeed', cron: '* * * * *' });
+    return c.json<UiResponse>(
+      { showToast: { text: 'Feed URL + secret reset to defaults. Scheduler restarted.', appearance: 'success' } },
+      200
+    );
+  } catch (err) {
+    return c.json<UiResponse>(
+      { showToast: `Reset failed: ${(err as Error).message}` },
+      200
+    );
+  }
 });
