@@ -198,6 +198,7 @@ async function bootstrap() {
 
   // Attempt to load the private memory scheduler (gitignored). No-op fallback if absent.
   try {
+    // @ts-ignore — module is gitignored (private); only present on production server
     const mod = await import('./memory/scheduler.js');
     memoryScheduler = mod.memoryScheduler;
   } catch { /* private module not present — no-op fallback remains active */ }
