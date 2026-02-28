@@ -456,9 +456,10 @@ describe('Unit Simulation: Error Handling & Recovery', () => {
         };
         expect(result.success).toBe(false);
       } else {
-        // Try to execute
+        // Try to execute — use deterministic failure so circuit breaker reliably opens
         const result = await executeTaskWithRetry(agentId, 'normalizer', {
-          failureRate: 80, // High failure rate
+          shouldFail: true, // always fails; avoids flakiness from random sampling
+          maxRetries: 1,
         });
 
         // Count failures
