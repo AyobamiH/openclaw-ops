@@ -8,8 +8,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process';
 import net from 'node:net';
+import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
-import { readFile, rename, access } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { computeWebhookSignature } from '../src/middleware/auth.js';
 
 const TEST_API_KEY = 'integration-test-api-key';
@@ -62,6 +63,8 @@ describe('Runtime Integration: Live Middleware Chain', () => {
   let stderrBuffer = '';
   let stateFilePath = '';
   let digestDirPath = '';
+  let configFilePath = '';
+  let runtimeRootDir = '';
 
   const triggerTask = async (type: string, payload: Record<string, unknown>) => {
     const response = await fetch(`${baseUrl}/api/tasks/trigger`, {
@@ -107,8 +110,25 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     const configPath = resolve(process.cwd(), '..', 'orchestrator_config.json');
     const configRaw = await readFile(configPath, 'utf-8');
     const config = JSON.parse(configRaw) as { stateFile: string; digestDir?: string };
-    stateFilePath = config.stateFile;
-    digestDirPath = config.digestDir ?? join(process.cwd(), '..', 'logs', 'digests');
+    runtimeRootDir = await mkdtemp(join(tmpdir(), 'openclaw-int-'));
+    configFilePath = join(runtimeRootDir, 'orchestrator_config.test.json');
+    stateFilePath = join(runtimeRootDir, 'orchestrator_state.json');
+    digestDirPath = join(runtimeRootDir, 'logs', 'digests');
+
+    const testConfig = {
+      ...config,
+      docsPath: resolve(process.cwd(), '..', 'openclaw-docs'),
+      cookbookPath: resolve(process.cwd(), '..', 'openai-cookbook'),
+      logsDir: join(runtimeRootDir, 'logs'),
+      stateFile: stateFilePath,
+      deployBaseDir: join(runtimeRootDir, 'agents-deployed'),
+      rssConfigPath: resolve(process.cwd(), '..', 'rss_filter_config.json'),
+      redditDraftsPath: join(runtimeRootDir, 'logs', 'reddit-drafts.jsonl'),
+      knowledgePackDir: join(runtimeRootDir, 'logs', 'knowledge-packs'),
+      runtimeEngagementOsPath: resolve(process.cwd(), '..', 'RUNTIME_ENGAGEMENT_OS.md'),
+      digestDir: digestDirPath,
+    };
+    await writeFile(configFilePath, JSON.stringify(testConfig), 'utf-8');
 
     serverProcess = spawn(process.execPath, [tsxCliPath, 'src/index.ts'], {
       cwd: process.cwd(),
@@ -127,6 +147,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         DB_NAME: process.env.DB_NAME ?? 'orchestrator',
         ALERTS_ENABLED: 'false',
         ORCHESTRATOR_FAST_START: 'true',
+        ORCHESTRATOR_CONFIG: configFilePath,
       },
       stdio: 'pipe',
     });
@@ -158,9 +179,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
   }, 45000);
 
   afterAll(async () => {
-    if (!serverProcess) return;
-
-    if (serverProcess.exitCode === null) {
+    if (serverProcess && serverProcess.exitCode === null) {
       serverProcess.kill('SIGTERM');
       await new Promise<void>((resolveExit) => {
         const timeout = setTimeout(() => {
@@ -174,6 +193,10 @@ describe('Runtime Integration: Live Middleware Chain', () => {
           resolveExit();
         });
       });
+    }
+
+    if (runtimeRootDir) {
+      await rm(runtimeRootDir, { recursive: true, force: true });
     }
   });
 
