@@ -62,6 +62,13 @@
         "endpoint": "/internal/menu/force-poll-milestones"
       },
       {
+        "label": "Sync GitHub → Wiki",
+        "description": "Fetch milestones-feed.json from GitHub and write it to the subreddit wiki (relay for scheduler)",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/sync-github-to-wiki"
+      },
+      {
         "label": "Reset Milestone Defaults",
         "description": "Reset feed URL + secret to built-in defaults and restart scheduler",
         "location": "subreddit",

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { redis, realtime } from '@devvit/web/server';
+import { redis, realtime, reddit, context } from '@devvit/web/server';
 import { createHmac } from 'node:crypto';
 import type { MilestoneEvent, MilestoneRealtimeMessage } from '../../shared/milestones';
 import { SIGNING_SECRET_REDIS_KEY } from './forms';
@@ -51,23 +51,20 @@ function verifyEntry(entry: FeedEntry, secret: string): boolean {
 export type PollResult = { ok: true; added: number } | { ok: false; reason: string };
 
 export async function runPoll(): Promise<PollResult> {
-  const feedUrl = await redis.get(FEED_URL_REDIS_KEY);
-  if (!feedUrl) return { ok: false, reason: 'feed URL not configured' };
-
   const secret = await redis.get(SIGNING_SECRET_REDIS_KEY);
   if (!secret) return { ok: false, reason: 'signing secret not configured' };
 
-  console.log('[scheduler] polling feed:', feedUrl);
+  console.log(`[scheduler] reading milestones wiki for r/${context.subredditName}...`);
 
   let remoteFeed: RemoteFeed;
   try {
-    const res = await fetch(feedUrl);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    remoteFeed = (await res.json()) as RemoteFeed;
+    const wikiPage = await reddit.getWikiPage(context.subredditName, 'milestones-feed');
+    if (!wikiPage.content) throw new Error('wiki page is empty');
+    remoteFeed = JSON.parse(wikiPage.content) as RemoteFeed;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[scheduler] feed fetch failed:', msg);
-    return { ok: false, reason: `fetch failed: ${msg}` };
+    console.error('[scheduler] wiki read failed:', msg);
+    return { ok: false, reason: `wiki read failed: ${msg}` };
   }
 
   await redis.set(LAST_POLL_KEY, new Date().toISOString());

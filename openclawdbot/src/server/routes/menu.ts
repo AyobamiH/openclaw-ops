@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { UiResponse } from '@devvit/web/shared';
 import type { Form } from '@devvit/shared-types/shared/form.js';
-import { context, scheduler, redis } from '@devvit/web/server';
+import { context, scheduler, redis, reddit } from '@devvit/web/server';
 import { createPost } from '../core/post';
 import { runPoll, FEED_URL_REDIS_KEY } from './scheduler';
 import { SIGNING_SECRET_REDIS_KEY } from './forms';
@@ -134,6 +134,35 @@ menu.post('/force-poll-milestones', async (c) => {
   } catch (err) {
     return c.json<UiResponse>(
       { showToast: `Poll error: ${(err as Error).message}` },
+      200
+    );
+  }
+});
+
+menu.post('/sync-github-to-wiki', async (c) => {
+  const feedUrl = await redis.get(FEED_URL_REDIS_KEY);
+  if (!feedUrl) {
+    return c.json<UiResponse>({ showToast: 'Feed URL not configured — use Reset Defaults first.' }, 200);
+  }
+  try {
+    const res = await fetch(feedUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const content = await res.text();
+    // Validate JSON before writing to wiki
+    JSON.parse(content);
+    await reddit.updateWikiPage({
+      subredditName: context.subredditName,
+      page: 'milestones-feed',
+      content,
+      reason: 'Synced from GitHub by moderator',
+    });
+    return c.json<UiResponse>(
+      { showToast: { text: 'GitHub → Wiki sync complete! Scheduler will pick up changes within 1 minute.', appearance: 'success' } },
+      200
+    );
+  } catch (err) {
+    return c.json<UiResponse>(
+      { showToast: `Sync failed: ${(err as Error).message}` },
       200
     );
   }
