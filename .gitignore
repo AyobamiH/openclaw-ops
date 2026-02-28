@@ -49,7 +49,8 @@ npm-debug.log*
 # runtime state (root + packages)
 logs/
 memory/
-data/
+/data/
+!orchestrator/data/milestones-feed.json
 *.sqlite
 *.sqlite3
 *.db
@@ -59,7 +60,7 @@ orchestrator_status.md
 
 # orchestrator runtime dirs
 orchestrator/logs/
-orchestrator/data/
+orchestrator/data/*
 !orchestrator/data/milestones-feed.json
 
 # misc

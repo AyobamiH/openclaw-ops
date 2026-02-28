@@ -1,0 +1,89 @@
+{
+  "lastUpdated": "2026-02-23T11:07:15.898Z",
+  "entries": [
+    {
+      "idempotencyKey": "orchestrator.started.2026-02-23T06:29:06.103Z",
+      "sentAtUtc": "2026-02-23T06:29:06.103Z",
+      "event": {
+        "milestoneId": "orchestrator.started.2026-02-23T06:29:06.103Z",
+        "timestampUtc": "2026-02-23T06:29:06.103Z",
+        "scope": "runtime",
+        "claim": "Orchestrator started successfully.",
+        "evidence": [
+          {
+            "type": "log",
+            "path": "/app/data/orchestrator-state.json",
+            "summary": "lastStartedAt set in orchestrator state"
+          }
+        ],
+        "riskStatus": "on-track",
+        "nextAction": "Monitor task queue for first incoming tasks.",
+        "source": "orchestrator"
+      },
+      "signature": "c207b60453e60c913bd3519901e6c91f8b22d34b6d59d50b3ed88dfe6463496a"
+    },
+    {
+      "idempotencyKey": "orchestrator.started.2026-02-23T07:26:21.259Z",
+      "sentAtUtc": "2026-02-23T07:26:21.259Z",
+      "event": {
+        "milestoneId": "orchestrator.started.2026-02-23T07:26:21.259Z",
+        "timestampUtc": "2026-02-23T07:26:21.259Z",
+        "scope": "runtime",
+        "claim": "Orchestrator started successfully.",
+        "evidence": [
+          {
+            "type": "log",
+            "path": "/app/data/orchestrator-state.json",
+            "summary": "lastStartedAt set in orchestrator state"
+          }
+        ],
+        "riskStatus": "on-track",
+        "nextAction": "Monitor task queue for first incoming tasks.",
+        "source": "orchestrator"
+      },
+      "signature": "2af2e94b63401c19922c9a839e4e85378bf964fed7217a5ee4efca191e9097d2"
+    },
+    {
+      "idempotencyKey": "orchestrator.started.2026-02-23T08:21:03.470Z",
+      "sentAtUtc": "2026-02-23T08:21:03.470Z",
+      "event": {
+        "milestoneId": "orchestrator.started.2026-02-23T08:21:03.470Z",
+        "timestampUtc": "2026-02-23T08:21:03.470Z",
+        "scope": "runtime",
+        "claim": "Orchestrator started successfully.",
+        "evidence": [
+          {
+            "type": "log",
+            "path": "/app/data/orchestrator-state.json",
+            "summary": "lastStartedAt set in orchestrator state"
+          }
+        ],
+        "riskStatus": "on-track",
+        "nextAction": "Monitor task queue for first incoming tasks.",
+        "source": "orchestrator"
+      },
+      "signature": "577cb7e82ccddc92278734685a979beb556d4114f074681c9019efb6a85c9eab"
+    },
+    {
+      "idempotencyKey": "orchestrator.started.2026-02-23T11:07:15.898Z",
+      "sentAtUtc": "2026-02-23T11:07:15.898Z",
+      "event": {
+        "milestoneId": "orchestrator.started.2026-02-23T11:07:15.898Z",
+        "timestampUtc": "2026-02-23T11:07:15.898Z",
+        "scope": "runtime",
+        "claim": "Orchestrator started successfully.",
+        "evidence": [
+          {
+            "type": "log",
+            "path": "/app/data/orchestrator-state.json",
+            "summary": "lastStartedAt set in orchestrator state"
+          }
+        ],
+        "riskStatus": "on-track",
+        "nextAction": "Monitor task queue for first incoming tasks.",
+        "source": "orchestrator"
+      },
+      "signature": "beae89143e65562b6ad3236ac8f64295e20cfd2e29adb81825d00091021fe804"
+    }
+  ]
+}
