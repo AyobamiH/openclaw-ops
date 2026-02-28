@@ -67,7 +67,7 @@ export const agentFixtures = {
   } as MockAgentConfig,
 
   summarization: {
-    id: 'summarization-agent',
+    id: 'text-summarization-agent',
     name: 'Summarization Agent',
     model: 'gpt-4o-mini',
     tier: 'cheap',
@@ -95,7 +95,7 @@ export const agentFixtures = {
   } as MockAgentConfig,
 
   security: {
-    id: 'security-agent',
+    id: 'code-security-agent',
     name: 'Security Audit Agent',
     model: 'claude-3-5-sonnet',
     tier: 'balanced',
@@ -204,13 +204,13 @@ export const skillFixtures = {
     id: 'documentParser',
     name: 'Document Parser',
     description: 'Parse PDFs, HTML, CSV files',
-    allowedAgents: ['data-extraction-agent', 'summarization-agent', 'content-agent', 'security-agent', 'system-monitor-agent'],
+    allowedAgents: ['data-extraction-agent', 'text-summarization-agent', 'content-agent', 'code-security-agent', 'system-monitor-agent'],
   },
   normalizer: {
     id: 'normalizer',
     name: 'Data Normalizer',
     description: 'Normalize and validate data against schema',
-    allowedAgents: ['data-extraction-agent', 'summarization-agent', 'normalization-agent', 'security-agent', 'integration-agent'],
+    allowedAgents: ['data-extraction-agent', 'text-summarization-agent', 'normalization-agent', 'code-security-agent', 'integration-agent'],
   },
   workspacePatch: {
     id: 'workspacePatch',

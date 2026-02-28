@@ -6,6 +6,7 @@ After=network-online.target
 Type=simple
 WorkingDirectory=/home/oneclickwebsitedesignfactory/.openclaw/workspace/agents/reddit-helper
 Environment=PATH=/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.12.0/bin:/usr/bin:/bin
+Environment=ALLOW_DIRECT_SERVICE=true
 ExecStart=/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.12.0/bin/node /home/oneclickwebsitedesignfactory/.openclaw/workspace/node_modules/tsx/dist/cli.mjs src/service.ts
 Restart=always
 RestartSec=5

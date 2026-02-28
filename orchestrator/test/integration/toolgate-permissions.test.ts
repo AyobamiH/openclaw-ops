@@ -1,5 +1,5 @@
 /**
- * Integration Test: Permission Enforcement (Deny-by-Default)
+ * Unit Simulation Test: Permission Enforcement (Deny-by-Default)
  * 
  * Validates that ToolGate correctly enforces permissions:
  * - Allowed skill calls succeed
@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { allAgents, permissionViolations, skillFixtures } from '../fixtures';
 import { MockAuditLogger, customAssertions } from '../helpers';
 
-describe('Integration: Permission Enforcement (ToolGate)', () => {
+describe('Unit Simulation: Permission Enforcement (ToolGate)', () => {
   let auditLogger: MockAuditLogger;
 
   beforeEach(() => {

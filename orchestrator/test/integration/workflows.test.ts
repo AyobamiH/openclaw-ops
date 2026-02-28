@@ -1,5 +1,5 @@
 /**
- * Integration Test: Cross-Agent Workflows
+ * Unit Simulation Test: Cross-Agent Workflows
  * 
  * Validates that complex multi-step workflows work correctly:
  * - Data flows between agents with correct permissions
@@ -32,7 +32,7 @@ interface WorkflowResult {
   totalDuration: number;
 }
 
-describe('Integration: Cross-Agent Workflows', () => {
+describe('Unit Simulation: Cross-Agent Workflows', () => {
   let auditLogger: MockAuditLogger;
   let workflowTrace: { traceId: string; parentTraceId?: string };
 
@@ -91,8 +91,9 @@ describe('Integration: Cross-Agent Workflows', () => {
         input: step.input,
       });
 
-      // Simulate processing (with realistic delays)
-      const processingTime = 50 + Math.random() * 100;
+      // Simulate processing (with realistic delays, or explicit delay override)
+      const processingTime =
+        typeof step.input?.delay === 'number' ? step.input.delay : 50 + Math.random() * 100;
       await new Promise((resolve) => setTimeout(resolve, processingTime));
 
       const stepDuration = Date.now() - stepStartTime;
@@ -151,7 +152,7 @@ describe('Integration: Cross-Agent Workflows', () => {
         input: { raw: 'fetched' },
       },
       {
-        agentId: 'content-normalization-agent',
+        agentId: 'normalization-agent',
         skillId: 'normalizer',
         input: { parsed: 'data' },
       },
@@ -274,7 +275,7 @@ describe('Integration: Cross-Agent Workflows', () => {
 
     const step2 = await executeWorkflow([
       {
-        agentId: branch === 'a' ? 'data-extraction-agent' : 'summarization-agent',
+        agentId: branch === 'a' ? 'data-extraction-agent' : 'text-summarization-agent',
         skillId: branch === 'a' ? 'documentParser' : 'normalizer',
         input: { branch },
       },

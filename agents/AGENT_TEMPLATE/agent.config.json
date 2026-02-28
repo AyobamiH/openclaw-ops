@@ -1,6 +1,8 @@
 {
   "id": "template-agent",
   "name": "Template Agent",
+  "orchestratorStatePath": "../../orchestrator_state.json",
+  "serviceStatePath": "../../logs/template-agent-service.json",
   "description": "Change this in agent.config.json",
   "version": "1.0.0",
   "author": "OpenClaw Team",

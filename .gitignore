@@ -1,0 +1,67 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build artifacts
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Runtime
+.pid
+.cache
+
+# Docker
+.docker/
+
+# deps/build
+**/node_modules/
+**/dist/
+**/.cache/
+**/.vite/
+**/*.tsbuildinfo
+
+# env/secrets
+.env
+.env.*
+!.env.example
+
+# runtime state (root + packages)
+logs/
+memory/
+data/
+*.sqlite
+*.sqlite3
+*.db
+*.jsonl
+orchestrator_state.json
+orchestrator_status.md
+
+# orchestrator runtime dirs
+orchestrator/logs/
+orchestrator/data/
+!orchestrator/data/milestones-feed.json
+
+# misc
+.DS_Store
+.vscode/

@@ -1,0 +1,65 @@
+{
+  "id": "data-extraction-agent",
+  "orchestratorTask": "data-extraction",
+  "orchestratorStatePath": "../../orchestrator_state.json",
+  "serviceStatePath": "../../logs/data-extraction-agent-service.json",
+  "name": "Document & Data Extraction Agent",
+  "description": "Extracts structured data from documents (PDF, HTML, CSV), identifies patterns and entities",
+  "version": "1.0.0",
+  "author": "OpenClaw Team",
+  "model": {
+    "primary": "gpt-4o-mini",
+    "fallback": "gpt-4o-mini",
+    "tier": "cheap",
+    "temperature": 0.5,
+    "maxTokens": 3000
+  },
+  "permissions": {
+    "skills": {
+      "sourceFetch": {
+        "allowed": false
+      },
+      "documentParser": {
+        "allowed": true,
+        "maxCalls": 50,
+        "rateLimit": "5/second"
+      },
+      "normalizer": {
+        "allowed": true,
+        "maxCalls": 30
+      },
+      "workspacePatch": {
+        "allowed": false
+      },
+      "testRunner": {
+        "allowed": false
+      }
+    },
+    "fileSystem": {
+      "readPaths": ["workspace"],
+      "writePaths": ["artifacts/extracted"]
+    },
+    "network": {
+      "allowed": false
+    },
+    "secrets": {
+      "allowed": false
+    }
+  },
+  "constraints": {
+    "timeout": 90000,
+    "maxRetries": 2,
+    "memory": "1024M",
+    "cpu": "1.0"
+  },
+  "heartbeat": {
+    "enabled": true,
+    "interval": 300000,
+    "checks": ["liveness", "memory-usage", "skill-access"]
+  },
+  "logging": {
+    "level": "info",
+    "format": "json",
+    "destinations": ["stdout", "artifacts/logs/data-extraction-agent.log"]
+  }
+}

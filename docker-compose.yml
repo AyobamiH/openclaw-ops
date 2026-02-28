@@ -3,15 +3,14 @@ version: '3.8'
 services:
   orchestrator:
     build:
-      context: .
+      context: ./orchestrator
       dockerfile: Dockerfile
     container_name: openclaw-orchestrator
     working_dir: /app
     volumes:
-      - ./logs:/app/logs
-      - ./orchestrator_config.json:/app/orchestrator_config.json:ro
-      - ./openclaw-docs:/app/openclaw-docs:ro
-      - ./openai-cookbook:/app/openai-cookbook:ro
+      - ./orchestrator/logs:/app/logs
+      - ./orchestrator/data:/app/data
+      - ./orchestrator/orchestrator_config.json:/app/orchestrator_config.json:ro
     environment:
       NODE_ENV: production
       LOG_LEVEL: info

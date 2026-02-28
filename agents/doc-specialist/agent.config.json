@@ -1,5 +1,6 @@
 {
   "name": "doc-specialist",
+  "id": "doc-specialist",
   "orchestratorTask": "drift-repair",
   "docsPath": "../../openclaw-docs",
   "cookbookPath": "../../openai-cookbook",

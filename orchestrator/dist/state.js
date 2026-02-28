@@ -2,13 +2,26 @@ import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { mkdir } from "node:fs/promises";
-const HISTORY_LIMIT = 50;
+const DEFAULT_HISTORY_LIMIT = 50;
 const DRIFT_LOG_LIMIT = 25;
 const REDDIT_RESPONSE_LIMIT = 100;
 const AGENT_DEPLOYMENT_LIMIT = 50;
 const RSS_DRAFT_LIMIT = 200;
 const RSS_SEEN_LIMIT = 400;
-export async function loadState(path) {
+const APPROVALS_LIMIT = 1000;
+const TASK_EXECUTION_LIMIT = 5000;
+function normalizeTaskHistoryLimit(limit) {
+    if (!Number.isFinite(limit))
+        return DEFAULT_HISTORY_LIMIT;
+    const clamped = Math.floor(limit);
+    if (clamped < 1)
+        return 1;
+    if (clamped > 10000)
+        return 10000;
+    return clamped;
+}
+export async function loadState(path, options = {}) {
+    const historyLimit = normalizeTaskHistoryLimit(options.taskHistoryLimit);
     if (!existsSync(path)) {
         return createDefaultState();
     }
@@ -18,7 +31,9 @@ export async function loadState(path) {
         return {
             ...createDefaultState(),
             ...parsed,
-            taskHistory: parsed.taskHistory?.slice(-HISTORY_LIMIT) ?? [],
+            taskHistory: parsed.taskHistory?.slice(-historyLimit) ?? [],
+            taskExecutions: parsed.taskExecutions?.slice(-TASK_EXECUTION_LIMIT) ?? [],
+            approvals: parsed.approvals?.slice(-APPROVALS_LIMIT) ?? [],
             pendingDocChanges: parsed.pendingDocChanges ?? [],
             driftRepairs: parsed.driftRepairs ?? [],
             redditQueue: parsed.redditQueue ?? [],
@@ -34,10 +49,16 @@ export async function loadState(path) {
     }
 }
 export async function saveState(path, state) {
+    await saveStateWithOptions(path, state, {});
+}
+export async function saveStateWithOptions(path, state, options = {}) {
+    const historyLimit = normalizeTaskHistoryLimit(options.taskHistoryLimit);
     await mkdir(dirname(path), { recursive: true });
     const prepared = {
         ...state,
-        taskHistory: state.taskHistory.slice(-HISTORY_LIMIT),
+        taskHistory: state.taskHistory.slice(-historyLimit),
+        taskExecutions: state.taskExecutions.slice(-TASK_EXECUTION_LIMIT),
+        approvals: state.approvals.slice(-APPROVALS_LIMIT),
         pendingDocChanges: state.pendingDocChanges.slice(0, 200),
         driftRepairs: state.driftRepairs.slice(-DRIFT_LOG_LIMIT),
         redditResponses: state.redditResponses.slice(-REDDIT_RESPONSE_LIMIT),
@@ -56,6 +77,8 @@ export function createDefaultState() {
         docIndexVersion: 0,
         pendingDocChanges: [],
         taskHistory: [],
+        taskExecutions: [],
+        approvals: [],
         driftRepairs: [],
         redditQueue: [],
         redditResponses: [],

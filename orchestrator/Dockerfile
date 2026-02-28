@@ -43,8 +43,8 @@ LABEL description="12-Agent Orchestrator System - Production"
 
 WORKDIR /app
 
-# Install curl for health checks
-RUN apk add --no-cache curl
+# Install curl and dumb-init for health checks and signal handling
+RUN apk add --no-cache curl dumb-init
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
@@ -89,6 +89,9 @@ ENV ORCHESTRATOR_CONFIG=/app/orchestrator_config.json
 
 # Expose port
 EXPOSE 3000
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Start application
 CMD ["node", "dist/index.js"]

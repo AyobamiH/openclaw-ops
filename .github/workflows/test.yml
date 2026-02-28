@@ -31,11 +31,15 @@ jobs:
       - name: Build orchestrator
         run: cd orchestrator && npm run build
 
+      - name: Check docs drift contracts
+        run: bash scripts/check-doc-drift.sh
+
       - name: Run orchestrator tests
         run: |
           cd orchestrator
-          npm list || true
-          echo "✅ Orchestrator build successful"
+          npm run test:unit:fixtures
+          npm run test:integration
+          echo "✅ Orchestrator tests passed"
 
       - name: Validate agent test files
         run: |

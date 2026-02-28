@@ -2,6 +2,18 @@
 
 This is the boilerplate for creating new agents in the OpenClaw swarm.
 
+## Required Governance Primitives
+
+Every agent folder must include:
+
+- `ROLE.md`
+- `SCOPE.md`
+- `POLICY.md`
+- `TOOLS.md`
+- `README.md`
+
+Policy authority: `../../docs/GOVERNANCE_REPO_HYGIENE.md`
+
 ## Quick Start
 
 1. **Copy this directory:**
@@ -11,6 +23,7 @@ This is the boilerplate for creating new agents in the OpenClaw swarm.
 
 2. **Update `agent.config.json`:**
    - Set `id`, `name`, `description`
+   - Keep `orchestratorStatePath` and `serviceStatePath` (mandatory memory contract)
    - Configure allowed `skills`
    - Set `model` tier (cheap/balanced/heavy/strategic)
 
@@ -39,6 +52,9 @@ This is the boilerplate for creating new agents in the OpenClaw swarm.
 ## File Structure
 
 - `agent.config.json` - Agent configuration + permissions
+- `ROLE.md` - Why the agent exists, done criteria, never-do rules
+- `SCOPE.md` - Inputs/outputs, allowed actions, boundaries
+- `POLICY.md` - Enforcement rules and governance constraints
 - `SOUL.md` - Agent identity + values
 - `IDENTITY.md` - Behavioral patterns + examples
 - `TOOLS.md` - Local tools + credentials (dev only)
@@ -54,6 +70,8 @@ This is the boilerplate for creating new agents in the OpenClaw swarm.
 {
   "id": "my-agent",
   "name": "My Agent",
+   "orchestratorStatePath": "../../orchestrator_state.json",
+   "serviceStatePath": "../../logs/my-agent-service.json",
   "description": "What this agent does",
   "version": "1.0.0",
   "model": {
@@ -77,6 +95,12 @@ This is the boilerplate for creating new agents in the OpenClaw swarm.
   }
 }
 ```
+
+## Memory Standard (Richer Specialized Mode)
+
+- Baseline memory is mandatory for every agent via `orchestratorStatePath` + `serviceStatePath`.
+- Orchestrator persists cross-run memory for spawned agents into `serviceStatePath` (status, counters, and recent timeline).
+- If your agent has domain-specific memory artifacts, add explicit paths (for example `knowledgePackDir`, `draftLogPath`, `devvitQueuePath`) in addition to the baseline keys.
 
 ## Skill Usage Pattern
 

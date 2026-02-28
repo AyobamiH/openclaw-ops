@@ -20,6 +20,12 @@ const telemetry = new Telemetry({ component: "doc-specialist-service" });
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+function assertServiceBoundary() {
+  if (process.env.ALLOW_DIRECT_SERVICE !== "true") {
+    throw new Error("Direct service execution blocked. Set ALLOW_DIRECT_SERVICE=true for system-managed runs.");
+  }
+}
+
 async function loadConfig(): Promise<AgentConfig> {
   const configPath = resolve(__dirname, "../agent.config.json");
   const raw = await readFile(configPath, "utf-8");
@@ -125,6 +131,7 @@ async function runOnce(config: AgentConfig) {
 }
 
 async function loop() {
+  assertServiceBoundary();
   const config = await loadConfig();
   while (true) {
     try {

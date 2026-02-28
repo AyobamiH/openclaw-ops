@@ -1,5 +1,5 @@
 /**
- * Integration Test: Audit Trail & State Integrity
+ * Unit Simulation Test: Audit Trail & State Integrity
  * 
  * Validates that the system maintains:
  * - Immutable audit trails with trace ID chains
@@ -21,7 +21,7 @@ interface StateSnapshot {
   traceId: string;
 }
 
-describe('Integration: Audit Trail & State Integrity', () => {
+describe('Unit Simulation: Audit Trail & State Integrity', () => {
   let auditLogger: MockAuditLogger;
   let agentStates: Map<string, MockAgentState>;
   let stateSnapshots: StateSnapshot[];
@@ -105,6 +105,7 @@ describe('Integration: Audit Trail & State Integrity', () => {
 
     // Task completes
     if (agentState) {
+      agentState.recordTask();
       agentState.markIdle();
     }
 
@@ -183,7 +184,7 @@ describe('Integration: Audit Trail & State Integrity', () => {
     );
 
     // Task 3 (child of task 2)
-    const task3 = await executeTaskWithAudit('content-normalization-agent', 'normalizer',
+    const task3 = await executeTaskWithAudit('normalization-agent', 'normalizer',
       { parsed: 'data2' },
       task2.traceId,
     );

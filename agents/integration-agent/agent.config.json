@@ -1,5 +1,8 @@
 {
   "id": "integration-agent",
+  "orchestratorTask": "integration-workflow",
+  "orchestratorStatePath": "../../orchestrator_state.json",
+  "serviceStatePath": "../../logs/integration-agent-service.json",
   "name": "Integration & Workflow Agent",
   "description": "Orchestrates complex multi-skill workflows: coordinates agent communication, manages data flow between agents, handles error recovery",
   "model": "claude-3-5-sonnet",

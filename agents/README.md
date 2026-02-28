@@ -12,3 +12,21 @@ Current templates:
 - [`reddit-helper/`](./reddit-helper) – Community responder that consumes queued Reddit questions and posts orchestrator-approved replies.
 
 Telemetry helpers live under [`shared/`](./shared).
+
+## Memory Contract (Mandatory for all agents)
+
+Every agent must include these config keys in `agent.config.json`:
+
+- `orchestratorStatePath`
+- `serviceStatePath`
+
+Why this is mandatory:
+
+- Enables persistent cross-run memory continuity.
+- Guarantees each agent has a durable execution timeline and status history.
+- Supports operator auditability and replay-friendly diagnostics.
+
+Runtime standard:
+
+- Orchestrator updates each spawned agent `serviceStatePath` with memory state (`lastRunAt`, `lastStatus`, task IDs/types, counters, and bounded timeline history).
+- Agents with richer pipelines may define additional memory IO keys (for example `knowledgePackDir`, `draftLogPath`, `devvitQueuePath`) but cannot omit the baseline memory contract above.

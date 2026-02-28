@@ -160,6 +160,7 @@ You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it
 - **Mentions** - Twitter/social notifications?
 - **Weather** - Relevant if your human might go out?
 
+
 **Track your checks** in `memory/heartbeat-state.json`:
 
 ```json
@@ -208,5 +209,7 @@ Think of it like a human reviewing their journal and updating their mental model
 The goal: Be helpful without being annoying. Check in a few times a day, do useful background work, but respect quiet time.
 
 ## Make It Yours
+
+Always use a hard cutover approach and never implement backward compatibility 
 
 This is a starting point. Add your own conventions, style, and rules as you figure out what works.

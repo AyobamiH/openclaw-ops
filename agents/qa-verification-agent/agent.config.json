@@ -1,0 +1,64 @@
+{
+  "id": "qa-verification-agent",
+  "orchestratorTask": "qa-verification",
+  "orchestratorStatePath": "../../orchestrator_state.json",
+  "serviceStatePath": "../../logs/qa-verification-agent-service.json",
+  "name": "Quality Assurance & Verification Agent",
+  "description": "Verifies quality of work, runs tests, validates outputs against standards",
+  "version": "1.0.0",
+  "author": "OpenClaw Team",
+  "model": {
+    "primary": "claude-3-5-sonnet",
+    "fallback": "gpt-4o",
+    "tier": "balanced",
+    "temperature": 0.3,
+    "maxTokens": 2048
+  },
+  "permissions": {
+    "skills": {
+      "sourceFetch": {
+        "allowed": false
+      },
+      "documentParser": {
+        "allowed": false
+      },
+      "normalizer": {
+        "allowed": false
+      },
+      "workspacePatch": {
+        "allowed": false
+      },
+      "testRunner": {
+        "allowed": true,
+        "maxCalls": 20,
+        "rateLimit": "1/second"
+      }
+    },
+    "fileSystem": {
+      "readPaths": ["workspace", "artifacts"],
+      "writePaths": ["artifacts/qa-reports"]
+    },
+    "network": {
+      "allowed": false
+    },
+    "secrets": {
+      "allowed": false
+    }
+  },
+  "constraints": {
+    "timeout": 300000,
+    "maxRetries": 3,
+    "memory": "2048M",
+    "cpu": "2.0"
+  },
+  "heartbeat": {
+    "enabled": true,
+    "interval": 300000,
+    "checks": ["liveness", "test-access", "skill-access"]
+  },
+  "logging": {
+    "level": "info",
+    "format": "json",
+    "destinations": ["stdout", "artifacts/logs/qa-verification-agent.log"]
+  }
+}

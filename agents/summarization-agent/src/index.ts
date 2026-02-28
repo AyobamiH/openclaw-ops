@@ -282,3 +282,27 @@ Evidence Quality
 
 // Export for testing
 export { handleTask, loadConfig, canUseSkill, AgentConfig, SummarizationTask, SummarizationResult };
+
+async function main() {
+  const payloadPath = process.argv[2];
+  if (!payloadPath) {
+    return;
+  }
+
+  const raw = fs.readFileSync(payloadPath, 'utf-8');
+  const payload = JSON.parse(raw) as SummarizationTask;
+  const result = await handleTask(payload);
+
+  const resultFile = process.env.SUMMARIZATION_AGENT_RESULT_FILE;
+  if (resultFile) {
+    fs.mkdirSync(path.dirname(resultFile), { recursive: true });
+    fs.writeFileSync(resultFile, JSON.stringify(result, null, 2), 'utf-8');
+  } else {
+    process.stdout.write(JSON.stringify(result));
+  }
+}
+
+void main().catch((error) => {
+  process.stderr.write(`${(error as Error).message}\n`);
+  process.exit(1);
+});

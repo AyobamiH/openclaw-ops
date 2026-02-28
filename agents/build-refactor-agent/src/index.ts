@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { mkdir, readFile, writeFile } from 'fs/promises';
 
 /**
  * BUILD & REFACTOR AGENT
@@ -287,5 +288,38 @@ function generalRefactor(scope: string): Array<any> {
     },
   ];
 }
+
+async function main(): Promise<void> {
+  const payloadPath = process.argv[2];
+  if (!payloadPath) {
+    return;
+  }
+
+  try {
+    const payloadRaw = await readFile(payloadPath, 'utf-8');
+    const taskInput = JSON.parse(payloadRaw) as RefactoringTask;
+    const result = await handleTask(taskInput);
+
+    const resultFile = process.env.BUILD_REFACTOR_AGENT_RESULT_FILE;
+    if (resultFile) {
+      await mkdir(path.dirname(resultFile), { recursive: true });
+      await writeFile(resultFile, JSON.stringify(result, null, 2), 'utf-8');
+    } else {
+      console.log(JSON.stringify(result, null, 2));
+    }
+
+    process.exit(result.success ? 0 : 1);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
+    process.exit(1);
+  }
+}
+
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(message);
+  process.exit(1);
+});
 
 export { handleTask, loadConfig, canUseSkill, AgentConfig, RefactoringTask, RefactoringResult };

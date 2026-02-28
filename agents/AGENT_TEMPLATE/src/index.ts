@@ -10,7 +10,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { executeSkill } from '../../../skills/index.js';
+import * as Skills from '../../../skills/index.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const configPath = path.join(__dirname, '../agent.config.json');
@@ -84,7 +84,7 @@ async function handleTask(task: any): Promise<any> {
     if (task.input.url && canUseSkill('sourceFetch')) {
       console.log(`[${agentId}] Fetching: ${task.input.url}`);
       
-      const fetchResult = await executeSkill('sourceFetch', {
+      const fetchResult = await Skills.executeSkill('sourceFetch', {
         url: task.input.url,
         timeout: 10000,
       }, agentId);

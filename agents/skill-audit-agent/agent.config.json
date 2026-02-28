@@ -1,5 +1,8 @@
 {
   "id": "skill-audit-agent",
+  "orchestratorTask": "skill-audit",
+  "orchestratorStatePath": "../../orchestrator_state.json",
+  "serviceStatePath": "../../logs/skill-audit-agent-service.json",
   "name": "Skill Audit & Verification Agent",
   "description": "Validates skills for correctness, performance, and compliance: unit testing, integration testing, provenance verification, audit logging",
   "model": "claude-3-5-sonnet",

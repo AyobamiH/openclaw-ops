@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
 import { dirname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Telemetry } from "../../shared/telemetry.js";
@@ -11,9 +11,32 @@ interface DriftRepairPayload {
 }
 
 interface AgentConfig {
+  id?: string;
   docsPath: string;
   cookbookPath?: string;
   knowledgePackDir: string;
+  agentsRootPath?: string;
+  orchestratorConfigPath?: string;
+}
+
+interface ConfigAuditIssue {
+  severity: "critical" | "warning";
+  scope: string;
+  message: string;
+}
+
+interface ConfigAudit {
+  checkedAt: string;
+  summary: {
+    totalAgents: number;
+    validAgents: number;
+    missingIds: number;
+    missingOrchestratorTask: number;
+    totalIssues: number;
+    criticalIssues: number;
+  };
+  issues: ConfigAuditIssue[];
+  discoveredAgentIds: string[];
 }
 
 interface ProcessedDocSummary {
@@ -42,6 +65,140 @@ async function loadAgentConfig(): Promise<AgentConfig> {
     docsPath: resolve(dirname(configPath), parsed.docsPath),
     cookbookPath: parsed.cookbookPath ? resolve(dirname(configPath), parsed.cookbookPath) : undefined,
     knowledgePackDir: resolve(dirname(configPath), parsed.knowledgePackDir),
+    agentsRootPath: resolve(dirname(configPath), parsed.agentsRootPath || "../../agents"),
+    orchestratorConfigPath: resolve(
+      dirname(configPath),
+      parsed.orchestratorConfigPath || "../../orchestrator/orchestrator_config.json"
+    ),
+  };
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function runConfigAudit(task: DriftRepairPayload, config: AgentConfig): Promise<ConfigAudit> {
+  const issues: ConfigAuditIssue[] = [];
+  const discoveredAgentIds: string[] = [];
+  let totalAgents = 0;
+  let validAgents = 0;
+  let missingIds = 0;
+  let missingOrchestratorTask = 0;
+
+  const docsExists = await pathExists(config.docsPath);
+  if (!docsExists) {
+    issues.push({
+      severity: "critical",
+      scope: "doc-specialist",
+      message: `Configured docsPath does not exist: ${config.docsPath}`,
+    });
+  }
+
+  if (config.cookbookPath) {
+    const cookbookExists = await pathExists(config.cookbookPath);
+    if (!cookbookExists) {
+      issues.push({
+        severity: "warning",
+        scope: "doc-specialist",
+        message: `Configured cookbookPath does not exist: ${config.cookbookPath}`,
+      });
+    }
+  }
+
+  const orchestratorConfigExists = await pathExists(config.orchestratorConfigPath || "");
+  if (!orchestratorConfigExists) {
+    issues.push({
+      severity: "warning",
+      scope: "orchestrator",
+      message: `orchestrator config not found at: ${config.orchestratorConfigPath}`,
+    });
+  }
+
+  try {
+    const agentDirs = await readdir(config.agentsRootPath || "");
+    for (const agentDir of agentDirs) {
+      if (agentDir.startsWith(".") || agentDir === "shared" || agentDir === "README.md") continue;
+
+      const agentConfigPath = resolve(config.agentsRootPath!, agentDir, "agent.config.json");
+      const hasConfig = await pathExists(agentConfigPath);
+      if (!hasConfig) continue;
+
+      totalAgents++;
+
+      try {
+        const raw = await readFile(agentConfigPath, "utf-8");
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        const id = typeof parsed.id === "string" ? parsed.id : "";
+        const orchestratorTask = typeof parsed.orchestratorTask === "string" ? parsed.orchestratorTask : "";
+
+        if (!id) {
+          missingIds++;
+          issues.push({
+            severity: "critical",
+            scope: `agent:${agentDir}`,
+            message: `Missing required id in ${agentConfigPath}`,
+          });
+        } else {
+          discoveredAgentIds.push(id);
+        }
+
+        if (!orchestratorTask) {
+          missingOrchestratorTask++;
+          issues.push({
+            severity: "warning",
+            scope: `agent:${agentDir}`,
+            message: `No orchestratorTask declared in ${agentConfigPath}`,
+          });
+        }
+
+        if (id) {
+          validAgents++;
+        }
+      } catch (error) {
+        issues.push({
+          severity: "critical",
+          scope: `agent:${agentDir}`,
+          message: `Invalid JSON config at ${agentConfigPath}: ${(error as Error).message}`,
+        });
+      }
+    }
+  } catch (error) {
+    issues.push({
+      severity: "critical",
+      scope: "doc-specialist",
+      message: `Unable to scan agents root path ${config.agentsRootPath}: ${(error as Error).message}`,
+    });
+  }
+
+  for (const target of task.targetAgents) {
+    if (!discoveredAgentIds.includes(target)) {
+      issues.push({
+        severity: "warning",
+        scope: "drift-repair",
+        message: `Target agent '${target}' not found in discovered agent IDs`,
+      });
+    }
+  }
+
+  const criticalIssues = issues.filter((issue) => issue.severity === "critical").length;
+
+  return {
+    checkedAt: new Date().toISOString(),
+    summary: {
+      totalAgents,
+      validAgents,
+      missingIds,
+      missingOrchestratorTask,
+      totalIssues: issues.length,
+      criticalIssues,
+    },
+    issues,
+    discoveredAgentIds,
   };
 }
 
@@ -172,6 +329,7 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
   await telemetry.info("pack.start", { files: task.docPaths.length, useDualSources: !!config.cookbookPath });
   
   let summaries: ProcessedDocSummary[] = [];
+  const configAudit = await runConfigAudit(task, config);
 
   // If custom docPaths provided, use those (backward compatibility)
   if (task.docPaths && task.docPaths.length > 0) {
@@ -196,6 +354,7 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
     taskId: task.id,
     requestedBy: task.requestedBy,
     targetAgents: task.targetAgents,
+    configAudit,
     docs: summaries,
   };
 
@@ -209,18 +368,30 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
     packPath, 
     docsProcessed: summaries.length,
     sourceBreakdown,
+    configAuditIssues: configAudit.summary.totalIssues,
+    configAuditCriticalIssues: configAudit.summary.criticalIssues,
   });
 
   const resultFile = process.env.DOC_SPECIALIST_RESULT_FILE;
   if (resultFile) {
     await writeFile(
       resultFile,
-      JSON.stringify({ packPath, packId, docsProcessed: summaries.length, sourceBreakdown }, null, 2),
+      JSON.stringify(
+        {
+          packPath,
+          packId,
+          docsProcessed: summaries.length,
+          sourceBreakdown,
+          configAuditSummary: configAudit.summary,
+        },
+        null,
+        2
+      ),
       "utf-8",
     );
   }
 
-  return { packPath, packId, docsProcessed: summaries.length, sourceBreakdown };
+  return { packPath, packId, docsProcessed: summaries.length, sourceBreakdown, configAudit };
 }
 
 async function run() {
@@ -241,6 +412,8 @@ async function run() {
     packPath: pack.packPath,
     packId: pack.packId,
     docsProcessed: pack.docsProcessed,
+    configAuditIssues: pack.configAudit.summary.totalIssues,
+    configAuditCriticalIssues: pack.configAudit.summary.criticalIssues,
     targets: task.targetAgents,
     requestedBy: task.requestedBy,
   });

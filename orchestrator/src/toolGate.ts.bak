@@ -1,0 +1,207 @@
+/**
+ * Tool Gate - Runtime Permission Enforcement
+ * 
+ * Intercepts all skill calls from agents and enforces permissions.
+ * Logs every invocation for audit trail.
+ */
+
+import { getAgentRegistry } from './agentRegistry.js';
+import { hasSkill, getSkillDefinition } from '../skills/index.js';
+
+export interface ToolInvocation {
+  id: string;
+  agentId: string;
+  skillId: string;
+  args: Record<string, any>;
+  timestamp: string;
+  allowed: boolean;
+  reason?: string;
+}
+
+export interface ToolInvocationLog {
+  success: boolean;
+  invocations: ToolInvocation[];
+  deniedCount: number;
+  allowedCount: number;
+}
+
+/**
+ * Tool Gate - enforces permissions at runtime
+ */
+export class ToolGate {
+  private invocationLog: ToolInvocation[] = [];
+  private agentRegistry: any = null;
+
+  async initialize(): Promise<void> {
+    this.agentRegistry = await getAgentRegistry();
+    console.log('[ToolGate] Initialized');
+  }
+
+  /**
+   * Check if an agent can call a skill
+   */
+  private canCall(agentId: string, skillId: string): { allowed: boolean; reason?: string } {
+    // Check agent exists
+    const agent = this.agentRegistry.getAgent(agentId);
+    if (!agent) {
+      return {
+        allowed: false,
+        reason: `Agent not found: ${agentId}`,
+      };
+    }
+
+    // Check skill exists
+    if (!hasSkill(skillId)) {
+      return {
+        allowed: false,
+        reason: `Skill not found: ${skillId}`,
+      };
+    }
+
+    // Check skill is in allowlist
+    const skillPerms = agent.permissions.skills[skillId];
+    if (!skillPerms?.allowed) {
+      return {
+        allowed: false,
+        reason: `Skill not in agent allowlist: ${skillId}`,
+      };
+    }
+
+    return { allowed: true };
+  }
+
+  /**
+   * Execute a skill with permission checking
+   */
+  async executeSkill(
+    agentId: string,
+    skillId: string,
+    args: Record<string, any>,
+  ): Promise<{
+    success: boolean;
+    data?: any;
+    error?: string;
+  }> {
+    const invocationId = `${agentId}/${skillId}/${Date.now()}`;
+    const permission = this.canCall(agentId, skillId);
+
+    // Log invocation
+    const invocation: ToolInvocation = {
+      id: invocationId,
+      agentId,
+      skillId,
+      args,
+      timestamp: new Date().toISOString(),
+      allowed: permission.allowed,
+      reason: permission.reason,
+    };
+
+    this.invocationLog.push(invocation);
+
+    // If not allowed, return error
+    if (!permission.allowed) {
+      console.warn(`[ToolGate] ✗ DENIED: ${agentId} → ${skillId} (${permission.reason})`);
+      return {
+        success: false,
+        error: permission.reason || 'Permission denied',
+      };
+    }
+
+    try {
+      // Import skill executor dynamically
+      const skillModule = await import(`../skills/${skillId}.js`);
+      const executor = skillModule[`execute${capitalize(skillId)}`];
+
+      if (!executor) {
+        throw new Error(`No executor found for skill ${skillId}`);
+      }
+
+      console.log(`[ToolGate] ✓ ALLOWED: ${agentId} → ${skillId}`);
+
+      // Execute skill
+      const result = await executor(args);
+
+      return {
+        success: true,
+        data: result,
+      };
+    } catch (error: any) {
+      console.error(`[ToolGate] ERROR in ${skillId}:`, error.message);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Get invocation log
+   */
+  getLog(): ToolInvocationLog {
+    return {
+      success: true,
+      invocations: this.invocationLog,
+      deniedCount: this.invocationLog.filter(i => !i.allowed).length,
+      allowedCount: this.invocationLog.filter(i => i.allowed).length,
+    };
+  }
+
+  /**
+   * Get log filtered by agent
+   */
+  getLogForAgent(agentId: string): ToolInvocation[] {
+    return this.invocationLog.filter(i => i.agentId === agentId);
+  }
+
+  /**
+   * Get log filtered by skill
+   */
+  getLogForSkill(skillId: string): ToolInvocation[] {
+    return this.invocationLog.filter(i => i.skillId === skillId);
+  }
+
+  /**
+   * Get denied invocations (security violations)
+   */
+  getDeniedInvocations(): ToolInvocation[] {
+    return this.invocationLog.filter(i => !i.allowed);
+  }
+
+  /**
+   * Clear log (after archival)
+   */
+  clearLog(): void {
+    this.invocationLog = [];
+  }
+
+  /**
+   * Export log for audit
+   */
+  exportLog(): string {
+    return JSON.stringify({
+      timestamp: new Date().toISOString(),
+      totalInvocations: this.invocationLog.length,
+      allowed: this.invocationLog.filter(i => i.allowed).length,
+      denied: this.invocationLog.filter(i => !i.allowed).length,
+      invocations: this.invocationLog,
+    }, null, 2);
+  }
+}
+
+function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+// Singleton instance
+let gate: ToolGate | null = null;
+
+/**
+ * Get or create tool gate
+ */
+export async function getToolGate(): Promise<ToolGate> {
+  if (!gate) {
+    gate = new ToolGate();
+    await gate.initialize();
+  }
+  return gate;
+}

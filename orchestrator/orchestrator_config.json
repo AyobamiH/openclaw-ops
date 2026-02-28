@@ -1,5 +1,8 @@
 {
   "docsPath": "/app/docs",
   "logsDir": "/app/logs",
-  "stateFile": "/app/data/orchestrator-state.json"
+  "stateFile": "/app/data/orchestrator-state.json",
+  "milestoneIngestUrl": "",
+  "milestoneFeedPath": "/app/data/milestones-feed.json",
+  "gitPushOnMilestone": true
 }

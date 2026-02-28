@@ -1,5 +1,8 @@
 {
   "id": "security-agent",
+  "orchestratorTask": "security-audit",
+  "orchestratorStatePath": "../../orchestrator_state.json",
+  "serviceStatePath": "../../logs/security-agent-service.json",
   "name": "Security Audit Agent",
   "description": "Performs comprehensive security audits: vulnerability scanning, penetration testing guidance, compliance checking, secrets detection",
   "model": "claude-3-5-sonnet",

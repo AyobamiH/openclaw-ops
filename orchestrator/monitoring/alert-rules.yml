@@ -1,0 +1,158 @@
+groups:
+  - name: orchestrator-alerts
+    interval: 30s
+    rules:
+      # ============================================================
+      # AGENT PERFORMANCE ALERTS
+      # ============================================================
+      
+      - alert: HighErrorRate
+        expr: (sum(rate(agent_tasks_failed_total[5m])) / sum(rate(agent_tasks_started_total[5m]))) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          category: performance
+          cause: "{{ $labels.error_type }}"
+        annotations:
+          summary: "High error rate detected (> 5%)"
+          description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.agent }}"
+          runbook: "docs/runbooks/high-error-rate.md"
+
+      - alert: TaskDurationSpike
+        expr: histogram_quantile(0.95, rate(agent_task_duration_seconds_bucket[5m])) > 5
+        for: 3m
+        labels:
+          severity: warning
+          category: performance
+          cause: latency_spike
+        annotations:
+          summary: "Task p95 latency spike (> 5s)"
+          description: "p95 latency is {{ $value | humanizeDuration }} for {{ $labels.agent }}"
+
+      - alert: AgentHighActiveTaskCount
+        expr: agent_active_tasks > 20
+        for: 5m
+        labels:
+          severity: warning
+          category: capacity
+          cause: high_load
+        annotations:
+          summary: "Agent has high active task count (> 20)"
+          description: "{{ $labels.agent }} has {{ $value }} active tasks"
+
+      # ============================================================
+      # COST ALERTS
+      # ============================================================
+
+      - alert: DailyCostSpike
+        expr: agent_total_cost_per_day_usd > 30
+        for: 5m
+        labels:
+          severity: critical
+          category: cost
+          cause: cost_overage
+        annotations:
+          summary: "Daily cost spike (> $30)"
+          description: "Current daily cost: ${{ $value | humanize }}"
+          runbook: "docs/runbooks/cost-spike.md"
+
+      - alert: MonthlyCostTrendWarning
+        expr: (agent_total_cost_per_day_usd * 30) > 800
+        for: 30m
+        labels:
+          severity: warning
+          category: cost
+          cause: cost_trend
+        annotations:
+          summary: "Monthly cost trending over $800 (> target)"
+          description: "Current daily cost: ${{ $value | humanize }}/day (30-day projection exceeds threshold)"
+          runbook: "docs/runbooks/cost-trend.md"
+
+      # ============================================================
+      # APPROVAL GATE ALERTS
+      # ============================================================
+
+      - alert: ApprovalSLABreach
+        expr: histogram_quantile(0.95, rate(approval_response_time_seconds_bucket[5m])) > 60
+        for: 2m
+        labels:
+          severity: critical
+          category: approval
+          cause: approval_sla_breach
+        annotations:
+          summary: "Approval SLA breached (p95 > 60s target)"
+          description: "p95 response time: {{ $value | humanizeDuration }}"
+
+      - alert: PendingApprovalsBacklog
+        expr: pending_approvals_count > 5
+        for: 3m
+        labels:
+          severity: warning
+          category: approval
+          cause: approval_queue_backlog
+        annotations:
+          summary: "Approval queue backlog (> 5 pending)"
+          description: "Current pending: {{ $value }} approvals"
+
+      - alert: ApprovalAutoEscalationTriggered
+        expr: rate(approval_auto_escalated_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: approval
+          cause: sla_timeout
+        annotations:
+          summary: "Approval auto-escalation triggered"
+          description: "{{ $value | humanize }} escalations/min due to SLA breach"
+
+      # ============================================================
+      # SECURITY ALERTS
+      # ============================================================
+
+      - alert: PermissionDenialSpike
+        expr: rate(skill_access_denied_total[5m]) > (avg(rate(skill_access_denied_total[1h] offset 1h)) * 3)
+        for: 2m
+        labels:
+          severity: warning
+          category: security
+          cause: permission_spike
+        annotations:
+          summary: "Permission denial spike (3x baseline)"
+          description: "Denials: {{ $value | humanize }}/sec"
+
+      - alert: AuditViolationDetected
+        expr: rate(audit_violations_logged_total[1m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+          cause: "{{ $labels.violation_type }}"
+        annotations:
+          summary: "Security violation detected: {{ $labels.violation_type }}"
+          description: "Violation rate: {{ $value | humanize }}/sec"
+
+      - alert: PermissionEscalationAttempt
+        expr: rate(permission_escalation_requests_total[5m]) > 2
+        for: 2m
+        labels:
+          severity: warning
+          category: security
+          cause: escalation_attempt
+        annotations:
+          summary: "Permission escalation attempts (> 2/min)"
+          description: "Agent {{ $labels.agent }} attempting escalation"
+
+      # ============================================================
+      # SYSTEM HEALTH ALERTS
+      # ============================================================
+
+      - alert: PrometheusScrapeFailing
+        expr: up{job="orchestrator"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: health
+          cause: scrape_failure
+        annotations:
+          summary: "Prometheus cannot scrape orchestrator metrics"
+          description: "Orchestrator metrics endpoint is unavailable"

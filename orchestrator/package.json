@@ -10,24 +10,37 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
-    "test:integration": "vitest run --reporter=verbose test/integration",
+    "test:integration": "vitest run --reporter=verbose test/integration.test.ts",
+    "test:unit:fixtures": "vitest run --reporter=verbose test/integration",
     "test:load": "vitest run --reporter=verbose test/load",
-    "test:coverage": "vitest run --coverage"
+    "test:live:3000": "ORCHESTRATOR_FAST_START=true LIVE_RATE_TOTAL_TASKS=3000 LIVE_RATE_INTERVAL_MS=25 LIVE_RATE_IP_POOL=400 tsx scripts/live-rate-shaped-dispatch.ts",
+    "test:live:quick": "ORCHESTRATOR_FAST_START=true LIVE_RATE_TOTAL_TASKS=120 LIVE_RATE_INTERVAL_MS=50 LIVE_RATE_IP_POOL=80 tsx scripts/live-rate-shaped-dispatch.ts",
+    "test:coverage": "vitest run --coverage",
+    "openapi:generate": "tsx scripts/generate-openapi.ts",
+    "milestones:backfill": "tsx --env-file=.env scripts/backfill-milestones.ts",
+    "docs:check-sync": "node scripts/check-doc-sync.mjs",
+    "docs:check-sync:staged": "node scripts/check-doc-sync.mjs --staged"
   },
   "dependencies": {
     "chokidar": "^3.6.0",
+    "express": "^4.22.1",
+    "express-rate-limit": "^8.2.1",
+    "mongodb": "^6.0.0",
     "node-cron": "^3.0.3",
     "openai": "^4.53.0",
     "p-queue": "^8.0.1",
-    "yaml": "^2.6.0"
+    "prom-client": "^15.1.3",
+    "yaml": "^2.6.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^25.3.0",
     "@types/node-cron": "^3.0.11",
+    "@vitest/coverage-v8": "^1.0.0",
     "@vitest/ui": "^1.0.0",
     "tsx": "^4.12.0",
     "typescript": "^5.4.5",
-    "vitest": "^1.0.0",
-    "@vitest/coverage-v8": "^1.0.0"
+    "vitest": "^1.0.0"
   }
 }

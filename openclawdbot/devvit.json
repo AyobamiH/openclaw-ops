@@ -1,0 +1,75 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "openclawdbot",
+  "post": {
+    "dir": "dist/client",
+    "entrypoints": {
+      "default": {
+        "inline": true,
+        "entry": "splash.html"
+      },
+      "game": {
+        "entry": "game.html"
+      }
+    }
+  },
+  "server": {
+    "dir": "dist/server",
+    "entry": "index.cjs"
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "Create a new post",
+        "description": "openclawdbot",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/post-create"
+      },
+      {
+        "label": "Example form",
+        "description": "Show a simple form",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/example-form"
+      },
+      {
+        "label": "Configure Milestone Secret",
+        "description": "Set the HMAC signing secret for the milestone pipeline",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/milestone-secret"
+      },
+      {
+        "label": "Configure Milestone Feed URL",
+        "description": "Set the raw GitHub URL for milestones-feed.json",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/milestone-feed-url"
+      }
+    ]
+  },
+  "forms": {
+    "exampleForm": "/internal/form/example-submit",
+    "milestoneSecretForm": "/internal/form/milestone-secret-submit",
+    "milestoneFeedUrlForm": "/internal/form/milestone-feed-url-submit"
+  },
+  "scheduler": {
+    "tasks": {
+      "pollMilestoneFeed": {
+        "endpoint": "/internal/scheduler/poll-milestones",
+        "cron": "* * * * *"
+      }
+    }
+  },
+  "triggers": {
+    "onAppInstall": "/internal/triggers/on-app-install"
+  },
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build"
+  },
+  "dev": {
+    "subreddit": "openclawdbot_dev"
+  }
+}

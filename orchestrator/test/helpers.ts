@@ -71,7 +71,7 @@ export class MockAgentState {
     this.status = 'idle';
   }
 
-  markError(error: Error): void {
+  markError(error: unknown): void {
     this.status = 'error';
     this.errorCount++;
   }
@@ -102,25 +102,33 @@ export class MockAuditLogger {
     details?: Record<string, any>,
   ): string {
     const traceId = `trace-${Date.now()}-${this.traceCounter++}`;
+    const metadata = details ? structuredClone(details) : {};
+    if (!('traceId' in metadata)) {
+      metadata.traceId = traceId;
+    }
+
     const entry = {
       traceId,
       timestamp: new Date().toISOString(),
       action,
       agentId,
       skillId: skillId || null,
-      ...details,
+      metadata,
     };
     this.entries.push(entry);
     return traceId;
   }
 
   getEntries(filter?: { action?: string; agentId?: string }): Array<Record<string, any>> {
-    if (!filter) return this.entries;
-    return this.entries.filter((entry) => {
+    const source = !filter
+      ? this.entries
+      : this.entries.filter((entry) => {
       if (filter.action && entry.action !== filter.action) return false;
       if (filter.agentId && entry.agentId !== filter.agentId) return false;
       return true;
     });
+
+    return source.map((entry) => structuredClone(entry));
   }
 
   clear(): void {
@@ -134,7 +142,7 @@ export class MockAuditLogger {
     let currentTrace = startTraceId;
 
     for (const entry of this.entries) {
-      if (entry.parentTraceId === currentTrace) {
+      if (entry.metadata?.parentTraceId === currentTrace) {
         chain.push(entry.traceId);
         currentTrace = entry.traceId;
       }

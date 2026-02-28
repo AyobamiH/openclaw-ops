@@ -1,5 +1,8 @@
 {
   "id": "build-refactor-agent",
+  "orchestratorTask": "build-refactor",
+  "orchestratorStatePath": "../../orchestrator_state.json",
+  "serviceStatePath": "../../logs/build-refactor-agent-service.json",
   "name": "Build & Refactor Agent",
   "description": "Analyzes codebases for refactoring opportunities, applies safe code transformations, and optimizes build processes",
   "model": "claude-3-5-sonnet",

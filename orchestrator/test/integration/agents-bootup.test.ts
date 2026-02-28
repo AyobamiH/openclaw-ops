@@ -1,5 +1,5 @@
 /**
- * Integration Test: Agent Bootup
+ * Unit Simulation Test: Agent Bootup
  * 
  * Validates that all 11 agents can be discovered, loaded, and initialized correctly.
  * - All agents are found by AgentRegistry
@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { allAgents, agentFixtures } from '../fixtures';
 import { MockAgentState, createTestContext, cleanupTestContext, customAssertions } from '../helpers';
 
-describe('Integration: Agent Bootup', () => {
+describe('Unit Simulation: Agent Bootup', () => {
   const ctx = createTestContext('agent-bootup');
 
   afterEach(() => {
@@ -27,9 +27,9 @@ describe('Integration: Agent Bootup', () => {
       'market-research-agent',
       'data-extraction-agent',
       'qa-verification-agent',
-      'summarization-agent',
+      'text-summarization-agent',
       'build-refactor-agent',
-      'security-agent',
+      'code-security-agent',
       'normalization-agent',
       'content-agent',
       'integration-agent',
@@ -51,8 +51,8 @@ describe('Integration: Agent Bootup', () => {
       expect(agent.model).toBeDefined();
       expect(agent.tier).toBeDefined();
 
-      // ID matches naming convention
-      expect(agent.id).toMatch(/^[a-z]+-[a-z]+-agent$/);
+      // ID matches naming convention (one or more hyphenated words + '-agent')
+      expect(agent.id).toMatch(/^[a-z]+(?:-[a-z]+)*-agent$/);
 
       // Valid tier
       expect(['cheap', 'balanced']).toContain(agent.tier);
@@ -125,7 +125,7 @@ describe('Integration: Agent Bootup', () => {
       expect.arrayContaining([
         'market-research-agent',
         'data-extraction-agent',
-        'summarization-agent',
+        'text-summarization-agent',
         'normalization-agent',
         'content-agent',
         'system-monitor-agent',
@@ -138,7 +138,7 @@ describe('Integration: Agent Bootup', () => {
       expect.arrayContaining([
         'qa-verification-agent',
         'build-refactor-agent',
-        'security-agent',
+        'code-security-agent',
         'integration-agent',
         'skill-audit-agent',
       ]),
@@ -187,7 +187,7 @@ describe('Integration: Agent Bootup', () => {
   });
 
   it('should support agent reset for testing', () => {
-    const state = new MockAgentState('security-agent');
+    const state = new MockAgentState('code-security-agent');
 
     // Simulate some activity
     state.markRunning();

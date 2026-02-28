@@ -258,6 +258,12 @@ All logs go to the `logs/` folder. No guessing.
 
 ## Summary
 
+### Repository Hygiene Policy Note
+
+Because this architecture depends on drift-repair, indexing, and knowledge-pack outputs, repository cleanup decisions must follow `docs/GOVERNANCE_REPO_HYGIENE.md`.
+
+In particular, protected-path derivation must run before any deletion recommendation, and long-memory substrates (`logs/`, sessions, memory, archives, knowledge packs) default to drift-risk unless explicitly proven safe.
+
 You have a **smart coordination system** that:
 - Watches for important changes
 - Assigns work to the right specialists automatically

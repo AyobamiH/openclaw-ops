@@ -1,5 +1,8 @@
 {
   "id": "content-agent",
+  "orchestratorTask": "content-generate",
+  "orchestratorStatePath": "../../orchestrator_state.json",
+  "serviceStatePath": "../../logs/content-agent-service.json",
   "name": "Content Generation Agent",
   "description": "Generates documentation, README files, API specs, blog posts, and marketing content from code and data",
   "model": "gpt-4o-mini",

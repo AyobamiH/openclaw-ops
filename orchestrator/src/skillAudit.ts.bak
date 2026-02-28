@@ -1,0 +1,287 @@
+/**
+ * Skill Audit Gate
+ * 
+ * Every skill is audited before runtime.
+ * This gate validates permission matrix, detects danger patterns, and blocks unsafe skills.
+ */
+
+import { SkillDefinition, SkillAuditResults, SkillAuditCheck } from './types.js';
+
+export class SkillAuditGate {
+  private auditHistory: SkillAuditResults[] = [];
+
+  /**
+   * Audit a skill before allowing execution
+   */
+  auditSkill(skill: SkillDefinition): SkillAuditResults {
+    const checks: SkillAuditCheck[] = [];
+    const riskFlags: string[] = [];
+
+    // Check 1: Provenance
+    checks.push(this.checkProvenance(skill));
+    if (!skill.provenance.source || !skill.provenance.version) {
+      riskFlags.push('unknown-provenance');
+    }
+
+    // Check 2: Permissions are bounded
+    checks.push(this.checkPermissionBounds(skill, riskFlags));
+
+    // Check 3: No dangerous runtime patterns
+    checks.push(this.checkDangerousRuntimes(skill, riskFlags));
+
+    // Check 4: Data flows don't leak secrets
+    checks.push(this.checkForSecretAccess(skill, riskFlags));
+
+    // Check 5: Input/output schemas defined
+    checks.push(this.checkSchemas(skill));
+
+    // Determine pass/fail
+    const failed = checks.filter(c => c.status === 'fail');
+    const passed = failed.length === 0;
+
+    const result: SkillAuditResults = {
+      passed,
+      runAt: new Date().toISOString(),
+      checks,
+      riskFlags,
+      recommendations: this.generateRecommendations(skill, riskFlags),
+    };
+
+    this.auditHistory.push(result);
+    return result;
+  }
+
+  private checkProvenance(skill: SkillDefinition): SkillAuditCheck {
+    const { source, license, maintainedAt } = skill.provenance;
+
+    if (!source) {
+      return {
+        name: 'provenance',
+        status: 'fail',
+        message: 'No source specified. Where did this skill come from?',
+      };
+    }
+
+    if (!license) {
+      return {
+        name: 'provenance',
+        status: 'warn',
+        message: 'No license specified. Consider adding one.',
+      };
+    }
+
+    // Check if source is pinned (not a branch)
+    const unpinnedPatterns = ['main', 'master', 'latest', 'develop'];
+    if (unpinnedPatterns.some(p => source.includes(p))) {
+      return {
+        name: 'provenance',
+        status: 'warn',
+        message: `Source may not be pinned. Prefer commit hash or semver tag.`,
+        detail: `Found: ${source}`,
+      };
+    }
+
+    return {
+      name: 'provenance',
+      status: 'pass',
+      message: `Source pinned to: ${source}`,
+    };
+  }
+
+  private checkPermissionBounds(
+    skill: SkillDefinition,
+    riskFlags: string[]
+  ): SkillAuditCheck {
+    const perm = skill.permissions;
+
+    // Deny-by-default is good
+    if (!perm.fileRead && !perm.fileWrite && !perm.networkAllowed && !perm.execAllowed) {
+      return {
+        name: 'permission-bounds',
+        status: 'pass',
+        message: 'Skill is sandboxed (all permissions denied by default)',
+      };
+    }
+
+    // File access should be bounded
+    if (perm.fileRead === true || perm.fileWrite === true) {
+      riskFlags.push('unbounded-filesystem');
+      return {
+        name: 'permission-bounds',
+        status: 'fail',
+        message: 'Skill has unbounded file access. Must specify allowed paths.',
+      };
+    }
+
+    // Network access must be allowlisted
+    if (perm.networkAllowed === true) {
+      riskFlags.push('unbounded-network');
+      return {
+        name: 'permission-bounds',
+        status: 'fail',
+        message: 'Skill can access any network endpoint. Must allowlist specific domains/APIs.',
+      };
+    }
+
+    // Exec must be restricted
+    if (perm.execAllowed === true) {
+      riskFlags.push('unbounded-exec');
+      return {
+        name: 'permission-bounds',
+        status: 'fail',
+        message: 'Skill can execute arbitrary commands. Must restrict to specific commands.',
+      };
+    }
+
+    // Secrets access is critical
+    if (perm.secrets) {
+      riskFlags.push('credential-access');
+      return {
+        name: 'permission-bounds',
+        status: 'fail',
+        message: 'Skill requests environment/secrets access. This is almost never safe.',
+      };
+    }
+
+    return {
+      name: 'permission-bounds',
+      status: 'pass',
+      message: 'Permissions are properly bounded',
+    };
+  }
+
+  private checkDangerousRuntimes(
+    skill: SkillDefinition,
+    riskFlags: string[]
+  ): SkillAuditCheck {
+    const perm = skill.permissions;
+
+    // eval/Function constructor
+    if (perm.eval) {
+      riskFlags.push('eval-runtime');
+      return {
+        name: 'dangerous-runtime',
+        status: 'fail',
+        message: 'Skill uses eval, Function(), or similar. This bypasses all sandboxing.',
+      };
+    }
+
+    // Spawn/child_process
+    if (perm.spawn) {
+      riskFlags.push('subprocess-spawning');
+      return {
+        name: 'dangerous-runtime',
+        status: 'fail',
+        message: 'Skill spawns child processes. Requires deep review.',
+      };
+    }
+
+    return {
+      name: 'dangerous-runtime',
+      status: 'pass',
+      message: 'No dangerous runtime patterns detected',
+    };
+  }
+
+  private checkForSecretAccess(
+    skill: SkillDefinition,
+    riskFlags: string[]
+  ): SkillAuditCheck {
+    // Check if skill requests environment vars
+    if (skill.permissions.secrets) {
+      riskFlags.push('env-access');
+      return {
+        name: 'secret-access',
+        status: 'fail',
+        message: 'Skill requests access to environment variables or credential stores.',
+      };
+    }
+
+    // Check if network is allowed to credential endpoints
+    if (Array.isArray(skill.permissions.networkAllowed)) {
+      const credentialDomains = ['github.com', 'api.github.com', 'vault', 'secrets'];
+      const suspicious = skill.permissions.networkAllowed.filter(url =>
+        credentialDomains.some(d => url.includes(d))
+      );
+
+      if (suspicious.length > 0) {
+        riskFlags.push('credential-endpoint-access');
+        return {
+          name: 'secret-access',
+          status: 'warn',
+          message: 'Skill can access credential endpoints. Review carefully.',
+          detail: `Endpoints: ${suspicious.join(', ')}`,
+        };
+      }
+    }
+
+    return {
+      name: 'secret-access',
+      status: 'pass',
+      message: 'No direct secret access detected',
+    };
+  }
+
+  private checkSchemas(skill: SkillDefinition): SkillAuditCheck {
+    if (!skill.inputs || !skill.inputs.properties) {
+      return {
+        name: 'input-schema',
+        status: 'fail',
+        message: 'No input schema defined. How should this skill be called?',
+      };
+    }
+
+    if (!skill.outputs || !skill.outputs.properties) {
+      return {
+        name: 'output-schema',
+        status: 'fail',
+        message: 'No output schema defined. What does this skill return?',
+      };
+    }
+
+    return {
+      name: 'schemas',
+      status: 'pass',
+      message: 'Input and output schemas are defined',
+    };
+  }
+
+  private generateRecommendations(skill: SkillDefinition, riskFlags: string[]): string[] {
+    const recs: string[] = [];
+
+    if (riskFlags.includes('unbounded-filesystem')) {
+      recs.push('Restrict file access to specific workspace paths only');
+    }
+    if (riskFlags.includes('unbounded-network')) {
+      recs.push('Enumerate allowlisted domains/APIs instead of allowing all');
+    }
+    if (riskFlags.includes('unbounded-exec')) {
+      recs.push('Create a whitelist of safe commands (npm test, tsc, etc.)');
+    }
+    if (riskFlags.includes('credential-access')) {
+      recs.push('Consider if this skill truly needs environment access, or if it can be refactored');
+    }
+    if (riskFlags.includes('unknown-provenance')) {
+      recs.push('Pin to a specific commit hash or release tag, not a branch');
+    }
+
+    return recs;
+  }
+
+  /**
+   * Verify a skill's audit before execution
+   * Returns true if skill is safe to run
+   */
+  isApproved(auditResult: SkillAuditResults): boolean {
+    return auditResult.passed && auditResult.riskFlags.length === 0;
+  }
+
+  /**
+   * Get audit history for logging/review
+   */
+  getAuditHistory(): SkillAuditResults[] {
+    return this.auditHistory;
+  }
+}
+
+export const skillAudit = new SkillAuditGate();

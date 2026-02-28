@@ -1,0 +1,74 @@
+{
+  "id": "market-research-agent",
+  "orchestratorTask": "market-research",
+  "orchestratorStatePath": "../../orchestrator_state.json",
+  "serviceStatePath": "../../logs/market-research-agent-service.json",
+  "name": "Market & Web Research Agent",
+  "description": "Discovers and analyzes market information, fetches web content from allowlisted domains, performs web research",
+  "version": "1.0.0",
+  "author": "OpenClaw Team",
+  "model": {
+    "primary": "gpt-4o-mini",
+    "fallback": "gpt-4o-mini",
+    "tier": "cheap",
+    "temperature": 0.7,
+    "maxTokens": 2048
+  },
+  "permissions": {
+    "skills": {
+      "sourceFetch": {
+        "allowed": true,
+        "maxCalls": 20,
+        "rateLimit": "2/second"
+      },
+      "documentParser": {
+        "allowed": false
+      },
+      "normalizer": {
+        "allowed": false
+      },
+      "workspacePatch": {
+        "allowed": false
+      },
+      "testRunner": {
+        "allowed": false
+      }
+    },
+    "fileSystem": {
+      "readPaths": ["workspace/research"],
+      "writePaths": ["artifacts/research"]
+    },
+    "network": {
+      "allowed": true,
+      "allowedDomains": [
+        "github.com",
+        "api.github.com",
+        "openai.com",
+        "api.openai.com",
+        "anthropic.com",
+        "docs.anthropic.com",
+        "arxiv.org",
+        "huggingface.co"
+      ]
+    },
+    "secrets": {
+      "allowed": false
+    }
+  },
+  "constraints": {
+    "timeout": 120000,
+    "maxRetries": 3,
+    "memory": "512M",
+    "cpu": "0.5"
+  },
+  "heartbeat": {
+    "enabled": true,
+    "interval": 300000,
+    "checks": ["liveness", "network-access", "skill-access"]
+  },
+  "logging": {
+    "level": "info",
+    "format": "json",
+    "destinations": ["stdout", "artifacts/logs/market-research-agent.log"]
+  }
+}

@@ -1,0 +1,25 @@
+global:
+  resolve_timeout: 5m
+
+# Alert routing
+route:
+  receiver: orchestrator
+  group_by: ['alertname', 'cause']    # Group by alert name + cause (not just alert)
+  group_wait: 30s                     # Wait 30s to batch related alerts
+  group_interval: 5m                  # Re-evaluate groups every 5m
+  repeat_interval: 12h                # Repeat resolved alert after 12h
+
+receivers:
+  - name: orchestrator
+    webhook_configs:
+      - url: http://orchestrator:3000/webhook/alerts
+        send_resolved: true
+
+# Silencing rules: silence warnings if critical with same cause exists
+inhibit_rules:
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ['alertname', 'cause']
+

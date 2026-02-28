@@ -11,6 +11,7 @@ import { documentParserDefinition, executeDocumentParser } from './documentParse
 import { normalizerDefinition, executeNormalizer } from './normalizer.js';
 import { workspacePatchDefinition, executeWorkspacePatch } from './workspacePatch.js';
 import { testRunnerDefinition, executeTestRunner } from './testRunner.js';
+import { getToolGate } from '../orchestrator/src/toolGate.js';
 
 // Skill registry: maps skill ID to definition + executor
 export interface RegisteredSkill {
@@ -99,8 +100,29 @@ export async function executeSkill(
     };
   }
 
-  // TODO: Check permissions if requestingAgent provided
-  // This will be enforced by toolGate.ts at the agent level
+  if (!registered.auditPassed) {
+    return {
+      success: false,
+      error: `Skill audit not passed: ${skillId}`,
+    };
+  }
+
+  if (requestingAgent) {
+    const gate = await getToolGate();
+    const permission = await gate.executeSkill(requestingAgent, skillId, {
+      mode: 'execute',
+      inputPreview: typeof input === 'object' && input !== null
+        ? Object.keys(input as Record<string, unknown>).slice(0, 10)
+        : typeof input,
+    });
+
+    if (!permission.success) {
+      return {
+        success: false,
+        error: permission.error || 'Tool gate denied skill execution',
+      };
+    }
+  }
 
   try {
     const result = await registered.executor(input);

@@ -96,5 +96,16 @@ Information on the licensing of the Orchestrator and its codebase.
   ```
   Adjust timing or log paths as needed.
 
+## 13. Repository Hygiene & Protected Path Policy
+- Canonical policy: `docs/GOVERNANCE_REPO_HYGIENE.md`.
+- Any cleanup review must build the protected allowlist first from:
+  - `orchestrator_config.json` path roots,
+  - agent configs/runtime path IO,
+  - systemd/cron/workflow triggers,
+  - sync scripts and orchestrator indexing/consumption code.
+- `sync_openclaw_docs.sh` + `sync_openai_cookbook.sh` + runtime indexing (`docsPath`/`cookbookPath`) form a protected update chain.
+- `logs/knowledge-packs/` is a protected output because it is produced during drift repair and consumed downstream.
+- Cron snippets shown in documentation are examples/documented workflows and must not be treated as active triggers unless confirmed in runtime scheduler configuration.
+
 ## Official Documentation
 For more detailed information, refer to the official OpenClaw documentation: [OpenClaw Docs](https://docs.openclaw.ai/)

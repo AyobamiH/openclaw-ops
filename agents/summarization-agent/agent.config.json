@@ -1,5 +1,8 @@
 {
   "id": "summarization-agent",
+  "orchestratorTask": "summarize-content",
+  "orchestratorStatePath": "../../orchestrator_state.json",
+  "serviceStatePath": "../../logs/summarization-agent-service.json",
   "name": "Summarization Agent",
   "description": "Condenses large bodies of text, research, and reports into concise executive summaries",
   "model": "gpt-4o-mini",
