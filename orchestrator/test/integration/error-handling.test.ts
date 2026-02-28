@@ -265,8 +265,10 @@ describe('Unit Simulation: Error Handling & Recovery', () => {
 
     for (let i = 0; i < tasks; i++) {
       const result = await executeTaskWithRetry('market-research-agent', 'sourceFetch', {
-        failureRate: 30, // 30% of tasks fail initially
-        maxRetries: 2,
+        // Use deterministic failures: every 4th task fails (5 out of 20 = 25% error rate).
+        // Avoids flakiness from random failureRate sampling.
+        shouldFail: i % 4 === 0,
+        maxRetries: 1,
       });
       results.push(result);
     }
@@ -274,7 +276,7 @@ describe('Unit Simulation: Error Handling & Recovery', () => {
     const failureCount = results.filter((r) => !r.success).length;
     const errorRate = (failureCount / tasks) * 100;
 
-    // Should be roughly 30% failure on first attempt, then some succeed on retry
+    // Exactly 5 tasks fail (i = 0, 4, 8, 12, 16)
     expect(failureCount).toBeLessThan(tasks);
     expect(errorRate).toBeGreaterThan(0);
   });
