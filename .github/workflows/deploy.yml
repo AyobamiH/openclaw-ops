@@ -31,9 +31,8 @@ jobs:
           echo "✅ Code compiled successfully"
           ls -lh orchestrator/dist/index.js
           echo "✅ Configuration files present"
-          ls -lh orchestrator_config.json orchestrator_state.json
-          echo "✅ Knowledge packs exist"
-          ls -lh logs/knowledge-packs/ | head -5
+          ls -lh orchestrator_config.json
+          echo "ℹ️  Runtime files (orchestrator_state.json, logs/) are generated on first run — not stored in repo"
 
       - name: Create deployment artifact
         run: |
@@ -45,7 +44,7 @@ jobs:
           echo "✅ Deployment artifact created"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: orchestrator-build
           path: orchestrator-build-*.tar.gz
