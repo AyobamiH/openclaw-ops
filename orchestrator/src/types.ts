@@ -19,6 +19,8 @@ export interface OrchestratorConfig {
   milestoneFeedPath?: string;
   /** If true, git-add + commit + push the feed file on every emit. Requires a git remote. */
   gitPushOnMilestone?: boolean;
+  /** Optional signed demand-summary ingest endpoint for openclawdbot. */
+  demandSummaryIngestUrl?: string;
   // LLM Integration
   runtimeEngagementOsPath?: string;
   openaiModel?: string;
@@ -158,14 +160,73 @@ export interface RssDraftRecord {
   queuedAt: string;
 }
 
-import type { MilestoneEvent } from './milestones/schema.js';
+export interface DemandSummaryTagCounts {
+  draft: number;
+  priority: number;
+  manualReview: number;
+}
+
+export interface DemandSummaryTopItem {
+  id: string;
+  label: string;
+  count: number;
+}
+
+export type DemandSegmentState = "hot" | "warm" | "idle";
+
+export interface DemandSummarySegment {
+  id: string;
+  label: string;
+  liveSignalCount: number;
+  state: DemandSegmentState;
+  staticWeight: number;
+  clusterLabels: string[];
+}
+
+export interface DemandSummarySnapshot {
+  summaryId: string;
+  generatedAtUtc: string;
+  source: "orchestrator";
+  queueTotal: number;
+  draftTotal: number;
+  selectedForDraftTotal: number;
+  tagCounts: DemandSummaryTagCounts;
+  topPillars: DemandSummaryTopItem[];
+  topKeywordClusters: DemandSummaryTopItem[];
+  segments: DemandSummarySegment[];
+}
+
+import type { MilestoneEvent } from "./milestones/schema.js";
 
 export interface MilestoneDeliveryRecord {
   idempotencyKey: string;
   milestoneId: string;
   sentAtUtc: string;
   event: MilestoneEvent;
-  status: 'pending' | 'delivered' | 'retrying' | 'duplicate' | 'rejected' | 'dead-letter';
+  status:
+    | "pending"
+    | "delivered"
+    | "retrying"
+    | "duplicate"
+    | "rejected"
+    | "dead-letter";
+  attempts: number;
+  lastAttemptAt?: string;
+  lastError?: string;
+}
+
+export interface DemandSummaryDeliveryRecord {
+  idempotencyKey: string;
+  summaryId: string;
+  sentAtUtc: string;
+  snapshot: DemandSummarySnapshot;
+  status:
+    | "pending"
+    | "delivered"
+    | "retrying"
+    | "duplicate"
+    | "rejected"
+    | "dead-letter";
   attempts: number;
   lastAttemptAt?: string;
   lastError?: string;
@@ -187,6 +248,7 @@ export interface OrchestratorState {
   rssDrafts: RssDraftRecord[];
   rssSeenIds: string[];
   milestoneDeliveries: MilestoneDeliveryRecord[];
+  demandSummaryDeliveries: DemandSummaryDeliveryRecord[];
   lastDriftRepairAt: string | null;
   lastRedditResponseAt: string | null;
   lastAgentDeployAt: string | null;
@@ -194,6 +256,7 @@ export interface OrchestratorState {
   lastNightlyBatchAt?: string | null;
   lastDigestNotificationAt?: string | null;
   lastMilestoneDeliveryAt?: string | null;
+  lastDemandSummaryDeliveryAt?: string | null;
 }
 
 export interface TaskHandlerContext {
@@ -203,7 +266,10 @@ export interface TaskHandlerContext {
   logger: Console;
 }
 
-export type TaskHandler = (task: Task, context: TaskHandlerContext) => Promise<string | void>;
+export type TaskHandler = (
+  task: Task,
+  context: TaskHandlerContext,
+) => Promise<string | void>;
 // Skill and Permission Types
 export interface SkillPermissions {
   fileRead?: boolean | string[];
@@ -240,7 +306,7 @@ export interface SkillDefinition {
 
 export interface SkillAuditCheck {
   name: string;
-  status: 'pass' | 'warn' | 'fail';
+  status: "pass" | "warn" | "fail";
   message: string;
   detail?: string;
 }

@@ -1,27 +1,29 @@
 import { Hono } from 'hono';
 import { redis, realtime, reddit, context } from '@devvit/web/server';
 import { createHmac } from 'node:crypto';
-import type { MilestoneEvent, MilestoneRealtimeMessage } from '../../shared/milestones';
+import type {
+  MilestoneEvent,
+  MilestoneRealtimeMessage,
+} from '../../shared/milestones';
+import {
+  DEFAULT_FEED_URL,
+  FeedEntry,
+  INITIAL_WIKI_FEED,
+  MILESTONE_WIKI_PAGE,
+  normalizeFeedUrl,
+  normalizeStoredFeed,
+  parseRemoteFeedText,
+  REALTIME_CHANNEL,
+  RemoteFeed,
+  toRemoteFeedText,
+} from '../core/milestone-pipeline';
 import { SIGNING_SECRET_REDIS_KEY } from './forms';
 
 const FEED_KEY = 'milestones:feed';
 const SEEN_KEY_PREFIX = 'milestone:seen:';
 const MAX_FEED_ITEMS = 50;
 export const FEED_URL_REDIS_KEY = 'milestones:feed-url';
-const LAST_POLL_KEY = 'milestones:last-poll';
-const REALTIME_CHANNEL = 'milestones_feed';
-
-type FeedEntry = {
-  idempotencyKey: string;
-  sentAtUtc: string;
-  event: MilestoneEvent;
-  signature: string;
-};
-
-type RemoteFeed = {
-  lastUpdated: string;
-  entries: FeedEntry[];
-};
+export const LAST_POLL_KEY = 'milestones:last-poll';
 
 function sortObjectKeys(obj: unknown): unknown {
   if (Array.isArray(obj)) return obj.map(sortObjectKeys);
@@ -48,7 +50,68 @@ function verifyEntry(entry: FeedEntry, secret: string): boolean {
   return diff === 0;
 }
 
-export type PollResult = { ok: true; added: number } | { ok: false; reason: string };
+export type PollResult =
+  | { ok: true; added: number }
+  | { ok: false; reason: string };
+
+async function refreshWikiFromRemote(feedUrl: string): Promise<void> {
+  try {
+    const res = await fetch(feedUrl);
+    if (!res.ok) {
+      console.warn('[scheduler] remote fetch returned non-OK:', res.status);
+      return;
+    }
+
+    const content = await res.text();
+    const remoteFeed = parseRemoteFeedText(content);
+    if (!remoteFeed) {
+      console.warn('[scheduler] remote feed was invalid, keeping current wiki');
+      return;
+    }
+
+    await reddit.updateWikiPage({
+      subredditName: context.subredditName,
+      page: MILESTONE_WIKI_PAGE,
+      content: toRemoteFeedText(remoteFeed),
+      reason: 'scheduler sync',
+    });
+    console.log('[scheduler] wiki refreshed from remote feed');
+  } catch {
+    // Non-fatal — wiki still has last-known-good state
+    console.warn('[scheduler] remote fetch failed, reading existing wiki');
+  }
+}
+
+async function readCanonicalWikiFeed(): Promise<RemoteFeed> {
+  try {
+    const wikiPage = await reddit.getWikiPage(
+      context.subredditName,
+      MILESTONE_WIKI_PAGE
+    );
+    if (!wikiPage.content) throw new Error('wiki page is empty');
+
+    const parsed = parseRemoteFeedText(wikiPage.content);
+    if (!parsed) throw new Error('wiki page content is invalid');
+    return parsed;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[scheduler] wiki read failed, reseeding default feed:', msg);
+
+    const fallback = parseRemoteFeedText(INITIAL_WIKI_FEED);
+    if (!fallback) {
+      throw new Error('built-in fallback feed is invalid');
+    }
+
+    await reddit.updateWikiPage({
+      subredditName: context.subredditName,
+      page: MILESTONE_WIKI_PAGE,
+      content: INITIAL_WIKI_FEED,
+      reason: 'scheduler recovery',
+    });
+
+    return fallback;
+  }
+}
 
 export async function runPoll(): Promise<PollResult> {
   const secret = await redis.get(SIGNING_SECRET_REDIS_KEY);
@@ -57,35 +120,22 @@ export async function runPoll(): Promise<PollResult> {
   // Try to refresh the wiki from jsDelivr CDN (orchestrator pushes there via git).
   // If fetch succeeds, write fresh data to wiki so it stays up to date.
   // If fetch is blocked (PERMISSIONS_DENIED), fall through and read the existing wiki.
-  const feedUrl = await redis.get(FEED_URL_REDIS_KEY);
-  if (feedUrl) {
-    try {
-      const res = await fetch(feedUrl);
-      if (res.ok) {
-        const content = await res.text();
-        JSON.parse(content); // validate before writing
-        await reddit.updateWikiPage({
-          subredditName: context.subredditName,
-          page: 'milestones-feed',
-          content,
-          reason: 'scheduler sync',
-        });
-        console.log('[scheduler] wiki refreshed from CDN');
-      }
-    } catch {
-      // Non-fatal — wiki still has last-known-good state
-      console.warn('[scheduler] CDN fetch failed, reading existing wiki');
-    }
+  const configuredUrl = await redis.get(FEED_URL_REDIS_KEY);
+  const feedUrl = normalizeFeedUrl(configuredUrl ?? DEFAULT_FEED_URL);
+  if (configuredUrl !== feedUrl) {
+    await redis.set(FEED_URL_REDIS_KEY, feedUrl);
   }
 
+  await refreshWikiFromRemote(feedUrl);
+
   // Always read from wiki — the canonical source
-  console.log(`[scheduler] reading milestones wiki for r/${context.subredditName}...`);
+  console.log(
+    `[scheduler] reading milestones wiki for r/${context.subredditName}...`
+  );
 
   let remoteFeed: RemoteFeed;
   try {
-    const wikiPage = await reddit.getWikiPage(context.subredditName, 'milestones-feed');
-    if (!wikiPage.content) throw new Error('wiki page is empty');
-    remoteFeed = JSON.parse(wikiPage.content) as RemoteFeed;
+    remoteFeed = await readCanonicalWikiFeed();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[scheduler] wiki read failed:', msg);
@@ -95,7 +145,13 @@ export async function runPoll(): Promise<PollResult> {
   await redis.set(LAST_POLL_KEY, new Date().toISOString());
 
   const feedStr = await redis.get(FEED_KEY);
-  const localFeed: MilestoneEvent[] = feedStr ? (JSON.parse(feedStr) as MilestoneEvent[]) : [];
+  let parsedLocalFeed: unknown = [];
+  try {
+    parsedLocalFeed = feedStr ? JSON.parse(feedStr) : [];
+  } catch {
+    parsedLocalFeed = [];
+  }
+  const localFeed: MilestoneEvent[] = normalizeStoredFeed(parsedLocalFeed);
 
   let added = 0;
   for (const entry of remoteFeed.entries) {
@@ -104,7 +160,10 @@ export async function runPoll(): Promise<PollResult> {
     if (already) continue;
 
     if (!verifyEntry(entry, secret)) {
-      console.warn('[scheduler] signature mismatch, skipping', entry.idempotencyKey);
+      console.warn(
+        '[scheduler] signature mismatch, skipping',
+        entry.idempotencyKey
+      );
       continue;
     }
 
@@ -120,11 +179,11 @@ export async function runPoll(): Promise<PollResult> {
     added++;
   }
 
-  if (added > 0) {
-    await redis.set(FEED_KEY, JSON.stringify(localFeed.slice(-MAX_FEED_ITEMS)));
-  }
+  await redis.set(FEED_KEY, JSON.stringify(localFeed.slice(-MAX_FEED_ITEMS)));
 
-  console.log(`[scheduler] poll complete — ${added} new milestones added (${remoteFeed.entries.length} entries in feed)`);
+  console.log(
+    `[scheduler] poll complete — ${added} new milestones added (${remoteFeed.entries.length} entries in feed)`
+  );
   return { ok: true, added };
 }
 

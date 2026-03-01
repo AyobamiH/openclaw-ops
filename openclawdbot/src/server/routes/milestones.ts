@@ -2,15 +2,30 @@ import { Hono } from 'hono';
 import { redis, realtime } from '@devvit/web/server';
 import { SIGNING_SECRET_REDIS_KEY } from './forms';
 import { createHmac } from 'node:crypto';
-import type { MilestoneIngestEnvelope, MilestoneIngestResponse, MilestoneFeedResponse, MilestoneDeadLetterResponse, MilestoneRealtimeMessage } from '../../shared/milestones';
+import type {
+  MilestoneIngestEnvelope,
+  MilestoneIngestResponse,
+  MilestoneFeedResponse,
+  MilestoneDeadLetterResponse,
+  MilestoneRealtimeMessage,
+} from '../../shared/milestones';
+import {
+  normalizeMilestoneEvent,
+  normalizeStoredFeed,
+  REALTIME_CHANNEL,
+} from '../core/milestone-pipeline';
 
-const FEED_KEY = 'milestones:feed';
+export const FEED_KEY = 'milestones:feed';
 const SEEN_KEY_PREFIX = 'milestone:seen:';
-const REJECTED_KEY = 'milestones:rejected';
-const MAX_FEED_ITEMS = 50;
+export const REJECTED_KEY = 'milestones:rejected';
+export const MAX_FEED_ITEMS = 50;
 const MAX_REJECTED_ITEMS = 100;
 
-type RejectedEntry = { timestampUtc: string; reason: string; idempotencyKey?: string };
+type RejectedEntry = {
+  timestampUtc: string;
+  reason: string;
+  idempotencyKey?: string;
+};
 
 function sortObjectKeys(obj: unknown): unknown {
   if (Array.isArray(obj)) return obj.map(sortObjectKeys);
@@ -47,9 +62,12 @@ export const milestoneIngest = new Hono();
 async function recordRejection(entry: RejectedEntry): Promise<void> {
   try {
     const raw = await redis.get(REJECTED_KEY);
-    const list: RejectedEntry[] = raw ? (JSON.parse(raw) as RejectedEntry[]) : [];
+    const list: RejectedEntry[] = raw
+      ? (JSON.parse(raw) as RejectedEntry[])
+      : [];
     list.push(entry);
-    if (list.length > MAX_REJECTED_ITEMS) list.splice(0, list.length - MAX_REJECTED_ITEMS);
+    if (list.length > MAX_REJECTED_ITEMS)
+      list.splice(0, list.length - MAX_REJECTED_ITEMS);
     await redis.set(REJECTED_KEY, JSON.stringify(list));
   } catch {
     // Non-fatal — never block ingest on dead-letter write
@@ -61,18 +79,29 @@ milestoneIngest.post('/ingest', async (c) => {
   const secret = await redis.get(SIGNING_SECRET_REDIS_KEY);
   if (!secret) {
     return c.json<MilestoneIngestResponse>(
-      { ok: false, status: 'rejected', reason: 'server misconfigured: MILESTONE_SIGNING_SECRET not set' },
-      500,
+      {
+        ok: false,
+        status: 'rejected',
+        reason: 'server misconfigured: MILESTONE_SIGNING_SECRET not set',
+      },
+      500
     );
   }
 
   const signature = c.req.header('x-openclaw-signature');
   const timestamp = c.req.header('x-openclaw-timestamp');
   if (!signature || !timestamp) {
-    await recordRejection({ timestampUtc: now, reason: 'missing x-openclaw-signature or x-openclaw-timestamp' });
+    await recordRejection({
+      timestampUtc: now,
+      reason: 'missing x-openclaw-signature or x-openclaw-timestamp',
+    });
     return c.json<MilestoneIngestResponse>(
-      { ok: false, status: 'rejected', reason: 'missing x-openclaw-signature or x-openclaw-timestamp' },
-      401,
+      {
+        ok: false,
+        status: 'rejected',
+        reason: 'missing x-openclaw-signature or x-openclaw-timestamp',
+      },
+      401
     );
   }
 
@@ -83,33 +112,71 @@ milestoneIngest.post('/ingest', async (c) => {
     await recordRejection({ timestampUtc: now, reason: 'invalid JSON body' });
     return c.json<MilestoneIngestResponse>(
       { ok: false, status: 'rejected', reason: 'invalid JSON body' },
-      400,
+      400
+    );
+  }
+
+  if (
+    typeof body.idempotencyKey !== 'string' ||
+    body.idempotencyKey.trim().length === 0
+  ) {
+    await recordRejection({
+      timestampUtc: now,
+      reason: 'missing idempotencyKey',
+    });
+    return c.json<MilestoneIngestResponse>(
+      { ok: false, status: 'rejected', reason: 'missing idempotencyKey' },
+      400
     );
   }
 
   const expected = signEnvelope(body, secret);
   if (!safeEqual(signature.toLowerCase(), expected.toLowerCase())) {
-    await recordRejection({ timestampUtc: now, reason: 'invalid signature', idempotencyKey: body.idempotencyKey });
+    await recordRejection({
+      timestampUtc: now,
+      reason: 'invalid signature',
+      idempotencyKey: body.idempotencyKey,
+    });
     return c.json<MilestoneIngestResponse>(
       { ok: false, status: 'rejected', reason: 'invalid signature' },
-      401,
+      401
+    );
+  }
+
+  const event = normalizeMilestoneEvent(body.event);
+  if (!event) {
+    await recordRejection({
+      timestampUtc: now,
+      reason: 'invalid milestone event',
+      idempotencyKey: body.idempotencyKey,
+    });
+    return c.json<MilestoneIngestResponse>(
+      { ok: false, status: 'rejected', reason: 'invalid milestone event' },
+      400
     );
   }
 
   // Idempotency check
-  const seenKey = SEEN_KEY_PREFIX + body.idempotencyKey;
+  const idempotencyKey = body.idempotencyKey.trim();
+  const seenKey = SEEN_KEY_PREFIX + idempotencyKey;
   const alreadySeen = await redis.get(seenKey);
   if (alreadySeen) {
     return c.json<MilestoneIngestResponse>(
-      { ok: true, status: 'duplicate', milestoneId: body.event.milestoneId },
-      200,
+      { ok: true, status: 'duplicate', milestoneId: event.milestoneId },
+      200
     );
   }
 
   // Append to feed (bounded circular buffer in Redis)
   const feedStr = await redis.get(FEED_KEY);
-  const feed: MilestoneIngestEnvelope['event'][] = feedStr ? (JSON.parse(feedStr) as MilestoneIngestEnvelope['event'][]) : [];
-  feed.push(body.event);
+  let parsedFeed: unknown = [];
+  try {
+    parsedFeed = feedStr ? JSON.parse(feedStr) : [];
+  } catch {
+    parsedFeed = [];
+  }
+  const feed = normalizeStoredFeed(parsedFeed);
+  feed.push(event);
   if (feed.length > MAX_FEED_ITEMS) {
     feed.splice(0, feed.length - MAX_FEED_ITEMS);
   }
@@ -117,11 +184,11 @@ milestoneIngest.post('/ingest', async (c) => {
   await redis.set(seenKey, '1');
 
   // Broadcast to any connected clients for live updates
-  await realtime.send<MilestoneRealtimeMessage>('milestones-feed', { event: body.event });
+  await realtime.send<MilestoneRealtimeMessage>(REALTIME_CHANNEL, { event });
 
   return c.json<MilestoneIngestResponse>(
-    { ok: true, status: 'accepted', milestoneId: body.event.milestoneId },
-    200,
+    { ok: true, status: 'accepted', milestoneId: event.milestoneId },
+    200
   );
 });
 
@@ -130,10 +197,23 @@ export const milestoneFeed = new Hono();
 
 milestoneFeed.get('/latest', async (c) => {
   const limitParam = c.req.query('limit');
-  const limit = Math.min(MAX_FEED_ITEMS, Math.max(1, parseInt(limitParam ?? '20', 10) || 20));
+  const limit = Math.min(
+    MAX_FEED_ITEMS,
+    Math.max(1, parseInt(limitParam ?? '20', 10) || 20)
+  );
 
   const feedStr = await redis.get(FEED_KEY);
-  const feed: MilestoneIngestEnvelope['event'][] = feedStr ? (JSON.parse(feedStr) as MilestoneIngestEnvelope['event'][]) : [];
+  let parsedFeed: unknown = [];
+  try {
+    parsedFeed = feedStr ? JSON.parse(feedStr) : [];
+  } catch {
+    parsedFeed = [];
+  }
+
+  const feed = normalizeStoredFeed(parsedFeed);
+  if (feedStr) {
+    await redis.set(FEED_KEY, JSON.stringify(feed.slice(-MAX_FEED_ITEMS)));
+  }
   const items = feed.slice(-limit).reverse();
 
   return c.json<MilestoneFeedResponse>({ ok: true, items }, 200);
@@ -146,5 +226,8 @@ milestoneFeed.get('/dead-letter', async (c) => {
     ? (JSON.parse(raw) as MilestoneDeadLetterResponse['items'])
     : [];
   const newest = items.slice().reverse();
-  return c.json<MilestoneDeadLetterResponse>({ ok: true, items: newest, count: newest.length }, 200);
+  return c.json<MilestoneDeadLetterResponse>(
+    { ok: true, items: newest, count: newest.length },
+    200
+  );
 });

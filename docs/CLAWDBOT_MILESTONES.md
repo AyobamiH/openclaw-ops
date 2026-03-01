@@ -109,6 +109,27 @@ Current code already includes:
 - app-side ingest and feed routes
 - duplicate-safe ingestion
 
+## Parallel Demand Telemetry
+
+Milestones remain the **Proof** channel.
+
+The Demand view now also has a separate signed structured telemetry path for
+queue and draft pressure. That demand summary channel:
+
+- is delivered in parallel to milestones
+- uses `POST /internal/demand/ingest`
+- stores only the latest verified demand snapshot in the app
+- powers `/api/command-center/demand` and `/api/command-center/demand-live`
+- reuses the same signing secret model as milestone ingest by default
+
+This means:
+
+- use milestones for narrative proof, evidence, and next actions
+- use demand summaries for live queue totals, draft totals, readiness, top
+  pillars, and active demand segments
+
+Do not overload the milestone schema with structured demand counters.
+
 Use these companion docs for the operational details:
 
 - `docs/operations/MILESTONE_INGEST_CONTRACT.md`

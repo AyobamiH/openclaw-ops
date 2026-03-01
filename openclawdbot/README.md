@@ -1,16 +1,17 @@
 # OpenClawDBot
 
-`openclawdbot` is the Reddit / Devvit surface for OpenClaw. It creates and
-renders the custom-post milestone experience, exposes the app-side milestone
-ingest and feed routes, and gives moderators controls for wiring the live
-pipeline.
+`openclawdbot` is the Reddit / Devvit command center for OpenClaw. It renders
+the public proof boundary, exposes the app-side command-center and milestone
+routes, and gives moderators the controls needed to keep the live pipeline
+healthy.
 
 ## What It Does
 
 - creates the custom post surface used in Reddit
-- renders the compact and expanded UI in `src/client/`
+- renders the compact preview and expanded command-center UI in `src/client/`
 - exposes public client APIs and internal app actions in `src/server/`
 - accepts signed milestone ingest from the orchestrator
+- accepts signed demand-summary ingest from the orchestrator
 - maintains the canonical `milestones-feed` wiki page and refresh scheduler
 
 ## Current Runtime Shape
@@ -22,12 +23,14 @@ Key files:
 - `src/server/routes/triggers.ts`: install/upgrade bootstrap and post creation
 - `src/server/routes/menu.ts`: moderator actions
 - `src/server/routes/milestones.ts`: ingest + latest feed routes
+- `src/server/routes/demand.ts`: signed demand-summary ingest + live demand feed
+- `src/server/routes/api.ts`: command-center overview, control, and demand APIs
 - `src/server/routes/scheduler.ts`: remote feed polling, wiki sync, realtime
-- `src/client/splash.tsx`: compact Reddit view
-- `src/client/game.tsx`: expanded Reddit view
+- `src/client/splash.tsx`: compact Reddit preview of the command center
+- `src/client/game.tsx`: expanded Proof / Control / Demand command center
 
 This is no longer a starter template. It is the active milestone delivery app
-for the OpenClaw project.
+and public proof surface for the OpenClaw project.
 
 ## Common Commands
 
@@ -60,6 +63,19 @@ Validation commands:
 - Material app code/config changes should update the appropriate existing `.md`
   file in the same change set and reference the affected routes, views, or
   config paths where useful.
+- The public UI now exposes three surfaces:
+  `Proof`, `Control`, and `Demand`.
+- The public API surface now includes:
+  `/api/command-center/overview`,
+  `/api/command-center/control`,
+  `/api/command-center/demand`,
+  `/api/command-center/demand-live`.
+- The internal signed ingest surface now includes:
+  `/internal/milestones/ingest`,
+  `/internal/demand/ingest`.
+- Demand telemetry is a parallel signed structured channel. It is not part of
+  the milestone timeline, and it currently reuses the same signing secret path
+  as milestone ingest.
 - For the milestone pipeline contract, use `../docs/CLAWDBOT_MILESTONES.md`,
   `../docs/operations/MILESTONE_INGEST_CONTRACT.md`, and
   `../docs/operations/MILESTONE_PIPELINE_RUNBOOK.md`.

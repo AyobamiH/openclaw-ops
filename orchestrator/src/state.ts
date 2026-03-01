@@ -13,6 +13,7 @@ const RSS_SEEN_LIMIT = 400;
 const APPROVALS_LIMIT = 1000;
 const TASK_EXECUTION_LIMIT = 5000;
 const MILESTONE_DELIVERY_LIMIT = 200;
+const DEMAND_SUMMARY_DELIVERY_LIMIT = 200;
 
 type StateRetentionOptions = {
   taskHistoryLimit?: number;
@@ -52,10 +53,16 @@ export async function loadState(
       agentDeployments: parsed.agentDeployments ?? [],
       rssDrafts: parsed.rssDrafts ?? [],
       rssSeenIds: parsed.rssSeenIds ?? [],
-      milestoneDeliveries: parsed.milestoneDeliveries?.slice(-MILESTONE_DELIVERY_LIMIT) ?? [],
+      milestoneDeliveries:
+        parsed.milestoneDeliveries?.slice(-MILESTONE_DELIVERY_LIMIT) ?? [],
+      demandSummaryDeliveries:
+        parsed.demandSummaryDeliveries?.slice(-DEMAND_SUMMARY_DELIVERY_LIMIT) ??
+        [],
     };
   } catch (error) {
-    console.warn(`[state] Failed to parse state file, starting fresh: ${(error as Error).message}`);
+    console.warn(
+      `[state] Failed to parse state file, starting fresh: ${(error as Error).message}`,
+    );
     return createDefaultState();
   }
 }
@@ -82,7 +89,12 @@ export async function saveStateWithOptions(
     agentDeployments: state.agentDeployments.slice(-AGENT_DEPLOYMENT_LIMIT),
     rssDrafts: state.rssDrafts.slice(-RSS_DRAFT_LIMIT),
     rssSeenIds: state.rssSeenIds.slice(-RSS_SEEN_LIMIT),
-    milestoneDeliveries: state.milestoneDeliveries.slice(-MILESTONE_DELIVERY_LIMIT),
+    milestoneDeliveries: state.milestoneDeliveries.slice(
+      -MILESTONE_DELIVERY_LIMIT,
+    ),
+    demandSummaryDeliveries: state.demandSummaryDeliveries.slice(
+      -DEMAND_SUMMARY_DELIVERY_LIMIT,
+    ),
     updatedAt: new Date().toISOString(),
   };
 
@@ -106,7 +118,9 @@ export function createDefaultState(): OrchestratorState {
     rssDrafts: [],
     rssSeenIds: [],
     milestoneDeliveries: [],
+    demandSummaryDeliveries: [],
     lastMilestoneDeliveryAt: null,
+    lastDemandSummaryDeliveryAt: null,
     lastDriftRepairAt: null,
     lastRedditResponseAt: null,
     lastAgentDeployAt: null,

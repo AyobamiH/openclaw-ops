@@ -22,6 +22,7 @@
   "nightlyBatchSchedule": "0 23 * * *",
   "morningNotificationSchedule": "0 6 * * *",
   "digestTimeZone": "UTC",
-  "notes": "The orchestrator reads local OpenClaw docs from docsPath and OpenAI Cookbook from cookbookPath; ensure sync_docs_sources.sh (or sync_openclaw_docs.sh + sync_openai_cookbook.sh) keeps both mirrors current. LLM settings for reddit-helper: openaiModel (gpt-4), openaiMaxTokens (300), openaiTemperature (0.7). Digest delivery: digestNotificationChannel and digestNotificationTarget. Nightly batch at 11pm UTC; morning notification at 6am UTC. Milestone delivery: set milestoneIngestUrl to the openclawdbot /internal/milestones/ingest URL and MILESTONE_SIGNING_SECRET env var to enable live milestone push.",
-  "milestoneIngestUrl": ""
+  "notes": "The orchestrator reads local OpenClaw docs from docsPath and OpenAI Cookbook from cookbookPath; ensure sync_docs_sources.sh (or sync_openclaw_docs.sh + sync_openai_cookbook.sh) keeps both mirrors current. LLM settings for reddit-helper: openaiModel (gpt-4), openaiMaxTokens (300), openaiTemperature (0.7). Digest delivery: digestNotificationChannel and digestNotificationTarget. Nightly batch at 11pm UTC; morning notification at 6am UTC. Milestone delivery: set milestoneIngestUrl to the openclawdbot /internal/milestones/ingest URL and MILESTONE_SIGNING_SECRET env var to enable live milestone push. Demand telemetry: set demandSummaryIngestUrl to the openclawdbot /internal/demand/ingest URL and keep it on the same signing secret path by default.",
+  "milestoneIngestUrl": "",
+  "demandSummaryIngestUrl": "http://127.0.0.1:3000/internal/demand/ingest"
 }

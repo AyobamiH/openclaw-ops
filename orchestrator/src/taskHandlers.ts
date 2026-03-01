@@ -1,6 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { cp, mkdir, readFile, writeFile, appendFile, mkdtemp, rm, readdir, stat } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  readFile,
+  writeFile,
+  appendFile,
+  mkdtemp,
+  rm,
+  readdir,
+  stat,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
@@ -16,55 +26,80 @@ import { sendNotification, buildNotifierConfig } from "./notifier.js";
 import { getAgentRegistry } from "./agentRegistry.js";
 import { getToolGate } from "./toolGate.js";
 import { getMilestoneEmitter } from "./milestones/emitter.js";
+import { getDemandSummaryEmitter } from "./demand/emitter.js";
+import { buildDemandStateFingerprint } from "./demand/summary-builder.js";
 
 // Central task allowlist (deny-by-default enforcement)
 export const ALLOWED_TASK_TYPES = [
-  'startup',
-  'doc-change',
-  'doc-sync',
-  'drift-repair',
-  'reddit-response',
-  'security-audit',
-  'summarize-content',
-  'system-monitor',
-  'build-refactor',
-  'content-generate',
-  'integration-workflow',
-  'normalize-data',
-  'market-research',
-  'data-extraction',
-  'qa-verification',
-  'skill-audit',
-  'rss-sweep',
-  'nightly-batch',
-  'send-digest',
-  'heartbeat',
-  'agent-deploy',
+  "startup",
+  "doc-change",
+  "doc-sync",
+  "drift-repair",
+  "reddit-response",
+  "security-audit",
+  "summarize-content",
+  "system-monitor",
+  "build-refactor",
+  "content-generate",
+  "integration-workflow",
+  "normalize-data",
+  "market-research",
+  "data-extraction",
+  "qa-verification",
+  "skill-audit",
+  "rss-sweep",
+  "nightly-batch",
+  "send-digest",
+  "heartbeat",
+  "agent-deploy",
 ] as const;
 
-export type AllowedTaskType = typeof ALLOWED_TASK_TYPES[number];
+export type AllowedTaskType = (typeof ALLOWED_TASK_TYPES)[number];
 
 const SPAWNED_AGENT_PERMISSION_REQUIREMENTS: Partial<
   Record<AllowedTaskType, { agentId: string; skillId: string }>
 > = {
-  'security-audit': { agentId: 'security-agent', skillId: 'documentParser' },
-  'summarize-content': { agentId: 'summarization-agent', skillId: 'documentParser' },
-  'system-monitor': { agentId: 'system-monitor-agent', skillId: 'documentParser' },
-  'build-refactor': { agentId: 'build-refactor-agent', skillId: 'workspacePatch' },
-  'content-generate': { agentId: 'content-agent', skillId: 'documentParser' },
-  'integration-workflow': { agentId: 'integration-agent', skillId: 'documentParser' },
-  'normalize-data': { agentId: 'normalization-agent', skillId: 'normalizer' },
-  'market-research': { agentId: 'market-research-agent', skillId: 'sourceFetch' },
-  'data-extraction': { agentId: 'data-extraction-agent', skillId: 'documentParser' },
-  'qa-verification': { agentId: 'qa-verification-agent', skillId: 'testRunner' },
-  'skill-audit': { agentId: 'skill-audit-agent', skillId: 'testRunner' },
+  "security-audit": { agentId: "security-agent", skillId: "documentParser" },
+  "summarize-content": {
+    agentId: "summarization-agent",
+    skillId: "documentParser",
+  },
+  "system-monitor": {
+    agentId: "system-monitor-agent",
+    skillId: "documentParser",
+  },
+  "build-refactor": {
+    agentId: "build-refactor-agent",
+    skillId: "workspacePatch",
+  },
+  "content-generate": { agentId: "content-agent", skillId: "documentParser" },
+  "integration-workflow": {
+    agentId: "integration-agent",
+    skillId: "documentParser",
+  },
+  "normalize-data": { agentId: "normalization-agent", skillId: "normalizer" },
+  "market-research": {
+    agentId: "market-research-agent",
+    skillId: "sourceFetch",
+  },
+  "data-extraction": {
+    agentId: "data-extraction-agent",
+    skillId: "documentParser",
+  },
+  "qa-verification": {
+    agentId: "qa-verification-agent",
+    skillId: "testRunner",
+  },
+  "skill-audit": { agentId: "skill-audit-agent", skillId: "testRunner" },
 };
 
 /**
  * Validate task type against allowlist
  * @throws Error if task type is not allowed
  */
-export function validateTaskType(taskType: string): taskType is AllowedTaskType {
+export function validateTaskType(
+  taskType: string,
+): taskType is AllowedTaskType {
   return ALLOWED_TASK_TYPES.includes(taskType as any);
 }
 
@@ -84,6 +119,25 @@ function ensureDocChangeStored(path: string, context: TaskHandlerContext) {
 function ensureRedditQueueLimit(context: TaskHandlerContext) {
   if (context.state.redditQueue.length > MAX_REDDIT_QUEUE) {
     context.state.redditQueue.length = MAX_REDDIT_QUEUE;
+  }
+}
+
+async function emitDemandSummaryIfChanged(
+  previousFingerprint: string,
+  context: TaskHandlerContext,
+) {
+  const emitter = getDemandSummaryEmitter();
+  if (!emitter) return;
+
+  const nextFingerprint = buildDemandStateFingerprint(context.state);
+  if (previousFingerprint === nextFingerprint) return;
+
+  try {
+    await emitter.emit();
+  } catch (error) {
+    context.logger.warn(
+      `[demand-summary] emit failed: ${(error as Error).message}`,
+    );
   }
 }
 
@@ -117,16 +171,26 @@ async function runDocSpecialistJob(
 
   try {
     await new Promise<void>((resolve, reject) => {
-      const tsxPath = join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
-      const child = spawn(process.execPath, [tsxPath, "src/index.ts", payloadPath], {
-        cwd: agentRoot,
-        env: {
-          ...process.env,
-          DOC_SPECIALIST_RESULT_FILE: resultPath,
+      const tsxPath = join(
+        process.cwd(),
+        "node_modules",
+        "tsx",
+        "dist",
+        "cli.mjs",
+      );
+      const child = spawn(
+        process.execPath,
+        [tsxPath, "src/index.ts", payloadPath],
+        {
+          cwd: agentRoot,
+          env: {
+            ...process.env,
+            DOC_SPECIALIST_RESULT_FILE: resultPath,
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: 5 * 60 * 1000, // 5 minutes
         },
-        stdio: ["ignore", "pipe", "pipe"],
-        timeout: 5 * 60 * 1000, // 5 minutes
-      });
+      );
 
       let stderr = "";
       child.stderr.on("data", (chunk) => {
@@ -141,14 +205,29 @@ async function runDocSpecialistJob(
         if (code === 0) {
           resolve();
         } else {
-          reject(new Error(stderr.trim() || `doc-specialist exited with code ${code}`));
+          reject(
+            new Error(
+              stderr.trim() || `doc-specialist exited with code ${code}`,
+            ),
+          );
         }
       });
     });
 
     const raw = await readFile(resultPath, "utf-8");
-    const parsed = JSON.parse(raw) as { packPath: string; packId: string; docsProcessed: number };
-    await persistSpawnedAgentServiceState("doc-specialist", payload, "success", parsed, undefined, startedAt);
+    const parsed = JSON.parse(raw) as {
+      packPath: string;
+      packId: string;
+      docsProcessed: number;
+    };
+    await persistSpawnedAgentServiceState(
+      "doc-specialist",
+      payload,
+      "success",
+      parsed,
+      undefined,
+      startedAt,
+    );
     return parsed;
   } catch (error) {
     await persistSpawnedAgentServiceState(
@@ -188,7 +267,10 @@ async function findLatestKnowledgePack(dir?: string) {
   }
 }
 
-async function runRedditHelperJob(payload: Record<string, unknown>, logger: Console) {
+async function runRedditHelperJob(
+  payload: Record<string, unknown>,
+  logger: Console,
+) {
   const agentRoot = join(process.cwd(), "..", "agents", "reddit-helper");
   const tmpRoot = await mkdtemp(join(tmpdir(), "reddithelper-"));
   const payloadPath = join(tmpRoot, "payload.json");
@@ -198,20 +280,34 @@ async function runRedditHelperJob(payload: Record<string, unknown>, logger: Cons
     ...payload,
   };
   const startedAt = new Date().toISOString();
-  await writeFile(payloadPath, JSON.stringify(enrichedPayload, null, 2), "utf-8");
+  await writeFile(
+    payloadPath,
+    JSON.stringify(enrichedPayload, null, 2),
+    "utf-8",
+  );
 
   try {
     await new Promise<void>((resolve, reject) => {
-      const tsxPath = join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
-      const child = spawn(process.execPath, [tsxPath, "src/index.ts", payloadPath], {
-        cwd: agentRoot,
-        env: {
-          ...process.env,
-          REDDIT_HELPER_RESULT_FILE: resultPath,
+      const tsxPath = join(
+        process.cwd(),
+        "node_modules",
+        "tsx",
+        "dist",
+        "cli.mjs",
+      );
+      const child = spawn(
+        process.execPath,
+        [tsxPath, "src/index.ts", payloadPath],
+        {
+          cwd: agentRoot,
+          env: {
+            ...process.env,
+            REDDIT_HELPER_RESULT_FILE: resultPath,
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: 5 * 60 * 1000, // 5 minutes
         },
-        stdio: ["ignore", "pipe", "pipe"],
-        timeout: 5 * 60 * 1000, // 5 minutes
-      });
+      );
 
       let stderr = "";
       child.stderr.on("data", (chunk) => {
@@ -226,7 +322,11 @@ async function runRedditHelperJob(payload: Record<string, unknown>, logger: Cons
         if (code === 0) {
           resolve();
         } else {
-          reject(new Error(stderr.trim() || `reddit-helper exited with code ${code}`));
+          reject(
+            new Error(
+              stderr.trim() || `reddit-helper exited with code ${code}`,
+            ),
+          );
         }
       });
     });
@@ -240,7 +340,14 @@ async function runRedditHelperJob(payload: Record<string, unknown>, logger: Cons
       packId?: string;
       packPath?: string;
     };
-    await persistSpawnedAgentServiceState("reddit-helper", enrichedPayload, "success", parsed, undefined, startedAt);
+    await persistSpawnedAgentServiceState(
+      "reddit-helper",
+      enrichedPayload,
+      "success",
+      parsed,
+      undefined,
+      startedAt,
+    );
     return parsed;
   } catch (error) {
     await persistSpawnedAgentServiceState(
@@ -272,16 +379,26 @@ async function runSpawnedAgentJob(
 
   try {
     await new Promise<void>((resolve, reject) => {
-      const tsxPath = join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
-      const child = spawn(process.execPath, [tsxPath, "src/index.ts", payloadPath], {
-        cwd: agentRoot,
-        env: {
-          ...process.env,
-          [resultEnvVar]: resultPath,
+      const tsxPath = join(
+        process.cwd(),
+        "node_modules",
+        "tsx",
+        "dist",
+        "cli.mjs",
+      );
+      const child = spawn(
+        process.execPath,
+        [tsxPath, "src/index.ts", payloadPath],
+        {
+          cwd: agentRoot,
+          env: {
+            ...process.env,
+            [resultEnvVar]: resultPath,
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: 5 * 60 * 1000,
         },
-        stdio: ["ignore", "pipe", "pipe"],
-        timeout: 5 * 60 * 1000,
-      });
+      );
 
       let stderr = "";
       child.stderr.on("data", (chunk) => {
@@ -296,14 +413,23 @@ async function runSpawnedAgentJob(
         if (code === 0) {
           resolve();
         } else {
-          reject(new Error(stderr.trim() || `${agentId} exited with code ${code}`));
+          reject(
+            new Error(stderr.trim() || `${agentId} exited with code ${code}`),
+          );
         }
       });
     });
 
     const raw = await readFile(resultPath, "utf-8");
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    await persistSpawnedAgentServiceState(agentId, payload, "success", parsed, undefined, startedAt);
+    await persistSpawnedAgentServiceState(
+      agentId,
+      payload,
+      "success",
+      parsed,
+      undefined,
+      startedAt,
+    );
     return parsed;
   } catch (error) {
     await persistSpawnedAgentServiceState(
@@ -325,8 +451,16 @@ type SpawnedAgentMemoryConfig = {
   serviceStatePath?: string;
 };
 
-async function loadSpawnedAgentMemoryConfig(agentId: string): Promise<SpawnedAgentMemoryConfig> {
-  const configPath = join(process.cwd(), "..", "agents", agentId, "agent.config.json");
+async function loadSpawnedAgentMemoryConfig(
+  agentId: string,
+): Promise<SpawnedAgentMemoryConfig> {
+  const configPath = join(
+    process.cwd(),
+    "..",
+    "agents",
+    agentId,
+    "agent.config.json",
+  );
   try {
     const raw = await readFile(configPath, "utf-8");
     const parsed = JSON.parse(raw) as SpawnedAgentMemoryConfig;
@@ -347,7 +481,13 @@ async function persistSpawnedAgentServiceState(
   const config = await loadSpawnedAgentMemoryConfig(agentId);
   if (!config.serviceStatePath) return;
 
-  const serviceStatePath = join(process.cwd(), "..", "agents", agentId, config.serviceStatePath);
+  const serviceStatePath = join(
+    process.cwd(),
+    "..",
+    "agents",
+    agentId,
+    config.serviceStatePath,
+  );
   let existing: Record<string, unknown> = {};
   try {
     const current = await readFile(serviceStatePath, "utf-8");
@@ -358,7 +498,10 @@ async function persistSpawnedAgentServiceState(
 
   const completedAt = new Date().toISOString();
   const runStartedAt = startedAt ?? completedAt;
-  const durationMs = Math.max(0, new Date(completedAt).getTime() - new Date(runStartedAt).getTime());
+  const durationMs = Math.max(
+    0,
+    new Date(completedAt).getTime() - new Date(runStartedAt).getTime(),
+  );
 
   const timeline = Array.isArray(existing.taskTimeline)
     ? (existing.taskTimeline as Array<Record<string, unknown>>)
@@ -371,7 +514,7 @@ async function persistSpawnedAgentServiceState(
     startedAt: runStartedAt,
     completedAt,
     durationMs,
-    error: status === "error" ? errorMessage ?? null : null,
+    error: status === "error" ? (errorMessage ?? null) : null,
     resultSummary:
       status === "success"
         ? {
@@ -381,9 +524,14 @@ async function persistSpawnedAgentServiceState(
         : undefined,
   };
 
-  const nextTimeline = [timelineEntry, ...timeline].slice(0, AGENT_MEMORY_TIMELINE_LIMIT);
-  const successCount = Number(existing.successCount ?? 0) + (status === "success" ? 1 : 0);
-  const errorCount = Number(existing.errorCount ?? 0) + (status === "error" ? 1 : 0);
+  const nextTimeline = [timelineEntry, ...timeline].slice(
+    0,
+    AGENT_MEMORY_TIMELINE_LIMIT,
+  );
+  const successCount =
+    Number(existing.successCount ?? 0) + (status === "success" ? 1 : 0);
+  const errorCount =
+    Number(existing.errorCount ?? 0) + (status === "error" ? 1 : 0);
 
   const nextState: Record<string, unknown> = {
     ...existing,
@@ -394,7 +542,7 @@ async function persistSpawnedAgentServiceState(
     lastStatus: status,
     lastTaskId: typeof payload.id === "string" ? payload.id : null,
     lastTaskType: typeof payload.type === "string" ? payload.type : null,
-    lastError: status === "error" ? errorMessage ?? null : null,
+    lastError: status === "error" ? (errorMessage ?? null) : null,
     successCount,
     errorCount,
     totalRuns: successCount + errorCount,
@@ -409,11 +557,18 @@ async function persistSpawnedAgentServiceState(
   }
 
   await mkdir(dirname(serviceStatePath), { recursive: true });
-  await writeFile(serviceStatePath, JSON.stringify(nextState, null, 2), "utf-8");
+  await writeFile(
+    serviceStatePath,
+    JSON.stringify(nextState, null, 2),
+    "utf-8",
+  );
 }
 
 function stripHtml(value: string) {
-  return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return value
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function toErrorMessage(error: unknown) {
@@ -431,14 +586,16 @@ async function assertToolGatePermission(taskType: AllowedTaskType) {
   const gate = await getToolGate();
   const taskAuthorization = gate.canExecuteTask(requirement.agentId, taskType);
   if (!taskAuthorization.allowed) {
-    throw new Error(`toolgate denied task ${taskType}: ${taskAuthorization.reason}`);
+    throw new Error(
+      `toolgate denied task ${taskType}: ${taskAuthorization.reason}`,
+    );
   }
 
   const permissionResult = await gate.executeSkill(
     requirement.agentId,
     requirement.skillId,
     {
-      mode: 'preflight',
+      mode: "preflight",
       taskType,
     },
   );
@@ -451,7 +608,13 @@ async function assertToolGatePermission(taskType: AllowedTaskType) {
 }
 
 function parseRssEntries(xml: string) {
-  const entries: Array<{ id: string; title: string; content: string; link: string; author?: string }> = [];
+  const entries: Array<{
+    id: string;
+    title: string;
+    content: string;
+    link: string;
+    author?: string;
+  }> = [];
   const itemRegex = /<entry>([\s\S]*?)<\/entry>/gi;
   let match: RegExpExecArray | null;
   while ((match = itemRegex.exec(xml)) !== null) {
@@ -460,7 +623,9 @@ function parseRssEntries(xml: string) {
     const titleMatch = block.match(/<title>([\s\S]*?)<\/title>/i);
     const contentMatch = block.match(/<content[^>]*>([\s\S]*?)<\/content>/i);
     const linkMatch = block.match(/<link[^>]*href="([^"]+)"/i);
-    const authorMatch = block.match(/<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>/i);
+    const authorMatch = block.match(
+      /<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>/i,
+    );
 
     const id = idMatch ? stripHtml(idMatch[1]) : randomUUID();
     const title = titleMatch ? stripHtml(titleMatch[1]) : "";
@@ -507,12 +672,18 @@ const startupHandler: TaskHandler = async (_, context) => {
   getMilestoneEmitter()?.emit({
     milestoneId: `orchestrator.started.${context.state.lastStartedAt}`,
     timestampUtc: context.state.lastStartedAt,
-    scope: 'runtime',
-    claim: 'Orchestrator started successfully.',
-    evidence: [{ type: 'log', path: context.config.stateFile, summary: 'lastStartedAt set in orchestrator state' }],
-    riskStatus: 'on-track',
-    nextAction: 'Monitor task queue for first incoming tasks.',
-    source: 'orchestrator',
+    scope: "runtime",
+    claim: "Orchestrator started successfully.",
+    evidence: [
+      {
+        type: "log",
+        path: context.config.stateFile,
+        summary: "lastStartedAt set in orchestrator state",
+      },
+    ],
+    riskStatus: "on-track",
+    nextAction: "Monitor task queue for first incoming tasks.",
+    source: "orchestrator",
   });
 
   return "orchestrator boot complete";
@@ -533,14 +704,18 @@ const docSyncHandler: TaskHandler = async (_, context) => {
   const changes = [...context.state.pendingDocChanges];
   context.state.pendingDocChanges = [];
   await context.saveState();
-  return changes.length ? `synced ${changes.length} doc changes` : "no doc changes to sync";
+  return changes.length
+    ? `synced ${changes.length} doc changes`
+    : "no doc changes to sync";
 };
 
 const driftRepairHandler: TaskHandler = async (task, context) => {
   const startedAt = Date.now();
   const requestedBy = String(task.payload.requestedBy ?? "scheduler");
   const extractedPaths = context.state.pendingDocChanges.splice(0);
-  const extraPaths = Array.isArray(task.payload.paths) ? (task.payload.paths as string[]) : [];
+  const extraPaths = Array.isArray(task.payload.paths)
+    ? (task.payload.paths as string[])
+    : [];
   const processedPaths = extractedPaths.length ? extractedPaths : extraPaths;
 
   if (processedPaths.length === 0) {
@@ -563,11 +738,22 @@ const driftRepairHandler: TaskHandler = async (task, context) => {
     }
   }
 
-  let docSpecResult: { packPath: string; packId: string; docsProcessed: number } | null = null;
+  let docSpecResult: {
+    packPath: string;
+    packId: string;
+    docsProcessed: number;
+  } | null = null;
   try {
-    docSpecResult = await runDocSpecialistJob(processedPaths, targets, requestedBy, context.logger);
+    docSpecResult = await runDocSpecialistJob(
+      processedPaths,
+      targets,
+      requestedBy,
+      context.logger,
+    );
   } catch (error) {
-    context.logger.warn(`[drift-repair] doc specialist failed: ${(error as Error).message}`);
+    context.logger.warn(
+      `[drift-repair] doc specialist failed: ${(error as Error).message}`,
+    );
   }
 
   const record: DriftRepairRecord = {
@@ -580,12 +766,13 @@ const driftRepairHandler: TaskHandler = async (task, context) => {
     updatedAgents: targets,
     durationMs: Date.now() - startedAt,
     completedAt: new Date().toISOString(),
-    notes: [
-      docSpecResult?.packPath ? `pack:${docSpecResult.packPath}` : null,
-      task.payload.notes ? String(task.payload.notes) : null,
-    ]
-      .filter(Boolean)
-      .join(" | ") || undefined,
+    notes:
+      [
+        docSpecResult?.packPath ? `pack:${docSpecResult.packPath}` : null,
+        task.payload.notes ? String(task.payload.notes) : null,
+      ]
+        .filter(Boolean)
+        .join(" | ") || undefined,
   };
 
   context.state.driftRepairs.push(record);
@@ -593,17 +780,31 @@ const driftRepairHandler: TaskHandler = async (task, context) => {
   await context.saveState();
 
   const packEvidence = docSpecResult?.packPath
-    ? [{ type: 'log' as const, path: docSpecResult.packPath, summary: `knowledge pack ${docSpecResult.packId}` }]
-    : [{ type: 'log' as const, path: context.config.stateFile, summary: 'drift repair record saved to orchestrator state' }];
+    ? [
+        {
+          type: "log" as const,
+          path: docSpecResult.packPath,
+          summary: `knowledge pack ${docSpecResult.packId}`,
+        },
+      ]
+    : [
+        {
+          type: "log" as const,
+          path: context.config.stateFile,
+          summary: "drift repair record saved to orchestrator state",
+        },
+      ];
   getMilestoneEmitter()?.emit({
     milestoneId: `drift.repair.${record.runId}`,
     timestampUtc: record.completedAt,
-    scope: 'pipeline',
+    scope: "pipeline",
     claim: `Doc drift repair completed: ${processedPaths.length} path(s) processed.`,
     evidence: packEvidence,
-    riskStatus: docSpecResult ? 'on-track' : 'at-risk',
-    nextAction: docSpecResult ? 'Verify knowledge pack is consumed by reddit-helper.' : 'Investigate why doc-specialist did not produce a pack.',
-    source: 'orchestrator',
+    riskStatus: docSpecResult ? "on-track" : "at-risk",
+    nextAction: docSpecResult
+      ? "Verify knowledge pack is consumed by reddit-helper."
+      : "Investigate why doc-specialist did not produce a pack.",
+    source: "orchestrator",
   });
 
   if (docSpecResult) {
@@ -614,6 +815,7 @@ const driftRepairHandler: TaskHandler = async (task, context) => {
 
 const redditResponseHandler: TaskHandler = async (task, context) => {
   const now = new Date().toISOString();
+  const demandFingerprintBefore = buildDemandStateFingerprint(context.state);
   let queueItem = context.state.redditQueue.shift();
 
   if (!queueItem && task.payload.queue) {
@@ -621,10 +823,14 @@ const redditResponseHandler: TaskHandler = async (task, context) => {
     queueItem = {
       id: String(manualQueue.id ?? randomUUID()),
       subreddit: String(manualQueue.subreddit ?? "r/OpenClaw"),
-      question: String(manualQueue.question ?? "General OpenClaw workflow question"),
+      question: String(
+        manualQueue.question ?? "General OpenClaw workflow question",
+      ),
       link: manualQueue.link ? String(manualQueue.link) : undefined,
       queuedAt: now,
-      draftRecordId: manualQueue.draftRecordId ? String(manualQueue.draftRecordId) : undefined,
+      draftRecordId: manualQueue.draftRecordId
+        ? String(manualQueue.draftRecordId)
+        : undefined,
     };
   }
 
@@ -637,7 +843,9 @@ const redditResponseHandler: TaskHandler = async (task, context) => {
   const matchingDraft = context.state.rssDrafts.find(
     (draft) => draft.draftId === (queueItem?.draftRecordId ?? queueItem.id),
   );
-  const latestPack = await findLatestKnowledgePack(context.config.knowledgePackDir);
+  const latestPack = await findLatestKnowledgePack(
+    context.config.knowledgePackDir,
+  );
 
   let agentResult: {
     replyText: string;
@@ -659,10 +867,13 @@ const redditResponseHandler: TaskHandler = async (task, context) => {
       context.logger,
     );
   } catch (error) {
-    context.logger.warn(`[reddit-response] helper failed: ${(error as Error).message}`);
+    context.logger.warn(
+      `[reddit-response] helper failed: ${(error as Error).message}`,
+    );
   }
 
-  const draftedResponse = agentResult?.replyText ?? queueItem.suggestedReply ?? queueItem.question;
+  const draftedResponse =
+    agentResult?.replyText ?? queueItem.suggestedReply ?? queueItem.question;
   const confidence = agentResult?.confidence ?? 0.75;
   const status: "drafted" | "posted" = "drafted";
 
@@ -679,18 +890,19 @@ const redditResponseHandler: TaskHandler = async (task, context) => {
     notes: matchingDraft ? `rssDraft:${matchingDraft.draftId}` : undefined,
     rssDraftId: matchingDraft?.draftId,
     devvitPayloadPath: agentResult?.devvitPayloadPath,
-    packId: agentResult?.packId ?? (latestPack?.pack?.id ?? undefined),
+    packId: agentResult?.packId ?? latestPack?.pack?.id ?? undefined,
     packPath: agentResult?.packPath ?? latestPack?.path,
   };
 
   context.state.redditResponses.push(record);
   context.state.lastRedditResponseAt = now;
   await context.saveState();
+  await emitDemandSummaryIfChanged(demandFingerprintBefore, context);
   return `drafted reddit reply for ${queueItem.subreddit} (${queueItem.id})`;
 };
 
 const securityAuditHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission('security-audit');
+  await assertToolGatePermission("security-audit");
   const payload = {
     id: randomUUID(),
     type: String(task.payload.type ?? "scan"),
@@ -704,7 +916,8 @@ const securityAuditHandler: TaskHandler = async (task, context) => {
       "SECURITY_AGENT_RESULT_FILE",
       context.logger,
     );
-    const summary = (result.summary as Record<string, unknown> | undefined) ?? {};
+    const summary =
+      (result.summary as Record<string, unknown> | undefined) ?? {};
     const critical = Number(summary.critical ?? 0);
     const total = Number(summary.total ?? 0);
     return `security audit complete (${critical} critical, ${total} findings)`;
@@ -714,21 +927,30 @@ const securityAuditHandler: TaskHandler = async (task, context) => {
 };
 
 const summarizeContentHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission('summarize-content');
-  const sourceType = String(task.payload.sourceType ?? "document") as "document" | "transcript" | "report";
+  await assertToolGatePermission("summarize-content");
+  const sourceType = String(task.payload.sourceType ?? "document") as
+    | "document"
+    | "transcript"
+    | "report";
   const payload = {
     id: randomUUID(),
     source: {
       type: sourceType,
       content: String(task.payload.content ?? ""),
-      metadata: typeof task.payload.metadata === "object" && task.payload.metadata !== null
-        ? (task.payload.metadata as Record<string, unknown>)
-        : undefined,
+      metadata:
+        typeof task.payload.metadata === "object" &&
+        task.payload.metadata !== null
+          ? (task.payload.metadata as Record<string, unknown>)
+          : undefined,
     },
-    constraints: typeof task.payload.constraints === "object" && task.payload.constraints !== null
-      ? (task.payload.constraints as Record<string, unknown>)
-      : undefined,
-    format: task.payload.format ? String(task.payload.format) : "executive_summary",
+    constraints:
+      typeof task.payload.constraints === "object" &&
+      task.payload.constraints !== null
+        ? (task.payload.constraints as Record<string, unknown>)
+        : undefined,
+    format: task.payload.format
+      ? String(task.payload.format)
+      : "executive_summary",
   };
 
   try {
@@ -747,7 +969,7 @@ const summarizeContentHandler: TaskHandler = async (task, context) => {
 };
 
 const systemMonitorHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission('system-monitor');
+  await assertToolGatePermission("system-monitor");
   const payload = {
     id: randomUUID(),
     type: String(task.payload.type ?? "health"),
@@ -763,7 +985,8 @@ const systemMonitorHandler: TaskHandler = async (task, context) => {
       "SYSTEM_MONITOR_AGENT_RESULT_FILE",
       context.logger,
     );
-    const metrics = (result.metrics as Record<string, unknown> | undefined) ?? {};
+    const metrics =
+      (result.metrics as Record<string, unknown> | undefined) ?? {};
     const alerts = Array.isArray(metrics.alerts) ? metrics.alerts.length : 0;
     return `system monitor complete (${alerts} alerts)`;
   } catch (error) {
@@ -772,14 +995,16 @@ const systemMonitorHandler: TaskHandler = async (task, context) => {
 };
 
 const buildRefactorHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission('build-refactor');
+  await assertToolGatePermission("build-refactor");
   const payload = {
     id: randomUUID(),
     type: String(task.payload.type ?? "refactor"),
     scope: String(task.payload.scope ?? "src"),
-    constraints: typeof task.payload.constraints === "object" && task.payload.constraints !== null
-      ? (task.payload.constraints as Record<string, unknown>)
-      : undefined,
+    constraints:
+      typeof task.payload.constraints === "object" &&
+      task.payload.constraints !== null
+        ? (task.payload.constraints as Record<string, unknown>)
+        : undefined,
   };
 
   try {
@@ -790,7 +1015,8 @@ const buildRefactorHandler: TaskHandler = async (task, context) => {
       context.logger,
     );
 
-    const summary = (result.summary as Record<string, unknown> | undefined) ?? {};
+    const summary =
+      (result.summary as Record<string, unknown> | undefined) ?? {};
     const filesChanged = Number(summary.filesChanged ?? 0);
     const confidence = Number(summary.confidence ?? 0);
     return `build-refactor complete (${filesChanged} files, confidence ${confidence.toFixed(2)})`;
@@ -800,7 +1026,7 @@ const buildRefactorHandler: TaskHandler = async (task, context) => {
 };
 
 const contentGenerateHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission('content-generate');
+  await assertToolGatePermission("content-generate");
   const payload = {
     id: randomUUID(),
     type: String(task.payload.type ?? "readme"),
@@ -820,7 +1046,8 @@ const contentGenerateHandler: TaskHandler = async (task, context) => {
       context.logger,
     );
 
-    const metrics = (result.metrics as Record<string, unknown> | undefined) ?? {};
+    const metrics =
+      (result.metrics as Record<string, unknown> | undefined) ?? {};
     const wordCount = Number(metrics.wordCount ?? 0);
     const generatedType = String(metrics.generatedType ?? payload.type);
     return `content generation complete (${generatedType}, ${wordCount} words)`;
@@ -830,7 +1057,7 @@ const contentGenerateHandler: TaskHandler = async (task, context) => {
 };
 
 const integrationWorkflowHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission('integration-workflow');
+  await assertToolGatePermission("integration-workflow");
   const payload = {
     id: randomUUID(),
     type: String(task.payload.type ?? "workflow"),
@@ -849,7 +1076,10 @@ const integrationWorkflowHandler: TaskHandler = async (task, context) => {
 
     const steps = Array.isArray(result.steps) ? result.steps.length : 0;
     if (result.success !== true) {
-      const reason = typeof result.error === "string" ? result.error : "agent returned unsuccessful result";
+      const reason =
+        typeof result.error === "string"
+          ? result.error
+          : "agent returned unsuccessful result";
       throw new Error(`integration workflow failed: ${reason}`);
     }
     return `integration workflow complete (${steps} steps)`;
@@ -859,14 +1089,11 @@ const integrationWorkflowHandler: TaskHandler = async (task, context) => {
 };
 
 const normalizeDataHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission('normalize-data');
+  await assertToolGatePermission("normalize-data");
   const payload = {
     id: randomUUID(),
     type: String(task.payload.type ?? "normalize"),
-    input:
-      task.payload.input !== undefined
-        ? task.payload.input
-        : [],
+    input: task.payload.input !== undefined ? task.payload.input : [],
     schema:
       typeof task.payload.schema === "object" && task.payload.schema !== null
         ? (task.payload.schema as Record<string, unknown>)
@@ -881,7 +1108,8 @@ const normalizeDataHandler: TaskHandler = async (task, context) => {
       context.logger,
     );
 
-    const metrics = (result.metrics as Record<string, unknown> | undefined) ?? {};
+    const metrics =
+      (result.metrics as Record<string, unknown> | undefined) ?? {};
     const inputRecords = Number(metrics.inputRecords ?? 0);
     const outputRecords = Number(metrics.outputRecords ?? 0);
     return `normalize-data complete (${outputRecords}/${inputRecords} records normalized)`;
@@ -891,13 +1119,14 @@ const normalizeDataHandler: TaskHandler = async (task, context) => {
 };
 
 const marketResearchHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission('market-research');
+  await assertToolGatePermission("market-research");
   const payload = {
     id: randomUUID(),
     query: String(task.payload.query ?? "market research"),
     scope: String(task.payload.scope ?? "general"),
     constraints:
-      typeof task.payload.constraints === "object" && task.payload.constraints !== null
+      typeof task.payload.constraints === "object" &&
+      task.payload.constraints !== null
         ? (task.payload.constraints as Record<string, unknown>)
         : undefined,
   };
@@ -910,7 +1139,9 @@ const marketResearchHandler: TaskHandler = async (task, context) => {
       context.logger,
     );
 
-    const findings = Array.isArray(result.findings) ? result.findings.length : 0;
+    const findings = Array.isArray(result.findings)
+      ? result.findings.length
+      : 0;
     const confidence = Number(result.confidence ?? 0);
     return `market research complete (${findings} findings, confidence ${confidence.toFixed(2)})`;
   } catch (error) {
@@ -919,7 +1150,7 @@ const marketResearchHandler: TaskHandler = async (task, context) => {
 };
 
 const dataExtractionHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission('data-extraction');
+  await assertToolGatePermission("data-extraction");
   const payload = {
     id: randomUUID(),
     source:
@@ -949,13 +1180,14 @@ const dataExtractionHandler: TaskHandler = async (task, context) => {
 };
 
 const qaVerificationHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission('qa-verification');
+  await assertToolGatePermission("qa-verification");
   const payload = {
     id: randomUUID(),
     target: String(task.payload.target ?? "workspace"),
     suite: String(task.payload.suite ?? "smoke"),
     constraints:
-      typeof task.payload.constraints === "object" && task.payload.constraints !== null
+      typeof task.payload.constraints === "object" &&
+      task.payload.constraints !== null
         ? (task.payload.constraints as Record<string, unknown>)
         : undefined,
   };
@@ -977,7 +1209,7 @@ const qaVerificationHandler: TaskHandler = async (task, context) => {
 };
 
 const skillAuditHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission('skill-audit');
+  await assertToolGatePermission("skill-audit");
   const payload = {
     id: randomUUID(),
     skillIds: Array.isArray(task.payload.skillIds)
@@ -1006,25 +1238,32 @@ const skillAuditHandler: TaskHandler = async (task, context) => {
 };
 
 const rssSweepHandler: TaskHandler = async (task, context) => {
+  const demandFingerprintBefore = buildDemandStateFingerprint(context.state);
   const configPath =
     typeof task.payload.configPath === "string"
       ? task.payload.configPath
-      : context.config.rssConfigPath ?? join(process.cwd(), "..", "rss_filter_config.json");
+      : (context.config.rssConfigPath ??
+        join(process.cwd(), "..", "rss_filter_config.json"));
   const draftsPath =
     typeof task.payload.draftsPath === "string"
       ? task.payload.draftsPath
-      : context.config.redditDraftsPath ?? join(process.cwd(), "..", "logs", "reddit-drafts.jsonl");
+      : (context.config.redditDraftsPath ??
+        join(process.cwd(), "..", "logs", "reddit-drafts.jsonl"));
 
   const rawConfig = await readFile(configPath, "utf-8");
   const rssConfig = JSON.parse(rawConfig);
   const now = new Date().toISOString();
   let drafted = 0;
 
-  const pillars = Object.entries(rssConfig.pillars ?? {}) as Array<[string, any]>;
+  const pillars = Object.entries(rssConfig.pillars ?? {}) as Array<
+    [string, any]
+  >;
   for (const [pillarKey, pillar] of pillars) {
     const feeds = pillar.feeds ?? [];
     for (const feed of feeds) {
-      const response = await fetch(feed.url, { headers: { "User-Agent": "openclaw-orchestrator" } });
+      const response = await fetch(feed.url, {
+        headers: { "User-Agent": "openclaw-orchestrator" },
+      });
       if (!response.ok) {
         context.logger.warn(`[rss] failed ${feed.url}: ${response.status}`);
         continue;
@@ -1036,23 +1275,42 @@ const rssSweepHandler: TaskHandler = async (task, context) => {
         if (context.state.rssSeenIds.includes(seenId)) continue;
 
         const textBlob = `${entry.title}\n${entry.content}\n${entry.author ?? ""}\n${feed.subreddit}\n${entry.link}`;
-        const clusterScore = buildScore(textBlob, pillar.keyword_clusters ?? {});
+        const clusterScore = buildScore(
+          textBlob,
+          pillar.keyword_clusters ?? {},
+        );
 
-        const crossTriggers = rssConfig.cross_pillar?.high_intent_triggers ?? [];
-        const crossMatches = crossTriggers.filter((trigger: string) => textBlob.toLowerCase().includes(trigger.toLowerCase()));
+        const crossTriggers =
+          rssConfig.cross_pillar?.high_intent_triggers ?? [];
+        const crossMatches = crossTriggers.filter((trigger: string) =>
+          textBlob.toLowerCase().includes(trigger.toLowerCase()),
+        );
 
         const scoreBreakdown: Record<string, number> = {};
         let totalScore = 0;
 
         Object.entries(clusterScore.breakdown).forEach(([cluster, count]) => {
           let weight = 1;
-          if (["emotional_identity_pain"].includes(cluster)) weight = rssConfig.scoring.weights.emotional_pain_match;
-          if (["core_instability", "debug_blindness", "preview_vs_production", "export_quality_shock", "autonomy_collapse", "migration_and_rebrand_brittleness"].includes(cluster)) {
+          if (["emotional_identity_pain"].includes(cluster))
+            weight = rssConfig.scoring.weights.emotional_pain_match;
+          if (
+            [
+              "core_instability",
+              "debug_blindness",
+              "preview_vs_production",
+              "export_quality_shock",
+              "autonomy_collapse",
+              "migration_and_rebrand_brittleness",
+            ].includes(cluster)
+          ) {
             weight = rssConfig.scoring.weights.execution_failure_match;
           }
-          if (["security_exposure", "skills_supply_chain"].includes(cluster)) weight = rssConfig.scoring.weights.security_exposure_match;
-          if (["payments_and_backend"].includes(cluster)) weight = rssConfig.scoring.weights.payments_backend_match;
-          if (["hardening_and_runtime"].includes(cluster)) weight = rssConfig.scoring.weights.infra_hardening_match;
+          if (["security_exposure", "skills_supply_chain"].includes(cluster))
+            weight = rssConfig.scoring.weights.security_exposure_match;
+          if (["payments_and_backend"].includes(cluster))
+            weight = rssConfig.scoring.weights.payments_backend_match;
+          if (["hardening_and_runtime"].includes(cluster))
+            weight = rssConfig.scoring.weights.infra_hardening_match;
 
           const weighted = count * weight;
           scoreBreakdown[cluster] = weighted;
@@ -1060,7 +1318,9 @@ const rssSweepHandler: TaskHandler = async (task, context) => {
         });
 
         if (crossMatches.length > 0) {
-          const bonus = rssConfig.scoring.weights.cross_pillar_trigger_match * crossMatches.length;
+          const bonus =
+            rssConfig.scoring.weights.cross_pillar_trigger_match *
+            crossMatches.length;
           scoreBreakdown.cross_pillar_trigger_match = bonus;
           totalScore += bonus;
         }
@@ -1072,11 +1332,15 @@ const rssSweepHandler: TaskHandler = async (task, context) => {
         }
 
         let tag: "draft" | "priority" | "manual-review" = "draft";
-        if (totalScore >= thresholds.manual_review_if_score_gte) tag = "manual-review";
-        else if (totalScore >= thresholds.priority_draft_if_score_gte) tag = "priority";
+        if (totalScore >= thresholds.manual_review_if_score_gte)
+          tag = "manual-review";
+        else if (totalScore >= thresholds.priority_draft_if_score_gte)
+          tag = "priority";
 
         const ctas = rssConfig.drafting?.cta_variants?.[pillarKey] ?? [];
-        const ctaVariant = ctas[0] ?? "If you want, share more context and I’ll suggest the next move.";
+        const ctaVariant =
+          ctas[0] ??
+          "If you want, share more context and I’ll suggest the next move.";
 
         const suggestedReply = `Saw your post about ${entry.title}. ${ctaVariant}`;
 
@@ -1126,7 +1390,10 @@ const rssSweepHandler: TaskHandler = async (task, context) => {
 
   context.state.lastRssSweepAt = now;
   await context.saveState();
-  return drafted > 0 ? `rss sweep drafted ${drafted} replies` : "rss sweep complete (no drafts)";
+  await emitDemandSummaryIfChanged(demandFingerprintBefore, context);
+  return drafted > 0
+    ? `rss sweep drafted ${drafted} replies`
+    : "rss sweep complete (no drafts)";
 };
 
 const heartbeatHandler: TaskHandler = async (task) => {
@@ -1135,15 +1402,24 @@ const heartbeatHandler: TaskHandler = async (task) => {
 
 const agentDeployHandler: TaskHandler = async (task, context) => {
   const deploymentId = randomUUID();
-  const agentName = String(task.payload.agentName ?? `agent-${deploymentId.slice(0, 6)}`);
+  const agentName = String(
+    task.payload.agentName ?? `agent-${deploymentId.slice(0, 6)}`,
+  );
   const template = String(task.payload.template ?? "doc-specialist");
   const templatePath = String(
     task.payload.templatePath ?? join(process.cwd(), "..", "agents", template),
   );
-  const deployBase = context.config.deployBaseDir ?? join(process.cwd(), "..", "agents-deployed");
+  const deployBase =
+    context.config.deployBaseDir ??
+    join(process.cwd(), "..", "agents-deployed");
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const repoPath = String(task.payload.repoPath ?? join(deployBase, `${agentName}-${timestamp}`));
-  const config = typeof task.payload.config === "object" && task.payload.config !== null ? (task.payload.config as Record<string, unknown>) : {};
+  const repoPath = String(
+    task.payload.repoPath ?? join(deployBase, `${agentName}-${timestamp}`),
+  );
+  const config =
+    typeof task.payload.config === "object" && task.payload.config !== null
+      ? (task.payload.config as Record<string, unknown>)
+      : {};
 
   await mkdir(deployBase, { recursive: true });
   await cp(templatePath, repoPath, { recursive: true });
@@ -1157,7 +1433,11 @@ const agentDeployHandler: TaskHandler = async (task, context) => {
     runHint: "npm install && npm run dev -- <payload.json>",
     payload: task.payload,
   };
-  await writeFile(join(repoPath, "DEPLOYMENT.json"), JSON.stringify(deploymentNotes, null, 2), "utf-8");
+  await writeFile(
+    join(repoPath, "DEPLOYMENT.json"),
+    JSON.stringify(deploymentNotes, null, 2),
+    "utf-8",
+  );
 
   const record: AgentDeploymentRecord = {
     deploymentId,
@@ -1177,12 +1457,18 @@ const agentDeployHandler: TaskHandler = async (task, context) => {
   getMilestoneEmitter()?.emit({
     milestoneId: `agent.deploy.${deploymentId}`,
     timestampUtc: record.deployedAt,
-    scope: 'runtime',
+    scope: "runtime",
     claim: `Agent "${agentName}" deployed from template "${template}".`,
-    evidence: [{ type: 'log' as const, path: join(repoPath, 'DEPLOYMENT.json'), summary: `deployment manifest for ${agentName}` }],
-    riskStatus: 'on-track',
+    evidence: [
+      {
+        type: "log" as const,
+        path: join(repoPath, "DEPLOYMENT.json"),
+        summary: `deployment manifest for ${agentName}`,
+      },
+    ],
+    riskStatus: "on-track",
     nextAction: `Run "npm install && npm run dev" in ${repoPath} to start the agent.`,
-    source: 'orchestrator',
+    source: "orchestrator",
   });
 
   return `deployed ${agentName} via ${template} template to ${repoPath}`;
@@ -1191,7 +1477,9 @@ const agentDeployHandler: TaskHandler = async (task, context) => {
 const nightlyBatchHandler: TaskHandler = async (task, context) => {
   const { state, config, logger } = context;
   const now = new Date().toISOString();
-  const digestDir = config.digestDir ?? join(process.cwd(), "..", "logs", "digests");
+  const demandFingerprintBefore = buildDemandStateFingerprint(state);
+  const digestDir =
+    config.digestDir ?? join(process.cwd(), "..", "logs", "digests");
   await mkdir(digestDir, { recursive: true });
 
   // Nightly batch orchestrates: doc-sync, mark high-confidence items for drafting
@@ -1230,16 +1518,24 @@ const nightlyBatchHandler: TaskHandler = async (task, context) => {
 
   state.lastNightlyBatchAt = now;
   await context.saveState();
+  await emitDemandSummaryIfChanged(demandFingerprintBefore, context);
 
   getMilestoneEmitter()?.emit({
     milestoneId: `nightly.batch.${digest.batchId}`,
     timestampUtc: now,
-    scope: 'runtime',
+    scope: "runtime",
     claim: `Nightly batch completed: ${docsSynced} doc(s) synced, ${itemsMarked} item(s) marked for draft.`,
-    evidence: [{ type: 'log' as const, path: digestPath, summary: `batch digest ${digest.batchId}` }],
-    riskStatus: 'on-track',
-    nextAction: 'Review reddit queue for high-confidence items ready for response.',
-    source: 'orchestrator',
+    evidence: [
+      {
+        type: "log" as const,
+        path: digestPath,
+        summary: `batch digest ${digest.batchId}`,
+      },
+    ],
+    riskStatus: "on-track",
+    nextAction:
+      "Review reddit queue for high-confidence items ready for response.",
+    source: "orchestrator",
   });
 
   return `nightly batch: synced ${docsSynced} docs, marked ${itemsMarked} for draft`;
@@ -1247,11 +1543,15 @@ const nightlyBatchHandler: TaskHandler = async (task, context) => {
 
 const sendDigestHandler: TaskHandler = async (task, context) => {
   const { config, logger } = context;
-  const digestDir = config.digestDir ?? join(process.cwd(), "..", "logs", "digests");
+  const digestDir =
+    config.digestDir ?? join(process.cwd(), "..", "logs", "digests");
 
   try {
     const files = await readdir(digestDir);
-    const digests = files.filter((f) => f.startsWith("digest-") && f.endsWith(".json")).sort().reverse();
+    const digests = files
+      .filter((f) => f.startsWith("digest-") && f.endsWith(".json"))
+      .sort()
+      .reverse();
 
     if (!digests.length) return "no digests to send";
 
@@ -1274,11 +1574,11 @@ const sendDigestHandler: TaskHandler = async (task, context) => {
           digest: summary,
           url: `${process.env.APP_URL || "http://localhost:3000"}/digests/${digests[0]}`,
         },
-        logger
+        logger,
       );
     } else {
       logger.log(
-        `[send-digest] ${itemCount} leads ready (no notification channel configured; use log fallback)`
+        `[send-digest] ${itemCount} leads ready (no notification channel configured; use log fallback)`,
       );
     }
 
