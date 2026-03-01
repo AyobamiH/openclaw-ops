@@ -13,6 +13,7 @@ export type ProofNodeState = 'live' | 'warning' | 'idle';
 export type CommandCenterOverviewResponse = {
   ok: true;
   latest: MilestoneEvent | null;
+  stale: boolean;
   visibleFeedCount: number;
   evidenceCount: number;
   activeLaneCount: number;

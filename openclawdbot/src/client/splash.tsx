@@ -5,7 +5,10 @@ import { createRoot } from 'react-dom/client';
 import { requestExpandedMode } from '@devvit/web/client';
 import { useCommandCenterOverview } from './hooks/useCommandCenterOverview';
 import { useMilestoneFeed } from './hooks/useMilestoneFeed';
-import { buildFallbackOverview } from './lib/command-center';
+import {
+  buildFallbackOverview,
+  isPollStale,
+} from './lib/command-center';
 import { formatTimeAgo } from './lib/milestones';
 import heroImage from './OPENCLAWINFRA.jpg';
 
@@ -25,8 +28,34 @@ export const Splash = () => {
   const proofChain = overview.proofNodes.filter((node) =>
     ['emit', 'verify', 'surface'].includes(node.id)
   );
+  const overviewStale = overview.stale ?? isPollStale(overview.lastPollAt);
   const integrityLabel =
-    overview.deadLetterCount > 0 ? 'Watch' : latest ? 'Verified' : 'Standby';
+    overview.deadLetterCount > 0
+      ? 'Watch'
+      : overviewStale
+        ? 'Stale'
+        : latest
+          ? 'Verified'
+          : 'Standby';
+  const integrityTone =
+    overview.deadLetterCount > 0
+      ? 'border-amber-200/15 bg-amber-300/10 text-amber-100'
+      : overviewStale
+        ? 'border-amber-200/15 bg-amber-300/10 text-amber-100'
+        : latest
+          ? 'border-emerald-200/15 bg-emerald-300/10 text-emerald-100'
+          : 'border-white/8 bg-black/24 text-slate-200';
+  const freshnessLabel = overview.lastPollAt
+    ? overviewStale
+      ? `stale · ${formatTimeAgo(overview.lastPollAt)}`
+      : formatTimeAgo(overview.lastPollAt)
+    : 'standby';
+  const integrityMetric =
+    overview.deadLetterCount > 0
+      ? `${overview.deadLetterCount} warn`
+      : overviewStale
+        ? 'holding'
+        : 'clean';
 
   return (
     <div
@@ -58,7 +87,9 @@ export const Splash = () => {
             </div>
           </div>
 
-          <span className="inline-flex items-center gap-2 rounded-full border border-white/8 bg-black/24 px-3 py-1.5 text-[11px] text-slate-200 backdrop-blur-xl">
+          <span
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] backdrop-blur-xl ${integrityTone}`}
+          >
             {integrityLabel}
           </span>
         </div>
@@ -98,7 +129,7 @@ export const Splash = () => {
               Freshness
             </p>
             <p className="mt-2 text-sm font-medium text-white">
-              {latest ? formatTimeAgo(latest.timestampUtc) : 'standby'}
+              {freshnessLabel}
             </p>
           </div>
           <div className="rounded-[1.1rem] border border-white/8 bg-black/24 px-3 py-3 backdrop-blur-xl">
@@ -106,7 +137,7 @@ export const Splash = () => {
               Integrity
             </p>
             <p className="mt-2 text-sm font-medium text-white">
-              {overview.deadLetterCount > 0 ? `${overview.deadLetterCount} warn` : 'clean'}
+              {integrityMetric}
             </p>
           </div>
           <div className="rounded-[1.1rem] border border-white/8 bg-black/24 px-3 py-3 backdrop-blur-xl">

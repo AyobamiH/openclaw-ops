@@ -6,6 +6,8 @@ import type {
 import type { MilestoneEvent } from '../../shared/milestones';
 import { formatTimeAgo } from './milestones';
 
+const POLL_STALE_MS = 5 * 60 * 1000;
+
 const EMPTY_RISK_COUNTS: CommandCenterOverviewResponse['riskCounts'] = {
   onTrack: 0,
   atRisk: 0,
@@ -13,9 +15,21 @@ const EMPTY_RISK_COUNTS: CommandCenterOverviewResponse['riskCounts'] = {
   completed: 0,
 };
 
+export const isPollStale = (lastPollAt: string | null): boolean => {
+  if (!lastPollAt) return true;
+
+  const timestamp = new Date(lastPollAt).getTime();
+  if (Number.isNaN(timestamp)) return true;
+
+  return Date.now() - timestamp > POLL_STALE_MS;
+};
+
 export const formatPollFreshness = (lastPollAt: string | null): string => {
   if (!lastPollAt) return 'Warm poll pending';
-  return `Last poll ${formatTimeAgo(lastPollAt)}`;
+
+  return isPollStale(lastPollAt)
+    ? `Last verified poll ${formatTimeAgo(lastPollAt)}`
+    : `Last poll ${formatTimeAgo(lastPollAt)}`;
 };
 
 export const buildFallbackOverview = (
@@ -40,6 +54,7 @@ export const buildFallbackOverview = (
   return {
     ok: true,
     latest,
+    stale: true,
     visibleFeedCount: items.length,
     evidenceCount,
     activeLaneCount: activeLanes.length,

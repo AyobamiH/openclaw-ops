@@ -18,6 +18,7 @@ import {
   formatPollFreshness,
   getDemandStateMeta,
   getTierMeta,
+  isPollStale,
 } from './lib/command-center';
 import { formatTimeAgo } from './lib/milestones';
 import heroImage from './OPENCLAWINFRA.jpg';
@@ -251,17 +252,23 @@ const HeroBoard = ({
   loading,
   activeView,
   summary,
+  stale,
+  proofAlert,
   visibleCount,
   evidenceCount,
   laneCount,
+  freshnessLabel,
 }: {
   latest: MilestoneEvent | null;
   loading: boolean;
   activeView: ViewMode;
   summary: string;
+  stale: boolean;
+  proofAlert: boolean;
   visibleCount: number;
   evidenceCount: number;
   laneCount: number;
+  freshnessLabel: string;
 }) => {
   const meta = latest ? RISK_META[latest.riskStatus] : RISK_META['on-track'];
   const headline = latest?.claim ?? 'Command center standing by.';
@@ -301,13 +308,29 @@ const HeroBoard = ({
 
           <div className="flex flex-col items-end gap-2">
             <span
-              className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium ${meta.pill}`}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium ${
+                proofAlert || stale
+                  ? 'bg-amber-300/12 text-amber-100 ring-1 ring-amber-200/15'
+                  : meta.pill
+              }`}
             >
-              <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
-              {loading ? 'Syncing' : meta.label}
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  proofAlert || stale
+                    ? 'bg-amber-300 shadow-[0_0_18px_rgba(252,211,77,0.85)]'
+                    : meta.dot
+                }`}
+              />
+              {loading
+                ? 'Syncing'
+                : proofAlert
+                  ? 'Watch'
+                  : stale
+                    ? 'Holding snapshot'
+                    : meta.label}
             </span>
             <span className="rounded-full border border-white/8 bg-black/22 px-3 py-1.5 text-[11px] text-slate-300">
-              {latest ? formatTimeAgo(latest.timestampUtc) : 'standby'}
+              {freshnessLabel}
             </span>
           </div>
         </div>
@@ -657,6 +680,12 @@ export const App = () => {
   const timeline = deferredItems.slice(0, 6);
   const activeLanes =
     overview.activeLanes.length > 0 ? overview.activeLanes : FALLBACK_LANES;
+  const overviewStale = overview.stale ?? isPollStale(overview.lastPollAt);
+  const freshnessLabel = overview.lastPollAt
+    ? overviewStale
+      ? `Holding ${formatTimeAgo(overview.lastPollAt)}`
+      : formatTimeAgo(overview.lastPollAt)
+    : 'standby';
 
   const headlineSummary =
     activeView === 'proof'
@@ -670,6 +699,8 @@ export const App = () => {
   const proofHealth =
     overview.deadLetterCount > 0
       ? `${overview.deadLetterCount} rejected payload${overview.deadLetterCount === 1 ? '' : 's'} are visible in the dead-letter path. Signature verification is alerting, not failing closed.`
+      : overviewStale
+        ? `Canonical polling is stale. ${formatPollFreshness(overview.lastPollAt)} and the board is holding the last verified snapshot until the next poll lands.`
       : overview.lastPollAt
         ? `Canonical polling is healthy. ${formatPollFreshness(overview.lastPollAt)} and the proof chain is rebroadcasting live.`
         : 'The proof layer is warming. The board is holding visible feed state while the canonical poll cycle stabilizes.';
@@ -777,9 +808,12 @@ export const App = () => {
               loading={feedLoading || overviewLoading}
               activeView={activeView}
               summary={headlineSummary}
+              stale={overviewStale}
+              proofAlert={overview.deadLetterCount > 0}
               visibleCount={overview.visibleFeedCount}
               evidenceCount={overview.evidenceCount}
               laneCount={activeLanes.length}
+              freshnessLabel={freshnessLabel}
             />
 
             <SignedSignalChain
