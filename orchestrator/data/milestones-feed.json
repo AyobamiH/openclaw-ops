@@ -1,12 +1,12 @@
 {
-  "lastUpdated": "2026-02-28T11:27:55.027Z",
+  "lastUpdated": "2026-03-01T09:35:00.000Z",
   "entries": [
     {
-      "idempotencyKey": "orchestrator.started.2026-02-23T06:29:06.103Z",
-      "sentAtUtc": "2026-02-23T06:29:06.103Z",
+      "idempotencyKey": "orchestrator.started.2026-03-01T09:05:00.000Z",
+      "sentAtUtc": "2026-03-01T09:05:00.000Z",
       "event": {
-        "milestoneId": "orchestrator.started.2026-02-23T06:29:06.103Z",
-        "timestampUtc": "2026-02-23T06:29:06.103Z",
+        "milestoneId": "orchestrator.started.2026-03-01T09:05:00.000Z",
+        "timestampUtc": "2026-03-01T09:05:00.000Z",
         "scope": "runtime",
         "claim": "Orchestrator started successfully.",
         "evidence": [
@@ -17,94 +17,136 @@
           }
         ],
         "riskStatus": "on-track",
-        "nextAction": "Monitor task queue for first incoming tasks.",
+        "nextAction": "Watch the next scheduled automation pass for new work.",
         "source": "orchestrator"
       },
-      "signature": "c207b60453e60c913bd3519901e6c91f8b22d34b6d59d50b3ed88dfe6463496a"
+      "signature": "c70883787cd48828d0491c79fccbcb13ce59e56951893f6747af2710b61a84c1"
     },
     {
-      "idempotencyKey": "orchestrator.started.2026-02-23T07:26:21.259Z",
-      "sentAtUtc": "2026-02-23T07:26:21.259Z",
+      "idempotencyKey": "rss.sweep.2026-03-01T09:11:00.000Z",
+      "sentAtUtc": "2026-03-01T09:11:00.000Z",
       "event": {
-        "milestoneId": "orchestrator.started.2026-02-23T07:26:21.259Z",
-        "timestampUtc": "2026-02-23T07:26:21.259Z",
-        "scope": "runtime",
-        "claim": "Orchestrator started successfully.",
+        "milestoneId": "rss.sweep.2026-03-01T09:11:00.000Z",
+        "timestampUtc": "2026-03-01T09:11:00.000Z",
+        "scope": "demand",
+        "claim": "RSS sweep surfaced 3 new leads for follow-up.",
         "evidence": [
           {
             "type": "log",
-            "path": "/app/data/orchestrator-state.json",
-            "summary": "lastStartedAt set in orchestrator state"
+            "path": "/app/logs/reddit-drafts.jsonl",
+            "summary": "draft records appended during rss-sweep"
           }
         ],
         "riskStatus": "on-track",
-        "nextAction": "Monitor task queue for first incoming tasks.",
+        "nextAction": "Review priority leads and route them into reddit-response.",
         "source": "orchestrator"
       },
-      "signature": "2af2e94b63401c19922c9a839e4e85378bf964fed7217a5ee4efca191e9097d2"
+      "signature": "4fd91f67d4556bb3101fc9452858d5810911c80dc4bfc25cde4d6f8c2852c79a"
     },
     {
-      "idempotencyKey": "orchestrator.started.2026-02-23T08:21:03.470Z",
-      "sentAtUtc": "2026-02-23T08:21:03.470Z",
+      "idempotencyKey": "approval.requested.2026-03-01T09:17:00.000Z",
+      "sentAtUtc": "2026-03-01T09:17:00.000Z",
       "event": {
-        "milestoneId": "orchestrator.started.2026-02-23T08:21:03.470Z",
-        "timestampUtc": "2026-02-23T08:21:03.470Z",
-        "scope": "runtime",
-        "claim": "Orchestrator started successfully.",
+        "milestoneId": "approval.requested.2026-03-01T09:17:00.000Z",
+        "timestampUtc": "2026-03-01T09:17:00.000Z",
+        "scope": "governance",
+        "claim": "Approval requested for build-refactor.",
         "evidence": [
           {
             "type": "log",
             "path": "/app/data/orchestrator-state.json",
-            "summary": "lastStartedAt set in orchestrator state"
+            "summary": "approval request stored in orchestrator state"
           }
         ],
-        "riskStatus": "on-track",
-        "nextAction": "Monitor task queue for first incoming tasks.",
+        "riskStatus": "at-risk",
+        "nextAction": "Review the pending approval before the deployment window closes.",
         "source": "orchestrator"
       },
-      "signature": "577cb7e82ccddc92278734685a979beb556d4114f074681c9019efb6a85c9eab"
+      "signature": "9959c932370bb0c670de21e0b559f2c448bb3134ae6f25905e7218c4f04b5d7f"
     },
     {
-      "idempotencyKey": "orchestrator.started.2026-02-23T11:07:15.898Z",
-      "sentAtUtc": "2026-02-23T11:07:15.898Z",
+      "idempotencyKey": "nightly.batch.2026-03-01T09:21:00.000Z",
+      "sentAtUtc": "2026-03-01T09:21:00.000Z",
       "event": {
-        "milestoneId": "orchestrator.started.2026-02-23T11:07:15.898Z",
-        "timestampUtc": "2026-02-23T11:07:15.898Z",
+        "milestoneId": "nightly.batch.2026-03-01T09:21:00.000Z",
+        "timestampUtc": "2026-03-01T09:21:00.000Z",
         "scope": "runtime",
-        "claim": "Orchestrator started successfully.",
+        "claim": "Nightly batch completed: 2 docs synced, 3 items marked for draft.",
         "evidence": [
           {
             "type": "log",
-            "path": "/app/data/orchestrator-state.json",
-            "summary": "lastStartedAt set in orchestrator state"
+            "path": "/app/logs/digests/digest-latest.json",
+            "summary": "nightly digest compiled for the current queue"
           }
         ],
         "riskStatus": "on-track",
-        "nextAction": "Monitor task queue for first incoming tasks.",
+        "nextAction": "Process the marked queue items while the queue is still fresh.",
         "source": "orchestrator"
       },
-      "signature": "beae89143e65562b6ad3236ac8f64295e20cfd2e29adb81825d00091021fe804"
+      "signature": "5a2dc5d7755196596a8fa916b80956fc94e0d95c9b35ef1f377735f7032a6428"
     },
     {
-      "idempotencyKey": "dbcdeb95814ece70549eba525623247a",
-      "sentAtUtc": "2026-02-28T11:27:55.027Z",
+      "idempotencyKey": "reddit.response.2026-03-01T09:26:00.000Z",
+      "sentAtUtc": "2026-03-01T09:26:00.000Z",
       "event": {
-        "milestoneId": "orchestrator.started.2026-02-28T11:27:55.017Z",
-        "timestampUtc": "2026-02-28T11:27:55.017Z",
-        "scope": "runtime",
-        "claim": "Orchestrator started successfully.",
+        "milestoneId": "reddit.response.2026-03-01T09:26:00.000Z",
+        "timestampUtc": "2026-03-01T09:26:00.000Z",
+        "scope": "community",
+        "claim": "Reddit response drafted for r/OpenClaw.",
+        "evidence": [
+          {
+            "type": "log",
+            "path": "/app/logs/reddit-replies.jsonl",
+            "summary": "reddit-helper saved a drafted response"
+          }
+        ],
+        "riskStatus": "on-track",
+        "nextAction": "Review the draft and post it if the context is still current.",
+        "source": "orchestrator"
+      },
+      "signature": "1dbe429cc64b333d1ecdb36f6236c7a17d220209710ea8558f3186fd5633a956"
+    },
+    {
+      "idempotencyKey": "approval.approved.2026-03-01T09:31:00.000Z",
+      "sentAtUtc": "2026-03-01T09:31:00.000Z",
+      "event": {
+        "milestoneId": "approval.approved.2026-03-01T09:31:00.000Z",
+        "timestampUtc": "2026-03-01T09:31:00.000Z",
+        "scope": "governance",
+        "claim": "Approval granted for build-refactor.",
         "evidence": [
           {
             "type": "log",
             "path": "/app/data/orchestrator-state.json",
-            "summary": "lastStartedAt set in orchestrator state"
+            "summary": "approval marked approved and replay queued"
           }
         ],
         "riskStatus": "on-track",
-        "nextAction": "Monitor task queue for first incoming tasks.",
+        "nextAction": "Monitor the replayed build-refactor task to completion.",
+        "source": "operator"
+      },
+      "signature": "0d13f89dd88bb0ec88561aad632046695d2540d9b627036448143d97c4792baf"
+    },
+    {
+      "idempotencyKey": "demand.summary.2026-03-01T09:35:00.000Z",
+      "sentAtUtc": "2026-03-01T09:35:00.000Z",
+      "event": {
+        "milestoneId": "demand.summary.2026-03-01T09:35:00.000Z",
+        "timestampUtc": "2026-03-01T09:35:00.000Z",
+        "scope": "demand",
+        "claim": "Demand telemetry refreshed: 4 queued leads, 3 drafts.",
+        "evidence": [
+          {
+            "type": "metric",
+            "path": "/app/data/orchestrator-state.json",
+            "summary": "queue=4, drafts=3, selected=2"
+          }
+        ],
+        "riskStatus": "on-track",
+        "nextAction": "Work the hottest demand lane while the queue is still warm.",
         "source": "orchestrator"
       },
-      "signature": "0b6d8a8154fcc75b235d631581fc34bae459e47e7f6cdb390f01efd75d1142c4"
+      "signature": "917759712b5d208bbdfb28f1820047b2613476ee0ac508354502c89dd7fbf572"
     }
   ]
 }
