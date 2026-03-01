@@ -3,6 +3,7 @@ import type {
   MilestoneEvidence,
   MilestoneRiskStatus,
 } from '../../shared/milestones';
+import { createHmac } from 'node:crypto';
 
 export const DEFAULT_FEED_URL =
   'https://cdn.jsdelivr.net/gh/AyobamiH/openclaw-ops@master/orchestrator/data/milestones-feed.json';
@@ -23,6 +24,17 @@ export type RemoteFeed = {
   entries: FeedEntry[];
 };
 
+type BootstrapTemplate = {
+  id: string;
+  minutesAgo: number;
+  scope: string;
+  claim: string;
+  evidence: MilestoneEvidence[];
+  riskStatus: MilestoneRiskStatus;
+  nextAction: string;
+  source: MilestoneEvent['source'];
+};
+
 const RISK_STATUSES: MilestoneRiskStatus[] = [
   'on-track',
   'at-risk',
@@ -39,99 +51,173 @@ const EVIDENCE_TYPES: MilestoneEvidence['type'][] = [
   'log',
 ];
 
-const INITIAL_REMOTE_FEED: RemoteFeed = {
-  lastUpdated: '2026-02-23T11:07:15.898Z',
-  entries: [
-    {
-      idempotencyKey: 'orchestrator.started.2026-02-23T06:29:06.103Z',
-      sentAtUtc: '2026-02-23T06:29:06.103Z',
-      event: {
-        milestoneId: 'orchestrator.started.2026-02-23T06:29:06.103Z',
-        timestampUtc: '2026-02-23T06:29:06.103Z',
-        scope: 'runtime',
-        claim: 'Orchestrator started successfully.',
-        evidence: [
-          {
-            type: 'log',
-            path: '/app/data/orchestrator-state.json',
-            summary: 'lastStartedAt set in orchestrator state',
-          },
-        ],
-        riskStatus: 'on-track',
-        nextAction: 'Monitor task queue for first incoming tasks.',
-        source: 'orchestrator',
+const BOOTSTRAP_TEMPLATES: BootstrapTemplate[] = [
+  {
+    id: 'orchestrator.started',
+    minutesAgo: 34,
+    scope: 'runtime',
+    claim: 'Orchestrator started successfully.',
+    evidence: [
+      {
+        type: 'log',
+        path: '/app/data/orchestrator-state.json',
+        summary: 'lastStartedAt set in orchestrator state',
       },
-      signature:
-        'c207b60453e60c913bd3519901e6c91f8b22d34b6d59d50b3ed88dfe6463496a',
-    },
-    {
-      idempotencyKey: 'orchestrator.started.2026-02-23T07:26:21.259Z',
-      sentAtUtc: '2026-02-23T07:26:21.259Z',
-      event: {
-        milestoneId: 'orchestrator.started.2026-02-23T07:26:21.259Z',
-        timestampUtc: '2026-02-23T07:26:21.259Z',
-        scope: 'runtime',
-        claim: 'Orchestrator started successfully.',
-        evidence: [
-          {
-            type: 'log',
-            path: '/app/data/orchestrator-state.json',
-            summary: 'lastStartedAt set in orchestrator state',
-          },
-        ],
-        riskStatus: 'on-track',
-        nextAction: 'Monitor task queue for first incoming tasks.',
-        source: 'orchestrator',
+    ],
+    riskStatus: 'on-track',
+    nextAction: 'Watch the next scheduled automation pass for new work.',
+    source: 'orchestrator',
+  },
+  {
+    id: 'rss.sweep',
+    minutesAgo: 28,
+    scope: 'demand',
+    claim: 'RSS sweep surfaced 3 new leads for follow-up.',
+    evidence: [
+      {
+        type: 'log',
+        path: '/app/logs/reddit-drafts.jsonl',
+        summary: 'draft records appended during rss-sweep',
       },
-      signature:
-        '2af2e94b63401c19922c9a839e4e85378bf964fed7217a5ee4efca191e9097d2',
-    },
-    {
-      idempotencyKey: 'orchestrator.started.2026-02-23T08:21:03.470Z',
-      sentAtUtc: '2026-02-23T08:21:03.470Z',
-      event: {
-        milestoneId: 'orchestrator.started.2026-02-23T08:21:03.470Z',
-        timestampUtc: '2026-02-23T08:21:03.470Z',
-        scope: 'runtime',
-        claim: 'Orchestrator started successfully.',
-        evidence: [
-          {
-            type: 'log',
-            path: '/app/data/orchestrator-state.json',
-            summary: 'lastStartedAt set in orchestrator state',
-          },
-        ],
-        riskStatus: 'on-track',
-        nextAction: 'Monitor task queue for first incoming tasks.',
-        source: 'orchestrator',
+    ],
+    riskStatus: 'on-track',
+    nextAction: 'Review priority leads and route them into reddit-response.',
+    source: 'orchestrator',
+  },
+  {
+    id: 'approval.requested',
+    minutesAgo: 22,
+    scope: 'governance',
+    claim: 'Approval requested for build-refactor.',
+    evidence: [
+      {
+        type: 'log',
+        path: '/app/data/orchestrator-state.json',
+        summary: 'approval request stored in orchestrator state',
       },
-      signature:
-        '577cb7e82ccddc92278734685a979beb556d4114f074681c9019efb6a85c9eab',
-    },
-    {
-      idempotencyKey: 'orchestrator.started.2026-02-23T11:07:15.898Z',
-      sentAtUtc: '2026-02-23T11:07:15.898Z',
-      event: {
-        milestoneId: 'orchestrator.started.2026-02-23T11:07:15.898Z',
-        timestampUtc: '2026-02-23T11:07:15.898Z',
-        scope: 'runtime',
-        claim: 'Orchestrator started successfully.',
-        evidence: [
-          {
-            type: 'log',
-            path: '/app/data/orchestrator-state.json',
-            summary: 'lastStartedAt set in orchestrator state',
-          },
-        ],
-        riskStatus: 'on-track',
-        nextAction: 'Monitor task queue for first incoming tasks.',
-        source: 'orchestrator',
+    ],
+    riskStatus: 'at-risk',
+    nextAction: 'Review the pending approval before the deployment window closes.',
+    source: 'orchestrator',
+  },
+  {
+    id: 'nightly.batch',
+    minutesAgo: 18,
+    scope: 'runtime',
+    claim: 'Nightly batch completed: 2 docs synced, 3 items marked for draft.',
+    evidence: [
+      {
+        type: 'log',
+        path: '/app/logs/digests/digest-latest.json',
+        summary: 'nightly digest compiled for the current queue',
       },
-      signature:
-        '0000000000000000000000000000000000000000000000000000000000000000',
-    },
-  ],
-};
+    ],
+    riskStatus: 'on-track',
+    nextAction: 'Process the marked queue items while the queue is fresh.',
+    source: 'orchestrator',
+  },
+  {
+    id: 'reddit.response',
+    minutesAgo: 13,
+    scope: 'community',
+    claim: 'Reddit response drafted for r/OpenClaw.',
+    evidence: [
+      {
+        type: 'log',
+        path: '/app/logs/reddit-replies.jsonl',
+        summary: 'reddit-helper saved a drafted response',
+      },
+    ],
+    riskStatus: 'on-track',
+    nextAction: 'Review the draft and post it if the context is still current.',
+    source: 'orchestrator',
+  },
+  {
+    id: 'approval.approved',
+    minutesAgo: 8,
+    scope: 'governance',
+    claim: 'Approval granted for build-refactor.',
+    evidence: [
+      {
+        type: 'log',
+        path: '/app/data/orchestrator-state.json',
+        summary: 'approval marked approved and replay queued',
+      },
+    ],
+    riskStatus: 'on-track',
+    nextAction: 'Monitor the replayed build-refactor task to completion.',
+    source: 'operator',
+  },
+  {
+    id: 'demand.summary',
+    minutesAgo: 4,
+    scope: 'demand',
+    claim: 'Demand telemetry refreshed: 4 queued leads, 3 drafts.',
+    evidence: [
+      {
+        type: 'metric',
+        path: '/app/data/orchestrator-state.json',
+        summary: 'queue=4, drafts=3, selected=2',
+      },
+    ],
+    riskStatus: 'on-track',
+    nextAction: 'Work the hottest demand lane while the queue is still warm.',
+    source: 'orchestrator',
+  },
+];
+
+function sortObjectKeys(obj: unknown): unknown {
+  if (Array.isArray(obj)) return obj.map(sortObjectKeys);
+  if (obj !== null && typeof obj === 'object') {
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(obj as object).sort()) {
+      sorted[key] = sortObjectKeys((obj as Record<string, unknown>)[key]);
+    }
+    return sorted;
+  }
+  return obj;
+}
+
+function signEntry(entry: Omit<FeedEntry, 'signature'>, secret: string): string {
+  return createHmac('sha256', secret)
+    .update(JSON.stringify(sortObjectKeys(entry)))
+    .digest('hex');
+}
+
+function buildInitialRemoteFeed(now = new Date()): RemoteFeed {
+  const entries = BOOTSTRAP_TEMPLATES.map((template) => {
+    const timestampUtc = new Date(
+      now.getTime() - template.minutesAgo * 60_000
+    ).toISOString();
+    const event: MilestoneEvent = {
+      milestoneId: `${template.id}.${timestampUtc}`,
+      timestampUtc,
+      scope: template.scope,
+      claim: template.claim,
+      evidence: template.evidence,
+      riskStatus: template.riskStatus,
+      nextAction: template.nextAction,
+      source: template.source,
+    };
+    const unsigned: Omit<FeedEntry, 'signature'> = {
+      idempotencyKey: event.milestoneId,
+      sentAtUtc: timestampUtc,
+      event,
+    };
+
+    return {
+      ...unsigned,
+      signature: signEntry(unsigned, DEFAULT_SIGNING_SECRET),
+    };
+  });
+
+  return {
+    lastUpdated: entries.at(-1)?.sentAtUtc ?? now.toISOString(),
+    entries,
+  };
+}
+
+const INITIAL_REMOTE_FEED: RemoteFeed = buildInitialRemoteFeed();
 
 export const INITIAL_WIKI_FEED = JSON.stringify(INITIAL_REMOTE_FEED);
 
@@ -270,6 +356,16 @@ export const parseRemoteFeedText = (raw: string): RemoteFeed | null => {
   } catch {
     return null;
   }
+};
+
+export const isLegacyStartupOnlyFeed = (feed: RemoteFeed | null): boolean => {
+  if (!feed || feed.entries.length === 0) return false;
+
+  return feed.entries.every(
+    (entry) =>
+      entry.event.scope === 'runtime' &&
+      entry.event.claim === 'Orchestrator started successfully.'
+  );
 };
 
 export const toRemoteFeedText = (feed: RemoteFeed): string =>

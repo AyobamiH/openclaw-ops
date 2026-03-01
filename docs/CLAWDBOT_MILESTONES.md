@@ -47,10 +47,12 @@ app-facing contract.
 Emit a milestone when one of these happens:
 
 1. Runtime validation or startup state changes
-2. Control-plane hardening or deploy actions
-3. Knowledge or pipeline repair actions
-4. Incident detection or remediation
-5. Meaningful operator-visible workflow completions
+2. Demand intake or queue state changes (`rss-sweep`, demand summary refresh)
+3. Governance changes (approval requested, approved, rejected)
+4. Control-plane hardening or deploy actions
+5. Knowledge or pipeline repair actions
+6. Incident detection or remediation
+7. Meaningful operator-visible workflow completions (`nightly-batch`, `reddit-response`)
 
 ## Evidence Standard
 
@@ -108,6 +110,8 @@ Current code already includes:
 - retry and dead-letter states
 - app-side ingest and feed routes
 - duplicate-safe ingestion
+- runtime milestones for startup, `rss-sweep`, `nightly-batch`, `reddit-response`,
+  approval state changes, and demand summary refreshes
 
 ## Parallel Demand Telemetry
 

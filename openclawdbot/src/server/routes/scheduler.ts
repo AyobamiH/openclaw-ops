@@ -9,6 +9,7 @@ import {
   DEFAULT_FEED_URL,
   FeedEntry,
   INITIAL_WIKI_FEED,
+  isLegacyStartupOnlyFeed,
   MILESTONE_WIKI_PAGE,
   normalizeFeedUrl,
   normalizeStoredFeed,
@@ -92,6 +93,9 @@ async function readCanonicalWikiFeed(): Promise<RemoteFeed> {
 
     const parsed = parseRemoteFeedText(wikiPage.content);
     if (!parsed) throw new Error('wiki page content is invalid');
+    if (isLegacyStartupOnlyFeed(parsed)) {
+      throw new Error('wiki page content is a legacy startup-only seed');
+    }
     return parsed;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

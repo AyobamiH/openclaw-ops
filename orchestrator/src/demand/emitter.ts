@@ -5,6 +5,7 @@ import type {
   OrchestratorState,
 } from "../types.js";
 import { buildDemandSummarySnapshot } from "./summary-builder.js";
+import { getMilestoneEmitter } from "../milestones/emitter.js";
 
 const MAX_DELIVERY_ATTEMPTS = 3;
 
@@ -37,6 +38,9 @@ export class DemandSummaryEmitter {
     const now = new Date().toISOString();
     const snapshot = buildDemandSummarySnapshot(this.getState(), now);
     const idempotencyKey = randomBytes(16).toString("hex");
+    const topSegment = snapshot.segments.find((segment) => segment.liveSignalCount > 0);
+    const reviewPressure =
+      snapshot.queueTotal >= 8 || snapshot.tagCounts.manualReview > 0;
 
     if (
       this.config.demandSummaryIngestUrl &&
@@ -59,6 +63,29 @@ export class DemandSummaryEmitter {
 
     this.getState().demandSummaryDeliveries.push(record);
     await this.persistState();
+
+    getMilestoneEmitter()?.emit({
+      milestoneId: `demand.summary.${snapshot.summaryId}`,
+      timestampUtc: now,
+      scope: "demand",
+      claim:
+        snapshot.queueTotal > 0 || snapshot.draftTotal > 0
+          ? `Demand telemetry refreshed: ${snapshot.queueTotal} queued lead${snapshot.queueTotal === 1 ? "" : "s"}, ${snapshot.draftTotal} draft${snapshot.draftTotal === 1 ? "" : "s"}.`
+          : "Demand telemetry refreshed: queue is clear and no drafts are pending.",
+      evidence: [
+        {
+          type: "metric",
+          path: this.config.stateFile,
+          summary: `queue=${snapshot.queueTotal}, drafts=${snapshot.draftTotal}, selected=${snapshot.selectedForDraftTotal}`,
+        },
+      ],
+      riskStatus: reviewPressure ? "at-risk" : "on-track",
+      nextAction:
+        topSegment && snapshot.queueTotal > 0
+          ? `Review the ${topSegment.label} lane and drain queued leads.`
+          : "Keep the demand layer warm and watch for the next scored lead.",
+      source: "orchestrator",
+    });
 
     this.deliverPending().catch((err) => {
       console.warn(

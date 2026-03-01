@@ -1,47 +1,71 @@
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { cp, mkdir, readFile, writeFile, appendFile, mkdtemp, rm, readdir, stat } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile, appendFile, mkdtemp, rm, readdir, stat, } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { sendNotification, buildNotifierConfig } from "./notifier.js";
 import { getAgentRegistry } from "./agentRegistry.js";
 import { getToolGate } from "./toolGate.js";
+import { getMilestoneEmitter } from "./milestones/emitter.js";
+import { getDemandSummaryEmitter } from "./demand/emitter.js";
+import { buildDemandStateFingerprint } from "./demand/summary-builder.js";
 // Central task allowlist (deny-by-default enforcement)
 export const ALLOWED_TASK_TYPES = [
-    'startup',
-    'doc-change',
-    'doc-sync',
-    'drift-repair',
-    'reddit-response',
-    'security-audit',
-    'summarize-content',
-    'system-monitor',
-    'build-refactor',
-    'content-generate',
-    'integration-workflow',
-    'normalize-data',
-    'market-research',
-    'data-extraction',
-    'qa-verification',
-    'skill-audit',
-    'rss-sweep',
-    'nightly-batch',
-    'send-digest',
-    'heartbeat',
-    'agent-deploy',
+    "startup",
+    "doc-change",
+    "doc-sync",
+    "drift-repair",
+    "reddit-response",
+    "security-audit",
+    "summarize-content",
+    "system-monitor",
+    "build-refactor",
+    "content-generate",
+    "integration-workflow",
+    "normalize-data",
+    "market-research",
+    "data-extraction",
+    "qa-verification",
+    "skill-audit",
+    "rss-sweep",
+    "nightly-batch",
+    "send-digest",
+    "heartbeat",
+    "agent-deploy",
 ];
 const SPAWNED_AGENT_PERMISSION_REQUIREMENTS = {
-    'security-audit': { agentId: 'security-agent', skillId: 'documentParser' },
-    'summarize-content': { agentId: 'summarization-agent', skillId: 'documentParser' },
-    'system-monitor': { agentId: 'system-monitor-agent', skillId: 'documentParser' },
-    'build-refactor': { agentId: 'build-refactor-agent', skillId: 'workspacePatch' },
-    'content-generate': { agentId: 'content-agent', skillId: 'documentParser' },
-    'integration-workflow': { agentId: 'integration-agent', skillId: 'documentParser' },
-    'normalize-data': { agentId: 'normalization-agent', skillId: 'normalizer' },
-    'market-research': { agentId: 'market-research-agent', skillId: 'sourceFetch' },
-    'data-extraction': { agentId: 'data-extraction-agent', skillId: 'documentParser' },
-    'qa-verification': { agentId: 'qa-verification-agent', skillId: 'testRunner' },
-    'skill-audit': { agentId: 'skill-audit-agent', skillId: 'testRunner' },
+    "security-audit": { agentId: "security-agent", skillId: "documentParser" },
+    "summarize-content": {
+        agentId: "summarization-agent",
+        skillId: "documentParser",
+    },
+    "system-monitor": {
+        agentId: "system-monitor-agent",
+        skillId: "documentParser",
+    },
+    "build-refactor": {
+        agentId: "build-refactor-agent",
+        skillId: "workspacePatch",
+    },
+    "content-generate": { agentId: "content-agent", skillId: "documentParser" },
+    "integration-workflow": {
+        agentId: "integration-agent",
+        skillId: "documentParser",
+    },
+    "normalize-data": { agentId: "normalization-agent", skillId: "normalizer" },
+    "market-research": {
+        agentId: "market-research-agent",
+        skillId: "sourceFetch",
+    },
+    "data-extraction": {
+        agentId: "data-extraction-agent",
+        skillId: "documentParser",
+    },
+    "qa-verification": {
+        agentId: "qa-verification-agent",
+        skillId: "testRunner",
+    },
+    "skill-audit": { agentId: "skill-audit-agent", skillId: "testRunner" },
 };
 /**
  * Validate task type against allowlist
@@ -65,6 +89,32 @@ function ensureDocChangeStored(path, context) {
 function ensureRedditQueueLimit(context) {
     if (context.state.redditQueue.length > MAX_REDDIT_QUEUE) {
         context.state.redditQueue.length = MAX_REDDIT_QUEUE;
+    }
+}
+function emitMilestoneSafely(event) {
+    getMilestoneEmitter()?.emit(event);
+}
+function queueDepthNextAction(queueTotal) {
+    if (queueTotal <= 0) {
+        return "Queue is clear. Watch for the next high-intent lead.";
+    }
+    if (queueTotal === 1) {
+        return "Route the next queued lead through reddit-response.";
+    }
+    return `Route the next ${queueTotal} queued leads through reddit-response.`;
+}
+async function emitDemandSummaryIfChanged(previousFingerprint, context) {
+    const emitter = getDemandSummaryEmitter();
+    if (!emitter)
+        return;
+    const nextFingerprint = buildDemandStateFingerprint(context.state);
+    if (previousFingerprint === nextFingerprint)
+        return;
+    try {
+        await emitter.emit();
+    }
+    catch (error) {
+        context.logger.warn(`[demand-summary] emit failed: ${error.message}`);
     }
 }
 function rememberRssId(context, id) {
@@ -289,7 +339,7 @@ async function persistSpawnedAgentServiceState(agentId, payload, status, result,
         startedAt: runStartedAt,
         completedAt,
         durationMs,
-        error: status === "error" ? errorMessage ?? null : null,
+        error: status === "error" ? (errorMessage ?? null) : null,
         resultSummary: status === "success"
             ? {
                 success: result?.success ?? true,
@@ -309,7 +359,7 @@ async function persistSpawnedAgentServiceState(agentId, payload, status, result,
         lastStatus: status,
         lastTaskId: typeof payload.id === "string" ? payload.id : null,
         lastTaskType: typeof payload.type === "string" ? payload.type : null,
-        lastError: status === "error" ? errorMessage ?? null : null,
+        lastError: status === "error" ? (errorMessage ?? null) : null,
         successCount,
         errorCount,
         totalRuns: successCount + errorCount,
@@ -325,7 +375,10 @@ async function persistSpawnedAgentServiceState(agentId, payload, status, result,
     await writeFile(serviceStatePath, JSON.stringify(nextState, null, 2), "utf-8");
 }
 function stripHtml(value) {
-    return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    return value
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
 }
 function toErrorMessage(error) {
     return error instanceof Error ? error.message : String(error);
@@ -343,7 +396,7 @@ async function assertToolGatePermission(taskType) {
         throw new Error(`toolgate denied task ${taskType}: ${taskAuthorization.reason}`);
     }
     const permissionResult = await gate.executeSkill(requirement.agentId, requirement.skillId, {
-        mode: 'preflight',
+        mode: "preflight",
         taskType,
     });
     if (!permissionResult.success) {
@@ -397,6 +450,22 @@ async function appendDraft(path, record) {
 const startupHandler = async (_, context) => {
     context.state.lastStartedAt = new Date().toISOString();
     await context.saveState();
+    emitMilestoneSafely({
+        milestoneId: `orchestrator.started.${context.state.lastStartedAt}`,
+        timestampUtc: context.state.lastStartedAt,
+        scope: "runtime",
+        claim: "Orchestrator started successfully.",
+        evidence: [
+            {
+                type: "log",
+                path: context.config.stateFile,
+                summary: "lastStartedAt set in orchestrator state",
+            },
+        ],
+        riskStatus: "on-track",
+        nextAction: "Monitor task queue for first incoming tasks.",
+        source: "orchestrator",
+    });
     return "orchestrator boot complete";
 };
 const docChangeHandler = async (task, context) => {
@@ -412,13 +481,17 @@ const docSyncHandler = async (_, context) => {
     const changes = [...context.state.pendingDocChanges];
     context.state.pendingDocChanges = [];
     await context.saveState();
-    return changes.length ? `synced ${changes.length} doc changes` : "no doc changes to sync";
+    return changes.length
+        ? `synced ${changes.length} doc changes`
+        : "no doc changes to sync";
 };
 const driftRepairHandler = async (task, context) => {
     const startedAt = Date.now();
     const requestedBy = String(task.payload.requestedBy ?? "scheduler");
     const extractedPaths = context.state.pendingDocChanges.splice(0);
-    const extraPaths = Array.isArray(task.payload.paths) ? task.payload.paths : [];
+    const extraPaths = Array.isArray(task.payload.paths)
+        ? task.payload.paths
+        : [];
     const processedPaths = extractedPaths.length ? extractedPaths : extraPaths;
     if (processedPaths.length === 0) {
         return "no drift to repair";
@@ -465,6 +538,33 @@ const driftRepairHandler = async (task, context) => {
     context.state.driftRepairs.push(record);
     context.state.lastDriftRepairAt = record.completedAt;
     await context.saveState();
+    const packEvidence = docSpecResult?.packPath
+        ? [
+            {
+                type: "log",
+                path: docSpecResult.packPath,
+                summary: `knowledge pack ${docSpecResult.packId}`,
+            },
+        ]
+        : [
+            {
+                type: "log",
+                path: context.config.stateFile,
+                summary: "drift repair record saved to orchestrator state",
+            },
+        ];
+    getMilestoneEmitter()?.emit({
+        milestoneId: `drift.repair.${record.runId}`,
+        timestampUtc: record.completedAt,
+        scope: "pipeline",
+        claim: `Doc drift repair completed: ${processedPaths.length} path(s) processed.`,
+        evidence: packEvidence,
+        riskStatus: docSpecResult ? "on-track" : "at-risk",
+        nextAction: docSpecResult
+            ? "Verify knowledge pack is consumed by reddit-helper."
+            : "Investigate why doc-specialist did not produce a pack.",
+        source: "orchestrator",
+    });
     if (docSpecResult) {
         return `drift repair ${record.runId.slice(0, 8)} generated ${docSpecResult.packId}`;
     }
@@ -472,6 +572,7 @@ const driftRepairHandler = async (task, context) => {
 };
 const redditResponseHandler = async (task, context) => {
     const now = new Date().toISOString();
+    const demandFingerprintBefore = buildDemandStateFingerprint(context.state);
     let queueItem = context.state.redditQueue.shift();
     if (!queueItem && task.payload.queue) {
         const manualQueue = task.payload.queue;
@@ -481,7 +582,9 @@ const redditResponseHandler = async (task, context) => {
             question: String(manualQueue.question ?? "General OpenClaw workflow question"),
             link: manualQueue.link ? String(manualQueue.link) : undefined,
             queuedAt: now,
-            draftRecordId: manualQueue.draftRecordId ? String(manualQueue.draftRecordId) : undefined,
+            draftRecordId: manualQueue.draftRecordId
+                ? String(manualQueue.draftRecordId)
+                : undefined,
         };
     }
     if (!queueItem) {
@@ -519,16 +622,36 @@ const redditResponseHandler = async (task, context) => {
         notes: matchingDraft ? `rssDraft:${matchingDraft.draftId}` : undefined,
         rssDraftId: matchingDraft?.draftId,
         devvitPayloadPath: agentResult?.devvitPayloadPath,
-        packId: agentResult?.packId ?? (latestPack?.pack?.id ?? undefined),
+        packId: agentResult?.packId ?? latestPack?.pack?.id ?? undefined,
         packPath: agentResult?.packPath ?? latestPack?.path,
     };
     context.state.redditResponses.push(record);
     context.state.lastRedditResponseAt = now;
     await context.saveState();
+    emitMilestoneSafely({
+        milestoneId: `reddit.response.${queueItem.id}`,
+        timestampUtc: now,
+        scope: "community",
+        claim: `Reddit response drafted for ${queueItem.subreddit}.`,
+        evidence: [
+            {
+                type: "log",
+                path: agentResult?.devvitPayloadPath ??
+                    context.config.stateFile,
+                summary: agentResult?.devvitPayloadPath
+                    ? "reddit-helper generated a Devvit-ready payload"
+                    : "response record saved to orchestrator state",
+            },
+        ],
+        riskStatus: agentResult ? "on-track" : "at-risk",
+        nextAction: queueDepthNextAction(context.state.redditQueue.length),
+        source: "orchestrator",
+    });
+    await emitDemandSummaryIfChanged(demandFingerprintBefore, context);
     return `drafted reddit reply for ${queueItem.subreddit} (${queueItem.id})`;
 };
 const securityAuditHandler = async (task, context) => {
-    await assertToolGatePermission('security-audit');
+    await assertToolGatePermission("security-audit");
     const payload = {
         id: randomUUID(),
         type: String(task.payload.type ?? "scan"),
@@ -546,21 +669,25 @@ const securityAuditHandler = async (task, context) => {
     }
 };
 const summarizeContentHandler = async (task, context) => {
-    await assertToolGatePermission('summarize-content');
+    await assertToolGatePermission("summarize-content");
     const sourceType = String(task.payload.sourceType ?? "document");
     const payload = {
         id: randomUUID(),
         source: {
             type: sourceType,
             content: String(task.payload.content ?? ""),
-            metadata: typeof task.payload.metadata === "object" && task.payload.metadata !== null
+            metadata: typeof task.payload.metadata === "object" &&
+                task.payload.metadata !== null
                 ? task.payload.metadata
                 : undefined,
         },
-        constraints: typeof task.payload.constraints === "object" && task.payload.constraints !== null
+        constraints: typeof task.payload.constraints === "object" &&
+            task.payload.constraints !== null
             ? task.payload.constraints
             : undefined,
-        format: task.payload.format ? String(task.payload.format) : "executive_summary",
+        format: task.payload.format
+            ? String(task.payload.format)
+            : "executive_summary",
     };
     try {
         const result = await runSpawnedAgentJob("summarization-agent", payload, "SUMMARIZATION_AGENT_RESULT_FILE", context.logger);
@@ -573,7 +700,7 @@ const summarizeContentHandler = async (task, context) => {
     }
 };
 const systemMonitorHandler = async (task, context) => {
-    await assertToolGatePermission('system-monitor');
+    await assertToolGatePermission("system-monitor");
     const payload = {
         id: randomUUID(),
         type: String(task.payload.type ?? "health"),
@@ -592,12 +719,13 @@ const systemMonitorHandler = async (task, context) => {
     }
 };
 const buildRefactorHandler = async (task, context) => {
-    await assertToolGatePermission('build-refactor');
+    await assertToolGatePermission("build-refactor");
     const payload = {
         id: randomUUID(),
         type: String(task.payload.type ?? "refactor"),
         scope: String(task.payload.scope ?? "src"),
-        constraints: typeof task.payload.constraints === "object" && task.payload.constraints !== null
+        constraints: typeof task.payload.constraints === "object" &&
+            task.payload.constraints !== null
             ? task.payload.constraints
             : undefined,
     };
@@ -613,7 +741,7 @@ const buildRefactorHandler = async (task, context) => {
     }
 };
 const contentGenerateHandler = async (task, context) => {
-    await assertToolGatePermission('content-generate');
+    await assertToolGatePermission("content-generate");
     const payload = {
         id: randomUUID(),
         type: String(task.payload.type ?? "readme"),
@@ -635,7 +763,7 @@ const contentGenerateHandler = async (task, context) => {
     }
 };
 const integrationWorkflowHandler = async (task, context) => {
-    await assertToolGatePermission('integration-workflow');
+    await assertToolGatePermission("integration-workflow");
     const payload = {
         id: randomUUID(),
         type: String(task.payload.type ?? "workflow"),
@@ -647,7 +775,9 @@ const integrationWorkflowHandler = async (task, context) => {
         const result = await runSpawnedAgentJob("integration-agent", payload, "INTEGRATION_AGENT_RESULT_FILE", context.logger);
         const steps = Array.isArray(result.steps) ? result.steps.length : 0;
         if (result.success !== true) {
-            const reason = typeof result.error === "string" ? result.error : "agent returned unsuccessful result";
+            const reason = typeof result.error === "string"
+                ? result.error
+                : "agent returned unsuccessful result";
             throw new Error(`integration workflow failed: ${reason}`);
         }
         return `integration workflow complete (${steps} steps)`;
@@ -657,13 +787,11 @@ const integrationWorkflowHandler = async (task, context) => {
     }
 };
 const normalizeDataHandler = async (task, context) => {
-    await assertToolGatePermission('normalize-data');
+    await assertToolGatePermission("normalize-data");
     const payload = {
         id: randomUUID(),
         type: String(task.payload.type ?? "normalize"),
-        input: task.payload.input !== undefined
-            ? task.payload.input
-            : [],
+        input: task.payload.input !== undefined ? task.payload.input : [],
         schema: typeof task.payload.schema === "object" && task.payload.schema !== null
             ? task.payload.schema
             : {},
@@ -680,18 +808,21 @@ const normalizeDataHandler = async (task, context) => {
     }
 };
 const marketResearchHandler = async (task, context) => {
-    await assertToolGatePermission('market-research');
+    await assertToolGatePermission("market-research");
     const payload = {
         id: randomUUID(),
         query: String(task.payload.query ?? "market research"),
         scope: String(task.payload.scope ?? "general"),
-        constraints: typeof task.payload.constraints === "object" && task.payload.constraints !== null
+        constraints: typeof task.payload.constraints === "object" &&
+            task.payload.constraints !== null
             ? task.payload.constraints
             : undefined,
     };
     try {
         const result = await runSpawnedAgentJob("market-research-agent", payload, "MARKET_RESEARCH_AGENT_RESULT_FILE", context.logger);
-        const findings = Array.isArray(result.findings) ? result.findings.length : 0;
+        const findings = Array.isArray(result.findings)
+            ? result.findings.length
+            : 0;
         const confidence = Number(result.confidence ?? 0);
         return `market research complete (${findings} findings, confidence ${confidence.toFixed(2)})`;
     }
@@ -700,7 +831,7 @@ const marketResearchHandler = async (task, context) => {
     }
 };
 const dataExtractionHandler = async (task, context) => {
-    await assertToolGatePermission('data-extraction');
+    await assertToolGatePermission("data-extraction");
     const payload = {
         id: randomUUID(),
         source: typeof task.payload.source === "object" && task.payload.source !== null
@@ -721,12 +852,13 @@ const dataExtractionHandler = async (task, context) => {
     }
 };
 const qaVerificationHandler = async (task, context) => {
-    await assertToolGatePermission('qa-verification');
+    await assertToolGatePermission("qa-verification");
     const payload = {
         id: randomUUID(),
         target: String(task.payload.target ?? "workspace"),
         suite: String(task.payload.suite ?? "smoke"),
-        constraints: typeof task.payload.constraints === "object" && task.payload.constraints !== null
+        constraints: typeof task.payload.constraints === "object" &&
+            task.payload.constraints !== null
             ? task.payload.constraints
             : undefined,
     };
@@ -741,7 +873,7 @@ const qaVerificationHandler = async (task, context) => {
     }
 };
 const skillAuditHandler = async (task, context) => {
-    await assertToolGatePermission('skill-audit');
+    await assertToolGatePermission("skill-audit");
     const payload = {
         id: randomUUID(),
         skillIds: Array.isArray(task.payload.skillIds)
@@ -763,12 +895,15 @@ const skillAuditHandler = async (task, context) => {
     }
 };
 const rssSweepHandler = async (task, context) => {
+    const demandFingerprintBefore = buildDemandStateFingerprint(context.state);
     const configPath = typeof task.payload.configPath === "string"
         ? task.payload.configPath
-        : context.config.rssConfigPath ?? join(process.cwd(), "..", "rss_filter_config.json");
+        : (context.config.rssConfigPath ??
+            join(process.cwd(), "..", "rss_filter_config.json"));
     const draftsPath = typeof task.payload.draftsPath === "string"
         ? task.payload.draftsPath
-        : context.config.redditDraftsPath ?? join(process.cwd(), "..", "logs", "reddit-drafts.jsonl");
+        : (context.config.redditDraftsPath ??
+            join(process.cwd(), "..", "logs", "reddit-drafts.jsonl"));
     const rawConfig = await readFile(configPath, "utf-8");
     const rssConfig = JSON.parse(rawConfig);
     const now = new Date().toISOString();
@@ -777,7 +912,9 @@ const rssSweepHandler = async (task, context) => {
     for (const [pillarKey, pillar] of pillars) {
         const feeds = pillar.feeds ?? [];
         for (const feed of feeds) {
-            const response = await fetch(feed.url, { headers: { "User-Agent": "openclaw-orchestrator" } });
+            const response = await fetch(feed.url, {
+                headers: { "User-Agent": "openclaw-orchestrator" },
+            });
             if (!response.ok) {
                 context.logger.warn(`[rss] failed ${feed.url}: ${response.status}`);
                 continue;
@@ -798,7 +935,14 @@ const rssSweepHandler = async (task, context) => {
                     let weight = 1;
                     if (["emotional_identity_pain"].includes(cluster))
                         weight = rssConfig.scoring.weights.emotional_pain_match;
-                    if (["core_instability", "debug_blindness", "preview_vs_production", "export_quality_shock", "autonomy_collapse", "migration_and_rebrand_brittleness"].includes(cluster)) {
+                    if ([
+                        "core_instability",
+                        "debug_blindness",
+                        "preview_vs_production",
+                        "export_quality_shock",
+                        "autonomy_collapse",
+                        "migration_and_rebrand_brittleness",
+                    ].includes(cluster)) {
                         weight = rssConfig.scoring.weights.execution_failure_match;
                     }
                     if (["security_exposure", "skills_supply_chain"].includes(cluster))
@@ -812,7 +956,8 @@ const rssSweepHandler = async (task, context) => {
                     totalScore += weighted;
                 });
                 if (crossMatches.length > 0) {
-                    const bonus = rssConfig.scoring.weights.cross_pillar_trigger_match * crossMatches.length;
+                    const bonus = rssConfig.scoring.weights.cross_pillar_trigger_match *
+                        crossMatches.length;
                     scoreBreakdown.cross_pillar_trigger_match = bonus;
                     totalScore += bonus;
                 }
@@ -827,7 +972,8 @@ const rssSweepHandler = async (task, context) => {
                 else if (totalScore >= thresholds.priority_draft_if_score_gte)
                     tag = "priority";
                 const ctas = rssConfig.drafting?.cta_variants?.[pillarKey] ?? [];
-                const ctaVariant = ctas[0] ?? "If you want, share more context and I’ll suggest the next move.";
+                const ctaVariant = ctas[0] ??
+                    "If you want, share more context and I’ll suggest the next move.";
                 const suggestedReply = `Saw your post about ${entry.title}. ${ctaVariant}`;
                 const record = {
                     draftId: randomUUID(),
@@ -873,7 +1019,39 @@ const rssSweepHandler = async (task, context) => {
     }
     context.state.lastRssSweepAt = now;
     await context.saveState();
-    return drafted > 0 ? `rss sweep drafted ${drafted} replies` : "rss sweep complete (no drafts)";
+    if (drafted > 0) {
+        const manualReviewCount = context.state.rssDrafts.filter((item) => item.tag === "manual-review" && item.queuedAt === now).length;
+        const priorityCount = context.state.rssDrafts.filter((item) => item.tag === "priority" && item.queuedAt === now).length;
+        emitMilestoneSafely({
+            milestoneId: `rss.sweep.${now}`,
+            timestampUtc: now,
+            scope: "demand",
+            claim: `RSS sweep surfaced ${drafted} new lead${drafted === 1 ? "" : "s"} for follow-up.`,
+            evidence: [
+                {
+                    type: "log",
+                    path: draftsPath,
+                    summary: `${drafted} draft record${drafted === 1 ? "" : "s"} appended during sweep`,
+                },
+                {
+                    type: "log",
+                    path: configPath,
+                    summary: "scoring rules loaded from rss_filter_config.json",
+                },
+            ],
+            riskStatus: manualReviewCount > 0 ? "at-risk" : "on-track",
+            nextAction: manualReviewCount > 0
+                ? `Review ${manualReviewCount} manual-review lead${manualReviewCount === 1 ? "" : "s"} before posting.`
+                : priorityCount > 0
+                    ? `Route ${priorityCount} priority lead${priorityCount === 1 ? "" : "s"} into reddit-response.`
+                    : queueDepthNextAction(context.state.redditQueue.length),
+            source: "orchestrator",
+        });
+    }
+    await emitDemandSummaryIfChanged(demandFingerprintBefore, context);
+    return drafted > 0
+        ? `rss sweep drafted ${drafted} replies`
+        : "rss sweep complete (no drafts)";
 };
 const heartbeatHandler = async (task) => {
     return `heartbeat (${task.payload.reason ?? "interval"})`;
@@ -883,10 +1061,13 @@ const agentDeployHandler = async (task, context) => {
     const agentName = String(task.payload.agentName ?? `agent-${deploymentId.slice(0, 6)}`);
     const template = String(task.payload.template ?? "doc-specialist");
     const templatePath = String(task.payload.templatePath ?? join(process.cwd(), "..", "agents", template));
-    const deployBase = context.config.deployBaseDir ?? join(process.cwd(), "..", "agents-deployed");
+    const deployBase = context.config.deployBaseDir ??
+        join(process.cwd(), "..", "agents-deployed");
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const repoPath = String(task.payload.repoPath ?? join(deployBase, `${agentName}-${timestamp}`));
-    const config = typeof task.payload.config === "object" && task.payload.config !== null ? task.payload.config : {};
+    const config = typeof task.payload.config === "object" && task.payload.config !== null
+        ? task.payload.config
+        : {};
     await mkdir(deployBase, { recursive: true });
     await cp(templatePath, repoPath, { recursive: true });
     const deploymentNotes = {
@@ -912,11 +1093,28 @@ const agentDeployHandler = async (task, context) => {
     context.state.agentDeployments.push(record);
     context.state.lastAgentDeployAt = record.deployedAt;
     await context.saveState();
+    emitMilestoneSafely({
+        milestoneId: `agent.deploy.${deploymentId}`,
+        timestampUtc: record.deployedAt,
+        scope: "runtime",
+        claim: `Agent "${agentName}" deployed from template "${template}".`,
+        evidence: [
+            {
+                type: "log",
+                path: join(repoPath, "DEPLOYMENT.json"),
+                summary: `deployment manifest for ${agentName}`,
+            },
+        ],
+        riskStatus: "on-track",
+        nextAction: `Run "npm install && npm run dev" in ${repoPath} to start the agent.`,
+        source: "orchestrator",
+    });
     return `deployed ${agentName} via ${template} template to ${repoPath}`;
 };
 const nightlyBatchHandler = async (task, context) => {
     const { state, config, logger } = context;
     const now = new Date().toISOString();
+    const demandFingerprintBefore = buildDemandStateFingerprint(state);
     const digestDir = config.digestDir ?? join(process.cwd(), "..", "logs", "digests");
     await mkdir(digestDir, { recursive: true });
     // Nightly batch orchestrates: doc-sync, mark high-confidence items for drafting
@@ -950,6 +1148,23 @@ const nightlyBatchHandler = async (task, context) => {
     await writeFile(digestPath, JSON.stringify(digest, null, 2), "utf-8");
     state.lastNightlyBatchAt = now;
     await context.saveState();
+    await emitDemandSummaryIfChanged(demandFingerprintBefore, context);
+    emitMilestoneSafely({
+        milestoneId: `nightly.batch.${digest.batchId}`,
+        timestampUtc: now,
+        scope: "runtime",
+        claim: `Nightly batch completed: ${docsSynced} doc(s) synced, ${itemsMarked} item(s) marked for draft.`,
+        evidence: [
+            {
+                type: "log",
+                path: digestPath,
+                summary: `batch digest ${digest.batchId}`,
+            },
+        ],
+        riskStatus: "on-track",
+        nextAction: queueDepthNextAction(state.redditQueue.length),
+        source: "orchestrator",
+    });
     return `nightly batch: synced ${docsSynced} docs, marked ${itemsMarked} for draft`;
 };
 const sendDigestHandler = async (task, context) => {
@@ -957,7 +1172,10 @@ const sendDigestHandler = async (task, context) => {
     const digestDir = config.digestDir ?? join(process.cwd(), "..", "logs", "digests");
     try {
         const files = await readdir(digestDir);
-        const digests = files.filter((f) => f.startsWith("digest-") && f.endsWith(".json")).sort().reverse();
+        const digests = files
+            .filter((f) => f.startsWith("digest-") && f.endsWith(".json"))
+            .sort()
+            .reverse();
         if (!digests.length)
             return "no digests to send";
         const latestPath = join(digestDir, digests[0]);

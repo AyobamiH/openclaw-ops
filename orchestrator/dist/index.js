@@ -3,49 +3,56 @@ import { DocIndexer } from "./docIndexer.js";
 import { TaskQueue } from "./taskQueue.js";
 import { loadState, saveStateWithOptions as persistState } from "./state.js";
 import { resolveTaskHandler } from "./taskHandlers.js";
-import { AlertManager, TaskFailureTracker, buildAlertConfig } from "./alerter.js";
+import { AlertManager, TaskFailureTracker, buildAlertConfig, } from "./alerter.js";
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import cron from "node-cron";
 import { startMetricsServer } from "./metrics/index.js";
 import { onApprovalCompleted, onApprovalRequested } from "./metrics/index.js";
 import { alertHandler } from "./alerts/alert-handler.js";
-import { memoryScheduler } from "./memory/scheduler.js";
+// memoryScheduler: loaded dynamically at runtime (private module, gitignored).
+// Falls back to a no-op so the public build compiles and CI passes.
+let memoryScheduler = {
+    start: () => console.log("[orchestrator] Memory scheduler not available in this build"),
+    stop: () => { },
+};
 import { knowledgeIntegration } from "./knowledge/integration.js";
 import { PersistenceIntegration } from "./persistence/index.js";
 import { getAgentRegistry } from "./agentRegistry.js";
-import { assertApprovalIfRequired, decideApproval, listPendingApprovals } from "./approvalGate.js";
+import { assertApprovalIfRequired, decideApproval, listPendingApprovals, } from "./approvalGate.js";
 import { buildOpenApiSpec } from "./openapi.js";
 import express from "express";
-import { requireBearerToken, verifyWebhookSignature, logSecurityEvent, verifyKeyRotationPolicy } from "./middleware/auth.js";
-import { createValidationMiddleware, validateContentLength, AlertManagerWebhookSchema, ApprovalDecisionSchema, KBQuerySchema, PersistenceHistoricalSchema, TaskTriggerSchema } from "./middleware/validation.js";
-import { webhookLimiter, apiLimiter, exportLimiter, healthLimiter, authLimiter } from "./middleware/rate-limit.js";
+import { requireBearerToken, verifyWebhookSignature, logSecurityEvent, verifyKeyRotationPolicy, } from "./middleware/auth.js";
+import { createValidationMiddleware, validateContentLength, AlertManagerWebhookSchema, ApprovalDecisionSchema, KBQuerySchema, PersistenceHistoricalSchema, TaskTriggerSchema, } from "./middleware/validation.js";
+import { webhookLimiter, apiLimiter, exportLimiter, healthLimiter, authLimiter, } from "./middleware/rate-limit.js";
+import { getMilestoneEmitter, initMilestoneEmitter } from "./milestones/emitter.js";
+import { initDemandSummaryEmitter } from "./demand/emitter.js";
 /**
  * Security Posture Verification
  * Ensures critical security requirements are met before startup
  */
 function verifySecurityPosture() {
     const requiredEnvVars = [
-        'API_KEY',
-        'WEBHOOK_SECRET',
-        'MONGO_PASSWORD',
-        'REDIS_PASSWORD',
-        'MONGO_USERNAME',
+        "API_KEY",
+        "WEBHOOK_SECRET",
+        "MONGO_PASSWORD",
+        "REDIS_PASSWORD",
+        "MONGO_USERNAME",
     ];
     const missing = requiredEnvVars.filter((key) => !process.env[key]);
     if (missing.length > 0) {
-        throw new Error(`[SECURITY] Critical environment variables missing: ${missing.join(', ')}. Refusing to start.`);
+        throw new Error(`[SECURITY] Critical environment variables missing: ${missing.join(", ")}. Refusing to start.`);
     }
     // Verify key rotation policy
     const keyStatus = verifyKeyRotationPolicy();
     if (!keyStatus.valid) {
-        throw new Error(`[SECURITY] API Key rotation policy violation: ${keyStatus.warnings.join('; ')}`);
+        throw new Error(`[SECURITY] API Key rotation policy violation: ${keyStatus.warnings.join("; ")}`);
     }
-    keyStatus.warnings.forEach(w => {
+    keyStatus.warnings.forEach((w) => {
         console.warn(`[SECURITY] ⚠️ ${w}`);
     });
-    console.log('[SECURITY] ✅ Posture verification: PASS (all required credentials configured)');
-    console.log('[SECURITY] ✅ Key rotation policy: PASS');
+    console.log("[SECURITY] ✅ Posture verification: PASS (all required credentials configured)");
+    console.log("[SECURITY] ✅ Key rotation policy: PASS");
 }
 function parseBoundedInt(value, fallback, min, max) {
     const parsed = Number(value);
@@ -149,13 +156,22 @@ async function buildMemoryOverviewSummary(staleAfterHours = 24) {
 async function bootstrap() {
     // Verify security posture FIRST
     verifySecurityPosture();
-    const fastStartMode = process.env.ORCHESTRATOR_FAST_START === 'true';
+    const fastStartMode = process.env.ORCHESTRATOR_FAST_START === "true";
+    // Attempt to load the private memory scheduler (gitignored). No-op fallback if absent.
+    try {
+        // @ts-ignore — module is gitignored (private); only present on production server
+        const mod = await import("./memory/scheduler.js");
+        memoryScheduler = mod.memoryScheduler;
+    }
+    catch {
+        /* private module not present — no-op fallback remains active */
+    }
     const config = await loadConfig();
     await mkdir(config.logsDir, { recursive: true });
     await mkdir(dirname(config.stateFile), { recursive: true });
     console.log("[orchestrator] config loaded", config);
     if (fastStartMode) {
-        console.warn('[orchestrator] ⚠️ Fast-start mode enabled: skipping heavy boot stages');
+        console.warn("[orchestrator] ⚠️ Fast-start mode enabled: skipping heavy boot stages");
     }
     try {
         const registry = await getAgentRegistry();
@@ -192,15 +208,16 @@ async function bootstrap() {
         }
         catch (error) {
             console.error("[orchestrator] failed to initialize persistence layer:", error);
-            const strictPersistence = config.strictPersistence === true || process.env.STRICT_PERSISTENCE === 'true';
+            const strictPersistence = config.strictPersistence === true ||
+                process.env.STRICT_PERSISTENCE === "true";
             if (strictPersistence) {
                 throw new Error("strict persistence enabled and persistence layer failed to initialize");
             }
-            console.error('[orchestrator] ⚠️ DEGRADED MODE: persistence unavailable, continuing without Mongo-backed persistence');
+            console.error("[orchestrator] ⚠️ DEGRADED MODE: persistence unavailable, continuing without Mongo-backed persistence");
         }
     }
     else {
-        console.log('[orchestrator] fast-start: skipping persistence initialization');
+        console.log("[orchestrator] fast-start: skipping persistence initialization");
     }
     let indexers = [];
     let indexedDocCount = 0;
@@ -214,7 +231,7 @@ async function bootstrap() {
         console.log(`[orchestrator] indexed ${indexedDocCount} docs across ${indexRoots.length} source(s)`);
     }
     else {
-        console.log('[orchestrator] fast-start: skipping initial document indexing');
+        console.log("[orchestrator] fast-start: skipping initial document indexing");
     }
     const state = await loadState(config.stateFile, {
         taskHistoryLimit: config.taskHistoryLimit,
@@ -227,6 +244,9 @@ async function bootstrap() {
         });
     };
     await flushState();
+    // Initialize milestone emitter (no-op if milestoneIngestUrl or MILESTONE_SIGNING_SECRET not set)
+    const milestoneEmitter = initMilestoneEmitter(config, () => state, flushState);
+    const demandSummaryEmitter = initDemandSummaryEmitter(config, () => state, flushState);
     const taskHistoryLimit = Number.isFinite(config.taskHistoryLimit)
         ? Math.max(1, Math.min(10000, Math.floor(config.taskHistoryLimit)))
         : 50;
@@ -237,7 +257,8 @@ async function bootstrap() {
         ? Math.max(0, Math.floor(config.retryBackoffMs))
         : 500;
     const ensureExecutionRecord = (task) => {
-        const idempotencyKey = typeof task.idempotencyKey === "string" && task.idempotencyKey.trim().length > 0
+        const idempotencyKey = typeof task.idempotencyKey === "string" &&
+            task.idempotencyKey.trim().length > 0
             ? task.idempotencyKey
             : task.id;
         const existing = state.taskExecutions.find((item) => item.idempotencyKey === idempotencyKey);
@@ -250,7 +271,9 @@ async function bootstrap() {
             type: task.type,
             status: "pending",
             attempt: task.attempt ?? 1,
-            maxRetries: Number.isFinite(task.maxRetries) ? Number(task.maxRetries) : retryMaxAttempts,
+            maxRetries: Number.isFinite(task.maxRetries)
+                ? Number(task.maxRetries)
+                : retryMaxAttempts,
             lastHandledAt: new Date().toISOString(),
             lastError: undefined,
         };
@@ -293,8 +316,24 @@ async function bootstrap() {
             onApprovalRequested(task.id, task.type);
             execution.status = "pending";
             recordTaskResult(task, "ok", approval.reason ?? "awaiting approval");
+            getMilestoneEmitter()?.emit({
+                milestoneId: `approval.requested.${task.id}`,
+                timestampUtc: new Date().toISOString(),
+                scope: "governance",
+                claim: `Approval requested for ${task.type}.`,
+                evidence: [
+                    {
+                        type: "log",
+                        path: config.stateFile,
+                        summary: "approval request stored in orchestrator state",
+                    },
+                ],
+                riskStatus: "at-risk",
+                nextAction: "Review the pending approval and either approve or reject the task.",
+                source: "orchestrator",
+            });
             await flushState();
-            console.warn(`[orchestrator] ⏸️ ${task.type}: ${approval.reason ?? 'awaiting approval'}`);
+            console.warn(`[orchestrator] ⏸️ ${task.type}: ${approval.reason ?? "awaiting approval"}`);
             return;
         }
         const handler = resolveTaskHandler(task);
@@ -316,7 +355,9 @@ async function bootstrap() {
             const maxRetries = Number.isFinite(execution.maxRetries)
                 ? execution.maxRetries
                 : retryMaxAttempts;
-            const attempt = Number.isFinite(execution.attempt) ? execution.attempt : 1;
+            const attempt = Number.isFinite(execution.attempt)
+                ? execution.attempt
+                : 1;
             if (attempt <= maxRetries) {
                 execution.status = "retrying";
                 const nextAttempt = attempt + 1;
@@ -370,6 +411,19 @@ async function bootstrap() {
         lastHeartbeatTime = Date.now();
         queue.enqueue("heartbeat", { reason: "periodic" });
     });
+    // 5-minute milestone delivery retry (delivers pending/retrying records)
+    if (!fastStartMode) {
+        cron.schedule("*/5 * * * *", () => {
+            milestoneEmitter.deliverPending().catch((err) => {
+                console.warn("[milestones] poller error:", err.message);
+            });
+        });
+        cron.schedule("*/5 * * * *", () => {
+            demandSummaryEmitter.deliverPending().catch((err) => {
+                console.warn("[demand-summary] poller error:", err.message);
+            });
+        });
+    }
     // Monitor heartbeat failures (detect if orchestrator is hung)
     setInterval(() => {
         const timeSinceLastHeartbeat = Date.now() - lastHeartbeatTime;
@@ -394,7 +448,7 @@ async function bootstrap() {
         console.log("[orchestrator] ⏰ Memory consolidation enabled (hourly snapshots, daily consolidation at 1 AM UTC)");
     }
     else {
-        console.log('[orchestrator] fast-start: skipping memory scheduler startup');
+        console.log("[orchestrator] fast-start: skipping memory scheduler startup");
     }
     // ============================================================
     // Phase 5: Knowledge Base Automation
@@ -403,7 +457,7 @@ async function bootstrap() {
         await knowledgeIntegration.start();
     }
     else {
-        console.log('[orchestrator] fast-start: skipping knowledge integration startup');
+        console.log("[orchestrator] fast-start: skipping knowledge integration startup");
     }
     // ============================================================
     // Setup HTTP Server for Metrics & Alert Webhooks (Phase 2, 3, 5)
@@ -414,10 +468,10 @@ async function bootstrap() {
     let forceShutdownTimer = null;
     // Security Middleware Setup
     app.use(validateContentLength(1024 * 1024)); // 1MB limit
-    app.use(express.json({ limit: '1mb' }));
-    app.use(express.urlencoded({ limit: '1mb' }));
+    app.use(express.json({ limit: "1mb" }));
+    app.use(express.urlencoded({ limit: "1mb" }));
     app.use(logSecurityEvent);
-    app.set('trust proxy', 1);
+    app.set("trust proxy", 1);
     // ============================================================
     // Public Endpoints (No Authentication Required)
     // ============================================================
@@ -459,15 +513,15 @@ async function bootstrap() {
     // Protected Endpoints (Authentication Required)
     // ============================================================
     // Manual task trigger endpoint
-    app.post("/api/tasks/trigger", apiLimiter, authLimiter, requireBearerToken, createValidationMiddleware(TaskTriggerSchema, 'body'), async (req, res) => {
+    app.post("/api/tasks/trigger", apiLimiter, authLimiter, requireBearerToken, createValidationMiddleware(TaskTriggerSchema, "body"), async (req, res) => {
         try {
             const type = String(req.body.type);
-            const payload = typeof req.body.payload === 'object' && req.body.payload !== null
+            const payload = typeof req.body.payload === "object" && req.body.payload !== null
                 ? req.body.payload
                 : {};
             const task = queue.enqueue(type, payload);
             res.status(202).json({
-                status: 'queued',
+                status: "queued",
                 taskId: task.id,
                 type: task.type,
                 createdAt: task.createdAt,
@@ -480,7 +534,7 @@ async function bootstrap() {
     });
     // AlertManager webhook endpoint (Phase 3)
     // Uses webhook signature verification instead of bearer token
-    app.post("/webhook/alerts", webhookLimiter, authLimiter, verifyWebhookSignature, createValidationMiddleware(AlertManagerWebhookSchema, 'body'), async (req, res) => {
+    app.post("/webhook/alerts", webhookLimiter, authLimiter, verifyWebhookSignature, createValidationMiddleware(AlertManagerWebhookSchema, "body"), async (req, res) => {
         try {
             console.log("[webhook/alerts] Received alert from AlertManager");
             await alertHandler.handleAlertManagerWebhook(req.body);
@@ -505,25 +559,47 @@ async function bootstrap() {
             res.status(500).json({ error: error.message });
         }
     });
-    app.post("/api/approvals/:id/decision", apiLimiter, authLimiter, requireBearerToken, createValidationMiddleware(ApprovalDecisionSchema, 'body'), async (req, res) => {
+    app.post("/api/approvals/:id/decision", apiLimiter, authLimiter, requireBearerToken, createValidationMiddleware(ApprovalDecisionSchema, "body"), async (req, res) => {
         try {
             const taskId = String(req.params.id);
             const decision = req.body.decision;
-            const actor = typeof req.body.actor === 'string' ? req.body.actor : 'api-user';
-            const note = typeof req.body.note === 'string' ? req.body.note : undefined;
+            const actor = typeof req.body.actor === "string" ? req.body.actor : "api-user";
+            const note = typeof req.body.note === "string" ? req.body.note : undefined;
             const approval = decideApproval(state, taskId, decision, actor, note);
-            onApprovalCompleted(taskId, decision === 'approved' ? 'approved' : 'rejected');
+            onApprovalCompleted(taskId, decision === "approved" ? "approved" : "rejected");
             let replayTaskId = null;
-            if (decision === 'approved') {
+            if (decision === "approved") {
                 const replay = queue.enqueue(approval.type, {
                     ...approval.payload,
                     approvedFromTaskId: approval.taskId,
                 });
                 replayTaskId = replay.id;
             }
+            getMilestoneEmitter()?.emit({
+                milestoneId: `approval.${decision}.${approval.taskId}`,
+                timestampUtc: new Date().toISOString(),
+                scope: "governance",
+                claim: decision === "approved"
+                    ? `Approval granted for ${approval.type}.`
+                    : `Approval rejected for ${approval.type}.`,
+                evidence: [
+                    {
+                        type: "log",
+                        path: config.stateFile,
+                        summary: decision === "approved"
+                            ? "approval marked approved and replay queued"
+                            : "approval marked rejected in orchestrator state",
+                    },
+                ],
+                riskStatus: decision === "approved" ? "on-track" : "blocked",
+                nextAction: decision === "approved"
+                    ? `Monitor replay task ${replayTaskId ?? "queue"} for completion.`
+                    : "Adjust the payload or operator note before retrying this task.",
+                source: "operator",
+            });
             await flushState();
             res.json({
-                status: 'ok',
+                status: "ok",
                 approval,
                 replayTaskId,
             });
@@ -566,7 +642,8 @@ async function bootstrap() {
             const offset = parseBoundedInt(req.query.offset, 0, 0, 100000);
             const includeSensitive = parseBoolean(req.query.includeSensitive, false);
             const includeErrors = parseBoolean(req.query.includeErrors, true);
-            const agentIdFilter = typeof req.query.agentId === "string" && req.query.agentId.trim().length > 0
+            const agentIdFilter = typeof req.query.agentId === "string" &&
+                req.query.agentId.trim().length > 0
                 ? req.query.agentId.trim()
                 : null;
             const registry = await getAgentRegistry();
@@ -579,7 +656,7 @@ async function bootstrap() {
                 if (!memory)
                     return null;
                 const timeline = includeErrors
-                    ? memory.taskTimeline ?? []
+                    ? (memory.taskTimeline ?? [])
                     : (memory.taskTimeline ?? []).filter((entry) => entry.status !== "error");
                 const normalized = {
                     ...memory,
@@ -622,7 +699,7 @@ async function bootstrap() {
         }
     });
     // Knowledge Base Query endpoint (Phase 5)
-    app.post("/api/knowledge/query", apiLimiter, authLimiter, requireBearerToken, createValidationMiddleware(KBQuerySchema, 'body'), async (req, res) => {
+    app.post("/api/knowledge/query", apiLimiter, authLimiter, requireBearerToken, createValidationMiddleware(KBQuerySchema, "body"), async (req, res) => {
         try {
             const { query } = req.body;
             const results = await knowledgeIntegration.queryAPI(query);
@@ -638,8 +715,8 @@ async function bootstrap() {
         try {
             const format = req.query.format || "markdown";
             const kb = knowledgeIntegration.export(format);
-            if (format === 'markdown') {
-                res.type('text/markdown').send(kb);
+            if (format === "markdown") {
+                res.type("text/markdown").send(kb);
             }
             else {
                 res.json(JSON.parse(kb));
@@ -651,9 +728,9 @@ async function bootstrap() {
         }
     });
     // Persistence historical data endpoint
-    app.get("/api/persistence/historical", apiLimiter, authLimiter, requireBearerToken, createValidationMiddleware(PersistenceHistoricalSchema, 'query'), async (req, res) => {
+    app.get("/api/persistence/historical", apiLimiter, authLimiter, requireBearerToken, createValidationMiddleware(PersistenceHistoricalSchema, "query"), async (req, res) => {
         try {
-            const days = parseInt(req.query.days || '30', 10);
+            const days = parseInt(req.query.days || "30", 10);
             const data = await PersistenceIntegration.getHistoricalData(days);
             res.json(data);
         }
@@ -684,45 +761,45 @@ async function bootstrap() {
     // ============================================================
     // Graceful Shutdown Handler (Day 10)
     // ============================================================
-    process.on('SIGTERM', async () => {
+    process.on("SIGTERM", async () => {
         if (isShuttingDown) {
-            console.log('[orchestrator] SIGTERM received during shutdown, ignoring duplicate signal');
+            console.log("[orchestrator] SIGTERM received during shutdown, ignoring duplicate signal");
             return;
         }
         isShuttingDown = true;
-        console.log('[orchestrator] Received SIGTERM, starting graceful shutdown...');
+        console.log("[orchestrator] Received SIGTERM, starting graceful shutdown...");
         server.close(async () => {
-            console.log('[orchestrator] HTTP server closed');
+            console.log("[orchestrator] HTTP server closed");
             try {
                 await PersistenceIntegration.close();
-                console.log('[orchestrator] Database connections closed');
+                console.log("[orchestrator] Database connections closed");
             }
             catch (err) {
-                console.error('[orchestrator] Error closing database:', err);
+                console.error("[orchestrator] Error closing database:", err);
             }
             try {
                 await memoryScheduler.stop();
-                console.log('[orchestrator] Memory scheduler stopped');
+                console.log("[orchestrator] Memory scheduler stopped");
             }
             catch (err) {
-                console.error('[orchestrator] Error stopping scheduler:', err);
+                console.error("[orchestrator] Error stopping scheduler:", err);
             }
             if (forceShutdownTimer) {
                 clearTimeout(forceShutdownTimer);
             }
-            console.log('[orchestrator] ✅ Graceful shutdown complete');
+            console.log("[orchestrator] ✅ Graceful shutdown complete");
             process.exit(0);
         });
         // Force kill after 30 seconds if shutdown hasn't completed
         forceShutdownTimer = setTimeout(() => {
-            console.error('[orchestrator] Shutdown timeout, forcing exit');
+            console.error("[orchestrator] Shutdown timeout, forcing exit");
             process.exit(1);
         }, 30000);
     });
     // Handle SIGINT (Ctrl+C)
-    process.on('SIGINT', () => {
-        console.log('[orchestrator] Received SIGINT, initiating shutdown...');
-        process.emit('SIGTERM');
+    process.on("SIGINT", () => {
+        console.log("[orchestrator] Received SIGINT, initiating shutdown...");
+        process.emit("SIGTERM");
     });
     queue.enqueue("startup", { reason: "orchestrator boot" });
 }

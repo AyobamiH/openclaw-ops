@@ -26,6 +26,7 @@ import { sendNotification, buildNotifierConfig } from "./notifier.js";
 import { getAgentRegistry } from "./agentRegistry.js";
 import { getToolGate } from "./toolGate.js";
 import { getMilestoneEmitter } from "./milestones/emitter.js";
+import type { MilestoneEvent } from "./milestones/schema.js";
 import { getDemandSummaryEmitter } from "./demand/emitter.js";
 import { buildDemandStateFingerprint } from "./demand/summary-builder.js";
 
@@ -120,6 +121,22 @@ function ensureRedditQueueLimit(context: TaskHandlerContext) {
   if (context.state.redditQueue.length > MAX_REDDIT_QUEUE) {
     context.state.redditQueue.length = MAX_REDDIT_QUEUE;
   }
+}
+
+function emitMilestoneSafely(event: MilestoneEvent) {
+  getMilestoneEmitter()?.emit(event);
+}
+
+function queueDepthNextAction(queueTotal: number) {
+  if (queueTotal <= 0) {
+    return "Queue is clear. Watch for the next high-intent lead.";
+  }
+
+  if (queueTotal === 1) {
+    return "Route the next queued lead through reddit-response.";
+  }
+
+  return `Route the next ${queueTotal} queued leads through reddit-response.`;
 }
 
 async function emitDemandSummaryIfChanged(
@@ -669,7 +686,7 @@ const startupHandler: TaskHandler = async (_, context) => {
   context.state.lastStartedAt = new Date().toISOString();
   await context.saveState();
 
-  getMilestoneEmitter()?.emit({
+  emitMilestoneSafely({
     milestoneId: `orchestrator.started.${context.state.lastStartedAt}`,
     timestampUtc: context.state.lastStartedAt,
     scope: "runtime",
@@ -897,6 +914,28 @@ const redditResponseHandler: TaskHandler = async (task, context) => {
   context.state.redditResponses.push(record);
   context.state.lastRedditResponseAt = now;
   await context.saveState();
+
+  emitMilestoneSafely({
+    milestoneId: `reddit.response.${queueItem.id}`,
+    timestampUtc: now,
+    scope: "community",
+    claim: `Reddit response drafted for ${queueItem.subreddit}.`,
+    evidence: [
+      {
+        type: "log",
+        path:
+          agentResult?.devvitPayloadPath ??
+          context.config.stateFile,
+        summary: agentResult?.devvitPayloadPath
+          ? "reddit-helper generated a Devvit-ready payload"
+          : "response record saved to orchestrator state",
+      },
+    ],
+    riskStatus: agentResult ? "on-track" : "at-risk",
+    nextAction: queueDepthNextAction(context.state.redditQueue.length),
+    source: "orchestrator",
+  });
+
   await emitDemandSummaryIfChanged(demandFingerprintBefore, context);
   return `drafted reddit reply for ${queueItem.subreddit} (${queueItem.id})`;
 };
@@ -1390,6 +1429,43 @@ const rssSweepHandler: TaskHandler = async (task, context) => {
 
   context.state.lastRssSweepAt = now;
   await context.saveState();
+
+  if (drafted > 0) {
+    const manualReviewCount = context.state.rssDrafts.filter(
+      (item) => item.tag === "manual-review" && item.queuedAt === now,
+    ).length;
+    const priorityCount = context.state.rssDrafts.filter(
+      (item) => item.tag === "priority" && item.queuedAt === now,
+    ).length;
+
+    emitMilestoneSafely({
+      milestoneId: `rss.sweep.${now}`,
+      timestampUtc: now,
+      scope: "demand",
+      claim: `RSS sweep surfaced ${drafted} new lead${drafted === 1 ? "" : "s"} for follow-up.`,
+      evidence: [
+        {
+          type: "log",
+          path: draftsPath,
+          summary: `${drafted} draft record${drafted === 1 ? "" : "s"} appended during sweep`,
+        },
+        {
+          type: "log",
+          path: configPath,
+          summary: "scoring rules loaded from rss_filter_config.json",
+        },
+      ],
+      riskStatus: manualReviewCount > 0 ? "at-risk" : "on-track",
+      nextAction:
+        manualReviewCount > 0
+          ? `Review ${manualReviewCount} manual-review lead${manualReviewCount === 1 ? "" : "s"} before posting.`
+          : priorityCount > 0
+            ? `Route ${priorityCount} priority lead${priorityCount === 1 ? "" : "s"} into reddit-response.`
+            : queueDepthNextAction(context.state.redditQueue.length),
+      source: "orchestrator",
+    });
+  }
+
   await emitDemandSummaryIfChanged(demandFingerprintBefore, context);
   return drafted > 0
     ? `rss sweep drafted ${drafted} replies`
@@ -1454,7 +1530,7 @@ const agentDeployHandler: TaskHandler = async (task, context) => {
   context.state.lastAgentDeployAt = record.deployedAt;
   await context.saveState();
 
-  getMilestoneEmitter()?.emit({
+  emitMilestoneSafely({
     milestoneId: `agent.deploy.${deploymentId}`,
     timestampUtc: record.deployedAt,
     scope: "runtime",
@@ -1520,7 +1596,7 @@ const nightlyBatchHandler: TaskHandler = async (task, context) => {
   await context.saveState();
   await emitDemandSummaryIfChanged(demandFingerprintBefore, context);
 
-  getMilestoneEmitter()?.emit({
+  emitMilestoneSafely({
     milestoneId: `nightly.batch.${digest.batchId}`,
     timestampUtc: now,
     scope: "runtime",
@@ -1533,8 +1609,7 @@ const nightlyBatchHandler: TaskHandler = async (task, context) => {
       },
     ],
     riskStatus: "on-track",
-    nextAction:
-      "Review reddit queue for high-confidence items ready for response.",
+    nextAction: queueDepthNextAction(state.redditQueue.length),
     source: "orchestrator",
   });
 

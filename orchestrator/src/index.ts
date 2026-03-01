@@ -54,7 +54,7 @@ import {
   healthLimiter,
   authLimiter,
 } from "./middleware/rate-limit.js";
-import { initMilestoneEmitter } from "./milestones/emitter.js";
+import { getMilestoneEmitter, initMilestoneEmitter } from "./milestones/emitter.js";
 import { initDemandSummaryEmitter } from "./demand/emitter.js";
 
 /**
@@ -472,6 +472,22 @@ async function bootstrap() {
       onApprovalRequested(task.id, task.type);
       execution.status = "pending";
       recordTaskResult(task, "ok", approval.reason ?? "awaiting approval");
+      getMilestoneEmitter()?.emit({
+        milestoneId: `approval.requested.${task.id}`,
+        timestampUtc: new Date().toISOString(),
+        scope: "governance",
+        claim: `Approval requested for ${task.type}.`,
+        evidence: [
+          {
+            type: "log",
+            path: config.stateFile,
+            summary: "approval request stored in orchestrator state",
+          },
+        ],
+        riskStatus: "at-risk",
+        nextAction: "Review the pending approval and either approve or reject the task.",
+        source: "orchestrator",
+      });
       await flushState();
       console.warn(
         `[orchestrator] ⏸️ ${task.type}: ${approval.reason ?? "awaiting approval"}`,
@@ -793,6 +809,32 @@ async function bootstrap() {
           });
           replayTaskId = replay.id;
         }
+
+        getMilestoneEmitter()?.emit({
+          milestoneId: `approval.${decision}.${approval.taskId}`,
+          timestampUtc: new Date().toISOString(),
+          scope: "governance",
+          claim:
+            decision === "approved"
+              ? `Approval granted for ${approval.type}.`
+              : `Approval rejected for ${approval.type}.`,
+          evidence: [
+            {
+              type: "log",
+              path: config.stateFile,
+              summary:
+                decision === "approved"
+                  ? "approval marked approved and replay queued"
+                  : "approval marked rejected in orchestrator state",
+            },
+          ],
+          riskStatus: decision === "approved" ? "on-track" : "blocked",
+          nextAction:
+            decision === "approved"
+              ? `Monitor replay task ${replayTaskId ?? "queue"} for completion.`
+              : "Adjust the payload or operator note before retrying this task.",
+          source: "operator",
+        });
 
         await flushState();
 

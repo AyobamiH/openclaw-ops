@@ -90,7 +90,8 @@ Both values **must be identical**. The same secret is reused for:
 
 ## 3. Backfilling historical events
 
-Run once after initial setup to push historical startup events into the feed:
+Run once after initial setup to push historical startup, demand, governance,
+and queue workflow events into the feed:
 
 ```bash
 # Inside the Docker container
@@ -101,14 +102,23 @@ STATE_FILE=/path/to/orchestrator-state.json npm run milestones:backfill
 ```
 
 The script is idempotent — re-running it skips already-queued milestone IDs.
+It now reconstructs milestones for:
 
-Expected output when all records are delivered:
+- `startup`
+- `rss-sweep`
+- `nightly-batch`
+- `reddit-response`
+- approval request / approval decision state
+- previously stored demand summary deliveries
+
+Expected output when records are delivered:
 
 ```
-[backfill] emit   orchestrator.started.2026-02-26T06:06:48.768Z
-[backfill] 3 new milestone(s) emitted, 0 skipped
+[backfill] emit   rss.sweep.2026-03-01T09:11:00.000Z
+[backfill] emit   approval.requested.<task-id>
+[backfill] 6 new milestone(s) emitted
 [backfill] delivering to https://... ...
-[backfill] delivery done — 3 delivered, 0 failed
+[backfill] delivery done — 6 delivered, 0 failed
 ```
 
 ---
@@ -128,9 +138,9 @@ Expected shape:
   "ok": true,
   "items": [
     {
-      "milestoneId": "orchestrator.started.2026-02-26T06:06:48.768Z",
-      "scope": "runtime",
-      "claim": "Orchestrator started successfully.",
+      "milestoneId": "demand.summary.2026-03-01T09:35:00.000Z",
+      "scope": "demand",
+      "claim": "Demand telemetry refreshed: 4 queued leads, 3 drafts.",
       "riskStatus": "on-track",
       ...
     }
