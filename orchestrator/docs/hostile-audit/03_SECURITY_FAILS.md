@@ -1,5 +1,7 @@
 # 03_SECURITY_FAILS.md - Detailed Vulnerability Analysis
 
+Historical snapshot note: This is a dated hostile-audit artifact, not current runtime authority. Some findings in this file may now be stale. Current truth lives in active runtime code, `OPENCLAW_CONTEXT_ANCHOR.md`, and the current KB truth docs under `docs/OPENCLAW_KB/**`.
+
 **Format:** Finding / Evidence / Impact / Minimal Fix / Verification
 
 ---
@@ -829,4 +831,3 @@ https.createServer(httpsOptions, app).listen(3000, () => {
 
 **Total time to fix CRITICAL issues:** ~10 hours  
 **Total time to fix ALL issues:** ~14 hours
-

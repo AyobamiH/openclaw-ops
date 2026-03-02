@@ -1,5 +1,7 @@
 # 02_ATTACK_SURFACE_MAP.md - Inbound Interfaces & Risk Assessment
 
+Historical snapshot note: This is a dated hostile-audit artifact, not current runtime authority. Some findings in this file may now be stale. Current truth lives in active runtime code, `OPENCLAW_CONTEXT_ANCHOR.md`, and the current KB truth docs under `docs/OPENCLAW_KB/**`.
+
 **Purpose:** Enumerate every inbound attack surface, rate authentication/validation for each, identify mutation endpoints.
 
 ---
@@ -514,4 +516,3 @@ while true; do curl http://localhost:3000/api/knowledge/export > /dev/null; done
 | Query KB | unauthenticated | API key or token | ❌ CRITICAL |
 | Export DB | unauthenticated | Bearer token + rate limit | ❌ CRITICAL |
 | Read health | unauthenticated | Public (acceptable) | ✅ OK |
-

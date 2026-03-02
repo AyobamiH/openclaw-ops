@@ -7,9 +7,8 @@ import type {
 import { context, scheduler, redis, reddit } from '@devvit/web/server';
 import { createPost } from '../core/post';
 import {
+  buildInitialWikiFeed,
   DEFAULT_FEED_URL,
-  DEFAULT_SIGNING_SECRET,
-  INITIAL_WIKI_FEED,
   isLegacyStartupOnlyFeed,
   MILESTONE_WIKI_PAGE,
   parseRemoteFeedText,
@@ -25,11 +24,6 @@ async function ensureDefaults(): Promise<void> {
     if (!existingUrl) {
       await redis.set(FEED_URL_REDIS_KEY, DEFAULT_FEED_URL);
       console.log('[triggers] feed URL auto-configured');
-    }
-    const existingSecret = await redis.get(SIGNING_SECRET_REDIS_KEY);
-    if (!existingSecret) {
-      await redis.set(SIGNING_SECRET_REDIS_KEY, DEFAULT_SIGNING_SECRET);
-      console.log('[triggers] signing secret auto-configured');
     }
   } catch (err) {
     console.warn(
@@ -68,10 +62,21 @@ async function ensureWikiSeeded(): Promise<void> {
   }
 
   try {
+    const signingSecret = await redis.get(SIGNING_SECRET_REDIS_KEY);
+    if (
+      typeof signingSecret !== 'string' ||
+      signingSecret.trim().length === 0
+    ) {
+      console.warn(
+        '[triggers] signing secret not configured, skipping wiki seed'
+      );
+      return;
+    }
+
     await reddit.updateWikiPage({
       subredditName: context.subredditName,
       page: MILESTONE_WIKI_PAGE,
-      content: INITIAL_WIKI_FEED,
+      content: buildInitialWikiFeed(signingSecret.trim()),
       reason: 'Initialized by openclawdbot',
     });
     console.log('[triggers] milestones wiki page seeded');
@@ -119,6 +124,15 @@ triggers.post('/on-app-install', async (c) => {
   try {
     const post = await createPost();
     const input = await c.req.json<OnAppInstallRequest>();
+    if (input.type !== 'AppInstall') {
+      return c.json<TriggerResponse>(
+        {
+          status: 'error',
+          message: 'Invalid lifecycle trigger type',
+        },
+        400
+      );
+    }
 
     await initWikiAndScheduler();
 
@@ -144,7 +158,16 @@ triggers.post('/on-app-install', async (c) => {
 /** onAppUpgrade fires every time devvit install updates the app. */
 triggers.post('/on-app-upgrade', async (c) => {
   try {
-    await c.req.json<OnAppUpgradeRequest>();
+    const input = await c.req.json<OnAppUpgradeRequest>();
+    if (input.type !== 'AppUpgrade') {
+      return c.json<TriggerResponse>(
+        {
+          status: 'error',
+          message: 'Invalid lifecycle trigger type',
+        },
+        400
+      );
+    }
     await initWikiAndScheduler();
     return c.json<TriggerResponse>(
       {

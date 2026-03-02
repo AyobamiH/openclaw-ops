@@ -1,5 +1,7 @@
 # 01_COVERAGE_INDEX.md - Complete File Inventory
 
+Historical snapshot note: This is a dated hostile-audit artifact, not current runtime authority. Some findings in this file may now be stale. Current truth lives in active runtime code, `OPENCLAW_CONTEXT_ANCHOR.md`, and the current KB truth docs under `docs/OPENCLAW_KB/**`.
+
 **Audit Scope:** All source files, configurations, tests, docs  
 **Excluded:** node_modules (assessed via package.json only)  
 **Review Method:** Systematic enumeration + targeted deep-dives  

@@ -1,5 +1,7 @@
 # 05_DATA_INTEGRITY.md - Database Schema & Migration Safety
 
+Historical snapshot note: This is a dated hostile-audit artifact, not current runtime authority. Some findings in this file may now be stale. Current truth lives in active runtime code, `OPENCLAW_CONTEXT_ANCHOR.md`, and the current KB truth docs under `docs/OPENCLAW_KB/**`.
+
 ---
 
 ## MongoDB Schema Validation

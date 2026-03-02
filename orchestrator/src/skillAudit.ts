@@ -1,8 +1,9 @@
 /**
  * Skill Audit Gate
  * 
- * Every skill is audited before runtime.
- * This gate validates permission matrix, detects danger patterns, and blocks unsafe skills.
+ * Audits skill definitions when an explicit registration/bootstrap path invokes it.
+ * This is a governance review surface, not proof that all runtime skill execution
+ * already flows through the audit gate today.
  */
 
 import { SkillDefinition, SkillAuditResults, SkillAuditCheck } from './types.js';
@@ -285,3 +286,19 @@ export class SkillAuditGate {
 }
 
 export const skillAudit = new SkillAuditGate();
+
+/**
+ * Explicit named export used by the skill-registry bootstrap path.
+ * This keeps the SkillAudit contract coherent even while active runtime wiring
+ * remains a separate question.
+ */
+export function auditSkill(skill: SkillDefinition): SkillAuditResults {
+  return skillAudit.auditSkill(skill);
+}
+
+/**
+ * Accessor for callers that need the singleton audit surface explicitly.
+ */
+export function getSkillAuditGate(): SkillAuditGate {
+  return skillAudit;
+}

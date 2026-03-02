@@ -1,5 +1,7 @@
 # HOSTILE_AUDIT_COMPLETE.md - Final Status Report
 
+Historical snapshot note: This is a dated hostile-audit artifact, not current runtime authority. Some findings in this file may now be stale. Current truth lives in active runtime code, `OPENCLAW_CONTEXT_ANCHOR.md`, and the current KB truth docs under `docs/OPENCLAW_KB/**`.
+
 **Audit Date:** 2026-02-17  
 **Audit Type:** Comprehensive Security & Reliability Assessment  
 **Verdict:** 🔴 **NOT PRODUCTION-READY** - Disproven "Production-Ready" Claim  
@@ -438,4 +440,3 @@
 ---
 
 **All 9 audit documents are ready for stakeholder review and remediation planning.**
-

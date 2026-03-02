@@ -2,17 +2,23 @@ import { Hono } from 'hono';
 import type { UiResponse } from '@devvit/web/shared';
 import type { Form } from '@devvit/shared-types/shared/form.js';
 import { context, scheduler, redis, reddit } from '@devvit/web/server';
+import {
+  buildInitialWikiFeed,
+  DEFAULT_FEED_URL,
+  MILESTONE_WIKI_PAGE,
+} from '../core/milestone-pipeline';
 import { createPost } from '../core/post';
 import { runPoll, FEED_URL_REDIS_KEY } from './scheduler';
 import { SIGNING_SECRET_REDIS_KEY } from './forms';
-import { INITIAL_WIKI_FEED } from './triggers';
-
-const DEFAULT_FEED_URL =
-  'https://raw.githubusercontent.com/AyobamiH/openclaw-ops/master/orchestrator/data/milestones-feed.json';
-const DEFAULT_SIGNING_SECRET =
-  '96a9cb3cbfcd8f54ffd3255c5ab526dec5c5acf343eda62751bac5e682ebade3';
 
 export const menu = new Hono();
+
+async function loadConfiguredSigningSecret(): Promise<string | null> {
+  const secret = await redis.get(SIGNING_SECRET_REDIS_KEY);
+  return typeof secret === 'string' && secret.trim().length > 0
+    ? secret.trim()
+    : null;
+}
 
 menu.post('/post-create', async (c) => {
   try {
@@ -78,7 +84,7 @@ menu.post('/milestone-secret', async (c) => {
 const milestoneFeedUrlForm: Form = {
   title: 'Configure Milestone Feed URL',
   description:
-    'Enter the raw GitHub URL for the milestones-feed.json file. Example: https://raw.githubusercontent.com/YourUser/openclaw-ops/main/data/milestones-feed.json',
+    'Enter the feed URL for milestones-feed.json. Recommended format: https://cdn.jsdelivr.net/gh/YourUser/openclaw-ops@main/orchestrator/data/milestones-feed.json',
   acceptLabel: 'Save URL',
   cancelLabel: 'Cancel',
   fields: [
@@ -86,7 +92,8 @@ const milestoneFeedUrlForm: Form = {
       name: 'feedUrl',
       type: 'string',
       label: 'Feed URL (https://)',
-      helpText: 'Must be a publicly accessible HTTPS URL returning milestones-feed.json',
+      helpText:
+        'Must be a publicly accessible HTTPS URL returning milestones-feed.json',
       required: true,
     },
   ],
@@ -107,8 +114,16 @@ menu.post('/milestone-feed-url', async (c) => {
 menu.post('/start-milestone-scheduler', async (c) => {
   try {
     await scheduler.runJob({ name: 'pollMilestoneFeed', cron: '* * * * *' });
+    const result = await runPoll();
     return c.json<UiResponse>(
-      { showToast: { text: 'Milestone scheduler started — polling every minute.', appearance: 'success' } },
+      {
+        showToast: {
+          text: result.ok
+            ? `Milestone scheduler started — ${result.added} milestone(s) loaded immediately.`
+            : `Scheduler started, but warm poll failed: ${result.reason}`,
+          appearance: result.ok ? 'success' : 'neutral',
+        },
+      },
       200
     );
   } catch (err) {
@@ -124,7 +139,12 @@ menu.post('/force-poll-milestones', async (c) => {
     const result = await runPoll();
     if (result.ok) {
       return c.json<UiResponse>(
-        { showToast: { text: `Poll complete — ${result.added} new milestone(s) loaded.`, appearance: 'success' } },
+        {
+          showToast: {
+            text: `Poll complete — ${result.added} new milestone(s) loaded.`,
+            appearance: 'success',
+          },
+        },
         200
       );
     }
@@ -141,20 +161,36 @@ menu.post('/force-poll-milestones', async (c) => {
 });
 
 menu.post('/sync-github-to-wiki', async (c) => {
-  // Writes the hardcoded initial milestone feed to the wiki so the scheduler
-  // can read it. No external HTTP needed — avoids PERMISSIONS_DENIED entirely.
+  // Writes a locally generated, secret-signed bootstrap milestone feed to the
+  // wiki so the scheduler can read it without requiring external HTTP.
   try {
+    const signingSecret = await loadConfiguredSigningSecret();
+    if (!signingSecret) {
+      return c.json<UiResponse>(
+        {
+          showToast:
+            'Configure the milestone signing secret before seeding the wiki.',
+        },
+        200
+      );
+    }
+
     await reddit.updateWikiPage({
       subredditName: context.subredditName,
-      page: 'milestones-feed',
-      content: INITIAL_WIKI_FEED,
+      page: MILESTONE_WIKI_PAGE,
+      content: buildInitialWikiFeed(signingSecret),
       reason: 'Initialized by moderator via menu',
     });
     // Immediately run a poll so new milestones appear without waiting 1 min
     const result = await runPoll();
     const loaded = result.ok ? result.added : 0;
     return c.json<UiResponse>(
-      { showToast: { text: `Milestone wiki initialized — ${loaded} milestone(s) loaded.`, appearance: 'success' } },
+      {
+        showToast: {
+          text: `Milestone wiki initialized — ${loaded} milestone(s) loaded.`,
+          appearance: 'success',
+        },
+      },
       200
     );
   } catch (err) {
@@ -168,10 +204,30 @@ menu.post('/sync-github-to-wiki', async (c) => {
 menu.post('/reset-defaults', async (c) => {
   try {
     await redis.set(FEED_URL_REDIS_KEY, DEFAULT_FEED_URL);
-    await redis.set(SIGNING_SECRET_REDIS_KEY, DEFAULT_SIGNING_SECRET);
     await scheduler.runJob({ name: 'pollMilestoneFeed', cron: '* * * * *' });
+    const signingSecret = await loadConfiguredSigningSecret();
+    if (!signingSecret) {
+      return c.json<UiResponse>(
+        {
+          showToast: {
+            text: 'Feed URL reset. Configure a signing secret before polling resumes.',
+            appearance: 'neutral',
+          },
+        },
+        200
+      );
+    }
+
+    const result = await runPoll();
     return c.json<UiResponse>(
-      { showToast: { text: 'Feed URL + secret reset to defaults. Scheduler restarted.', appearance: 'success' } },
+      {
+        showToast: {
+          text: result.ok
+            ? `Feed URL reset. Existing signing secret preserved, and ${result.added} milestone(s) loaded.`
+            : `Feed URL reset. Existing signing secret preserved, but warm poll failed: ${result.reason}`,
+          appearance: result.ok ? 'success' : 'neutral',
+        },
+      },
       200
     );
   } catch (err) {

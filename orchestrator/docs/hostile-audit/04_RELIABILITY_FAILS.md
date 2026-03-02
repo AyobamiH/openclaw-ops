@@ -1,5 +1,7 @@
 # 04_RELIABILITY_FAILS.md - Operational Stability & Resilience
 
+Historical snapshot note: This is a dated hostile-audit artifact, not current runtime authority. Some findings in this file may now be stale. Current truth lives in active runtime code, `OPENCLAW_CONTEXT_ANCHOR.md`, and the current KB truth docs under `docs/OPENCLAW_KB/**`.
+
 **Purpose:** Identify scenarios that cause data loss, service unavailability, inconsistent state, or resource exhaustion.
 
 ---

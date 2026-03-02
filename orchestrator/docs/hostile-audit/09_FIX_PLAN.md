@@ -1,5 +1,7 @@
 # 09_FIX_PLAN.md - Release Hardening Sprint (2-3 Weeks)
 
+Historical snapshot note: This is a dated hostile-audit artifact, not current runtime authority. Some findings in this file may now be stale. Current truth lives in active runtime code, `OPENCLAW_CONTEXT_ANCHOR.md`, and the current KB truth docs under `docs/OPENCLAW_KB/**`.
+
 **Goal:** Convert system from "fundamentally insecure" to "production-ready"
 
 **Method:** Ruthless prioritization, fix fastest-risk-reduction items first
@@ -848,4 +850,3 @@ POST-DEPLOYMENT (WEEK 1)
 ---
 
 **Estimated completion for production-ready:** 2021-03-10 (3 weeks from 2026-02-17)
-
