@@ -8,6 +8,7 @@
 import { MongoConnection } from './mongo-connection.js';
 import { DataPersistence } from './data-persistence.js';
 import { SnapshotDocument, ConsolidationDocument, COLLECTIONS } from './schemas.js';
+import type { OrchestratorState } from '../types.js';
 
 export class PersistenceIntegration {
   private static initialized = false;
@@ -186,18 +187,33 @@ export class PersistenceIntegration {
 
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
+      const endDate = new Date();
 
       const [metrics, alerts, kb, consolidations] = await Promise.all([
-        DataPersistence.getMetrics(undefined, startDate),
+        DataPersistence.getMetrics(undefined, startDate, endDate, 5000),
         DataPersistence.getAlerts(undefined, undefined, 1000),
         DataPersistence.getKBStats(),
         DataPersistence.getConsolidations(days),
       ]);
 
+      const alertsBySeverity = alerts.reduce<Record<string, number>>((acc, alert: any) => {
+        const severity = typeof alert.severity === 'string' ? alert.severity : 'unknown';
+        acc[severity] = (acc[severity] || 0) + 1;
+        return acc;
+      }, {});
+
+      const metricsByName = metrics.reduce<Record<string, number>>((acc, metric: any) => {
+        const name = typeof metric.name === 'string' ? metric.name : 'unknown';
+        acc[name] = (acc[name] || 0) + 1;
+        return acc;
+      }, {});
+
       return {
-        period: { startDate, endDate: new Date(), days },
+        period: { startDate, endDate, days },
         metricsCount: metrics.length,
         alertsCount: alerts.length,
+        alertsBySeverity,
+        metricsByName,
         knowledgeBase: kb,
         consolidations: consolidations.length,
       };
@@ -227,6 +243,54 @@ export class PersistenceIntegration {
       console.error('[Persistence] ❌ Failed to export data:', error);
       return null;
     }
+  }
+
+  static async getOperatorSummary(state: Pick<OrchestratorState, 'taskExecutions' | 'taskHistory' | 'taskRetryRecoveries'>): Promise<any> {
+    if (!this.initialized) {
+      return {
+        generatedAt: new Date().toISOString(),
+        status: 'degraded',
+        persistenceAvailable: false,
+        storage: null,
+        collections: {},
+        retention: {
+          taskExecutions: state.taskExecutions.length,
+          taskHistory: state.taskHistory.length,
+          taskRetryRecoveries: state.taskRetryRecoveries.length,
+        },
+      };
+    }
+
+    const [health, stats, dbSize, alerts7d, consolidations7d] = await Promise.all([
+      this.healthCheck(),
+      DataPersistence.getCollectionStats(),
+      DataPersistence.getDatabaseSize(),
+      DataPersistence.getAlerts(undefined, undefined, 500),
+      DataPersistence.getConsolidations(7),
+    ]);
+
+    const firingAlerts = alerts7d.filter((alert: any) => alert.status === 'firing').length;
+
+    return {
+      generatedAt: new Date().toISOString(),
+      status: health.status,
+      persistenceAvailable: health.database,
+      storage: {
+        databaseSizeBytes: dbSize,
+        databaseSizeMB: Number((dbSize / 1024 / 1024).toFixed(2)),
+      },
+      collections: stats,
+      indicators: {
+        alertRecordsLastWindow: alerts7d.length,
+        activeAlertRecords: firingAlerts,
+        consolidationsLast7Days: consolidations7d.length,
+      },
+      retention: {
+        taskExecutions: state.taskExecutions.length,
+        taskHistory: state.taskHistory.length,
+        taskRetryRecoveries: state.taskRetryRecoveries.length,
+      },
+    };
   }
 
   /**

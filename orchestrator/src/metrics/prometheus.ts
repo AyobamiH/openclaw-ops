@@ -159,6 +159,8 @@ let server: Server | null = null;
 export async function startMetricsServer(): Promise<void> {
   try {
     app = express();
+    const metricsPort = Number.parseInt(process.env.PROMETHEUS_PORT || "9100", 10);
+    const metricsHost = process.env.PROMETHEUS_HOST || "0.0.0.0";
 
     // Health check endpoint
     app.get("/health", (_req: Request, res: Response) => {
@@ -171,11 +173,24 @@ export async function startMetricsServer(): Promise<void> {
       res.end(await metricsRegister.metrics());
     });
 
-    server = createServer(app);
+    const localServer = createServer(app);
+    server = localServer;
 
-    server.listen(9100, "0.0.0.0", () => {
-      console.log(`✓ Prometheus metrics available at http://0.0.0.0:9100/metrics`);
-      console.log(`✓ Health check at http://0.0.0.0:9100/health`);
+    await new Promise<void>((resolve, reject) => {
+      const onError = (error: Error) => {
+        localServer.off("error", onError);
+        reject(error);
+      };
+
+      localServer.once("error", onError);
+      localServer.listen(metricsPort, metricsHost, () => {
+        localServer.off("error", onError);
+        console.log(
+          `✓ Prometheus metrics available at http://${metricsHost}:${metricsPort}/metrics`,
+        );
+        console.log(`✓ Health check at http://${metricsHost}:${metricsPort}/health`);
+        resolve();
+      });
     });
   } catch (error) {
     console.error("Failed to start metrics server:", error);

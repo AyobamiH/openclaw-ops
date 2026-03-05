@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenClaw Operator Console</title>
+    <link rel="stylesheet" href="/operator/assets/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="left-rail">
+        <div class="brand-block">
+          <p class="eyebrow">OpenClaw</p>
+          <h1>Operator Console</h1>
+          <p class="muted">
+            Private control-plane UI for governed runtime operations.
+          </p>
+        </div>
+
+        <nav class="nav-stack" id="nav-stack">
+          <button class="nav-item active" data-tab="overview">Overview</button>
+          <button class="nav-item" data-tab="tasks">Tasks</button>
+          <button class="nav-item" data-tab="approvals">Approvals</button>
+          <button class="nav-item" data-tab="agents">Agents</button>
+          <button class="nav-item" data-tab="governance">Governance</button>
+          <button class="nav-item" data-tab="health">System Health</button>
+          <button class="nav-item" data-tab="activity">Activity</button>
+          <button class="nav-item" data-tab="knowledge">Knowledge</button>
+        </nav>
+
+        <div class="proof-box">
+          <p class="eyebrow">Public Proof Surface</p>
+          <p class="muted">
+            `openclawdbot` remains a separate proof/community surface.
+          </p>
+          <a id="proof-link" class="proof-link" href="#" target="_blank" rel="noreferrer">
+            Open Public Proof Surface
+          </a>
+        </div>
+      </aside>
+
+      <main class="main-panel">
+        <header class="top-bar">
+          <div class="token-row">
+            <label for="token-input">Bearer Token</label>
+            <input
+              id="token-input"
+              type="password"
+              placeholder="Paste API token for protected operator endpoints"
+              autocomplete="off"
+            />
+            <button id="save-token-btn" class="btn">Save Token</button>
+          </div>
+          <div class="top-actions">
+            <label class="toggle">
+              <input type="checkbox" id="show-admin-tasks-toggle" />
+              <span>Show admin tasks</span>
+            </label>
+            <button id="refresh-all-btn" class="btn btn-primary">Refresh</button>
+          </div>
+        </header>
+
+        <section id="global-alert" class="alert hidden"></section>
+
+        <section id="tab-overview" class="tab-page active">
+          <div class="panel-header">
+            <h2>Overview</h2>
+            <p>Runtime truth from protected operator summary surfaces.</p>
+          </div>
+          <div id="overview-cards" class="card-grid"></div>
+          <div id="degraded-warnings" class="stack"></div>
+          <div class="panel">
+            <div class="panel-title">Recent Tasks</div>
+            <div id="overview-recent-tasks"></div>
+          </div>
+        </section>
+
+        <section id="tab-tasks" class="tab-page">
+          <div class="panel-header">
+            <h2>Tasks</h2>
+            <p>
+              Curated task runner. Queue acknowledgment is real; downstream success
+              may still depend on approvals and external dependencies.
+            </p>
+          </div>
+          <div id="tasks-grid" class="task-grid"></div>
+        </section>
+
+        <section id="tab-approvals" class="tab-page">
+          <div class="panel-header">
+            <h2>Approvals</h2>
+            <p>Explicit trust gate for sensitive task execution.</p>
+          </div>
+          <div class="two-col">
+            <div class="panel">
+              <div class="panel-title">Pending Approvals</div>
+              <div id="approvals-table"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">Decision</div>
+              <div id="approval-detail"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-agents" class="tab-page">
+          <div class="panel-header">
+            <h2>Agents</h2>
+            <p>
+              Declared vs spawned-worker vs service-operational truth. Manifest
+              presence is not service-operational proof.
+            </p>
+          </div>
+          <div class="panel">
+            <div class="panel-title">Agent Operational Matrix</div>
+            <div id="agents-table"></div>
+          </div>
+        </section>
+
+        <section id="tab-governance" class="tab-page">
+          <div class="panel-header">
+            <h2>Governance</h2>
+            <p>Visibility into approvals, retry backlog, delivery backlog, and governed skills.</p>
+          </div>
+          <div id="governance-cards" class="card-grid"></div>
+        </section>
+
+        <section id="tab-health" class="tab-page">
+          <div class="panel-header">
+            <h2>System Health</h2>
+            <p>
+              Health routing state and persistence state are shown separately from
+              downstream dependency behavior.
+            </p>
+          </div>
+          <div id="health-cards" class="card-grid"></div>
+          <div class="panel">
+            <div class="panel-title">Current Health Notes</div>
+            <div id="health-notes"></div>
+          </div>
+        </section>
+
+        <section id="tab-activity" class="tab-page">
+          <div class="panel-header">
+            <h2>Activity</h2>
+            <p>Recent queue outcomes and agent memory timeline snapshots.</p>
+          </div>
+          <div class="panel">
+            <div class="panel-title">Recent Task Outcomes</div>
+            <div id="activity-tasks"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-title">Agent Memory Recall</div>
+            <div id="activity-memory"></div>
+          </div>
+        </section>
+
+        <section id="tab-knowledge" class="tab-page">
+          <div class="panel-header">
+            <h2>Knowledge</h2>
+            <p>Summary is public-read; query is protected operator workflow.</p>
+          </div>
+          <div class="two-col">
+            <div class="panel">
+              <div class="panel-title">Knowledge Summary</div>
+              <div id="knowledge-summary"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">Knowledge Query</div>
+              <form id="knowledge-query-form" class="form-stack">
+                <label for="knowledge-query-input">Query</label>
+                <textarea
+                  id="knowledge-query-input"
+                  rows="5"
+                  placeholder="Ask a focused question about runtime behavior, risks, or operations."
+                  required
+                ></textarea>
+                <button type="submit" class="btn btn-primary">Run Query</button>
+              </form>
+              <div id="knowledge-query-result"></div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/operator/assets/app.js"></script>
+  </body>
+</html>

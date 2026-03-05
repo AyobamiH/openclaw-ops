@@ -50,9 +50,26 @@ export const PersistenceExportSchema = z.object({
 
 // Persistence Historical Query Schema
 export const PersistenceHistoricalSchema = z.object({
-  days: z.number().int().min(1).max(365).optional().default(30),
+  days: z.coerce.number().int().min(1).max(365).optional().default(30),
   metric: z.string().max(255).optional(),
   aggregation: z.enum(['raw', 'hourly', 'daily']).optional().default('raw'),
+});
+
+export const TaskRunsQuerySchema = z.object({
+  type: z.string().max(120).optional(),
+  status: z.enum(['pending', 'running', 'success', 'failed', 'retrying']).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+  offset: z.coerce.number().int().min(0).max(100000).optional().default(0),
+});
+
+export const TaskRunDetailParamsSchema = z.object({
+  runId: z.string().min(1).max(255),
+});
+
+export const SkillsAuditQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(1000).optional().default(100),
+  offset: z.coerce.number().int().min(0).max(100000).optional().default(0),
+  deniedOnly: z.coerce.boolean().optional().default(false),
 });
 
 // Task trigger schema (orchestrator queue enqueue API)
