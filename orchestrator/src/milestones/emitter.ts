@@ -111,6 +111,9 @@ export class MilestoneEmitter {
       const sig = signEnvelope(envelope, secret);
 
       try {
+        console.log(
+          `[milestones] deliver attempt milestoneId=${record.milestoneId} url=${ingestUrl}`,
+        );
         const res = await fetch(ingestUrl, {
           method: 'POST',
           headers: {
@@ -129,15 +132,24 @@ export class MilestoneEmitter {
           const body = (await res.json()) as { status?: string };
           record.status = body.status === 'duplicate' ? 'duplicate' : 'delivered';
           state.lastMilestoneDeliveryAt = timestamp;
+          console.log(
+            `[milestones] deliver success milestoneId=${record.milestoneId} status=${record.status} http=${res.status}`,
+          );
           changed = true;
         } else if (res.status >= 400 && res.status < 500) {
           const body = await res.text().catch(() => '');
           record.status = 'rejected';
           record.lastError = `HTTP ${res.status}: ${body.slice(0, 200)}`;
+          console.warn(
+            `[milestones] deliver rejected milestoneId=${record.milestoneId} http=${res.status}`,
+          );
           changed = true;
         } else {
           record.lastError = `HTTP ${res.status}`;
           record.status = record.attempts >= MAX_DELIVERY_ATTEMPTS ? 'dead-letter' : 'retrying';
+          console.warn(
+            `[milestones] deliver retry milestoneId=${record.milestoneId} http=${res.status} attempts=${record.attempts}`,
+          );
           changed = true;
         }
       } catch (err) {
@@ -145,6 +157,9 @@ export class MilestoneEmitter {
         record.attempts += 1;
         record.lastError = (err as Error).message;
         record.status = record.attempts >= MAX_DELIVERY_ATTEMPTS ? 'dead-letter' : 'retrying';
+        console.warn(
+          `[milestones] deliver error milestoneId=${record.milestoneId} attempts=${record.attempts} error=${(err as Error).message}`,
+        );
         changed = true;
       }
     }
