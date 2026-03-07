@@ -1,8 +1,9 @@
 /**
  * Tool Gate - Runtime Permission Enforcement
- * 
- * Intercepts all skill calls from agents and enforces permissions.
- * Logs every invocation for audit trail.
+ *
+ * ToolGate is a runtime authorization and audit preflight. It does not execute
+ * skill bodies or provide host-level containment; it validates task/skill
+ * intent and records the attempt for audit.
  */
 
 import type { ToolInvocation, ToolInvocationLog } from './types.js';
@@ -10,12 +11,32 @@ import { getAgentRegistry } from './agentRegistry.js';
 
 export { ToolInvocation, ToolInvocationLog };
 
-/**
- * Tool Gate - enforces permissions at runtime
- */
 export class ToolGate {
   private invocationLog: ToolInvocation[] = [];
   private agentRegistry: Awaited<ReturnType<typeof getAgentRegistry>> | null = null;
+
+  private normalizeBoundaryPath(value: string): string {
+    return value
+      .replace(/\\/g, '/')
+      .replace(/^\.\//, '')
+      .replace(/^\/+/, '')
+      .replace(/\/+/g, '/')
+      .replace(/\/$/, '');
+  }
+
+  private pathMatchesBoundary(targetPath: string, boundary: string): boolean {
+    const normalizedTarget = this.normalizeBoundaryPath(targetPath);
+    const normalizedBoundary = this.normalizeBoundaryPath(boundary);
+
+    if (!normalizedTarget || !normalizedBoundary) {
+      return false;
+    }
+
+    return normalizedTarget === normalizedBoundary
+      || normalizedTarget.startsWith(`${normalizedBoundary}/`)
+      || normalizedTarget.endsWith(`/${normalizedBoundary}`)
+      || normalizedTarget.includes(`/${normalizedBoundary}/`);
+  }
 
   async initialize(): Promise<void> {
     this.agentRegistry = await getAgentRegistry();
@@ -80,10 +101,48 @@ export class ToolGate {
     return { allowed: true };
   }
 
+  canReadPath(agentId: string, targetPath: string): { allowed: boolean; reason?: string } {
+    if (!this.agentRegistry) {
+      return {
+        allowed: false,
+        reason: 'Agent registry unavailable',
+      };
+    }
+
+    const agent = this.agentRegistry.getAgent(agentId);
+    if (!agent) {
+      return {
+        allowed: false,
+        reason: `Agent not found: ${agentId}`,
+      };
+    }
+
+    const readPaths = agent.permissions?.fileSystem?.readPaths ?? [];
+    if (!Array.isArray(readPaths) || readPaths.length === 0) {
+      return {
+        allowed: false,
+        reason: `Agent ${agentId} has no manifest file read paths`,
+      };
+    }
+
+    const allowed = readPaths.some((allowedPath) => this.pathMatchesBoundary(targetPath, allowedPath));
+    if (!allowed) {
+      return {
+        allowed: false,
+        reason: `Path not in agent manifest read allowlist: ${targetPath}`,
+      };
+    }
+
+    return { allowed: true };
+  }
+
   /**
-   * Execute a skill with permission checking
+   * Run a ToolGate preflight for an agent -> skill intent.
+   *
+   * This method validates the declared call and records an audit event. It does
+   * not execute the downstream skill implementation.
    */
-  async executeSkill(
+  async preflightSkillAccess(
     agentId: string,
     skillId: string,
     args: Record<string, any>,
@@ -102,6 +161,8 @@ export class ToolGate {
       skillId,
       args,
       timestamp: new Date().toISOString(),
+      mode: typeof args.mode === 'string' ? args.mode : undefined,
+      taskType: typeof args.taskType === 'string' ? args.taskType : undefined,
       allowed: permission.allowed,
       reason: permission.reason,
     };
@@ -118,13 +179,15 @@ export class ToolGate {
     }
 
     try {
-      console.log(`[ToolGate] ✓ ALLOWED: ${agentId} → ${skillId}`);
+      console.log(`[ToolGate] ✓ ALLOWED: ${agentId} → ${skillId} (preflight)`);
 
-      // Execute skill (placeholder - actual execution depends on skill registry)
-      // In practice, this would delegate to the actual skill executor
       return {
         success: true,
-        data: { skillExecuted: skillId },
+        data: {
+          authorized: true,
+          mode: "preflight",
+          skillId,
+        },
       };
     } catch (error: any) {
       console.error(`[ToolGate] ERROR in ${skillId}:`, error.message);
@@ -133,6 +196,24 @@ export class ToolGate {
         error: error.message,
       };
     }
+  }
+
+  /**
+   * Backward-compatible alias retained for existing callers.
+   *
+   * Important: despite the legacy name, this still performs ToolGate preflight
+   * only. It does not execute the skill body.
+   */
+  async executeSkill(
+    agentId: string,
+    skillId: string,
+    args: Record<string, any>,
+  ): Promise<{
+    success: boolean;
+    data?: any;
+    error?: string;
+  }> {
+    return this.preflightSkillAccess(agentId, skillId, args);
   }
 
   /**
@@ -202,4 +283,3 @@ export async function getToolGate(): Promise<ToolGate> {
   }
   return gate;
 }
-

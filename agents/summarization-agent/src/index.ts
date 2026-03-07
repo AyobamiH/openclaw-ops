@@ -300,6 +300,10 @@ async function main() {
   } else {
     process.stdout.write(JSON.stringify(result));
   }
+
+  if (result.success !== true) {
+    process.exitCode = 1;
+  }
 }
 
 void main().catch((error) => {

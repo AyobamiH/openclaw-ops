@@ -2,6 +2,27 @@
   "docsPath": "/app/docs",
   "logsDir": "/app/logs",
   "stateFile": "/app/data/orchestrator-state.json",
+  "corsAllowedOrigins": [
+    "https://preview--openclaw-operator-station.lovable.app"
+  ],
+  "corsAllowedMethods": [
+    "GET",
+    "POST"
+  ],
+  "corsAllowedHeaders": [
+    "Authorization",
+    "Content-Type"
+  ],
+  "corsExposedHeaders": [
+    "X-Request-Id",
+    "X-API-Key-Expires",
+    "ratelimit-limit",
+    "ratelimit-remaining",
+    "ratelimit-reset",
+    "Retry-After"
+  ],
+  "corsAllowCredentials": false,
+  "corsMaxAgeSeconds": 600,
   "milestoneIngestUrl": "",
   "milestoneFeedPath": "/app/data/milestones-feed.json",
   "gitPushOnMilestone": false

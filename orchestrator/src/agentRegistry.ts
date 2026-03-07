@@ -75,11 +75,19 @@ export class AgentRegistry {
     console.log('[AgentRegistry] Initializing...');
 
     try {
-      const agentDirs = await fs.readdir(this.agentsPath);
+      const agentEntries = await fs.readdir(this.agentsPath, {
+        withFileTypes: true,
+      });
 
-      for (const agentDir of agentDirs) {
+      for (const entry of agentEntries) {
+        const agentDir = entry.name;
         // Skip special directories
-        if (agentDir.startsWith('.') || agentDir === 'AGENT_TEMPLATE') {
+        if (
+          !entry.isDirectory() ||
+          agentDir.startsWith('.') ||
+          agentDir === 'AGENT_TEMPLATE' ||
+          agentDir === 'shared'
+        ) {
           continue;
         }
 
