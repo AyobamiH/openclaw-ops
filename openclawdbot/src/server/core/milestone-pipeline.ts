@@ -7,8 +7,6 @@ import { createHmac } from 'node:crypto';
 
 export const DEFAULT_FEED_URL =
   'https://cdn.jsdelivr.net/gh/AyobamiH/openclaw-ops@master/orchestrator/data/milestones-feed.json';
-export const DEFAULT_SIGNING_SECRET =
-  '96a9cb3cbfcd8f54ffd3255c5ab526dec5c5acf343eda62751bac5e682ebade3';
 export const MILESTONE_WIKI_PAGE = 'milestones-feed';
 export const REALTIME_CHANNEL = 'milestones_feed';
 
@@ -104,7 +102,7 @@ const BOOTSTRAP_TEMPLATES: BootstrapTemplate[] = [
     id: 'nightly.batch',
     minutesAgo: 18,
     scope: 'runtime',
-    claim: 'Nightly batch completed: 2 docs synced, 3 items marked for draft.',
+    claim: 'Nightly batch completed: 2 docs synced, 3 priority items selected for draft.',
     evidence: [
       {
         type: 'log',
@@ -113,7 +111,7 @@ const BOOTSTRAP_TEMPLATES: BootstrapTemplate[] = [
       },
     ],
     riskStatus: 'on-track',
-    nextAction: 'Process the marked queue items while the queue is fresh.',
+    nextAction: 'Process the selected priority queue items while the queue is fresh.',
     source: 'orchestrator',
   },
   {
@@ -184,7 +182,10 @@ function signEntry(entry: Omit<FeedEntry, 'signature'>, secret: string): string 
     .digest('hex');
 }
 
-function buildInitialRemoteFeed(now = new Date()): RemoteFeed {
+export function buildInitialRemoteFeed(
+  secret: string,
+  now = new Date()
+): RemoteFeed {
   const entries = BOOTSTRAP_TEMPLATES.map((template) => {
     const timestampUtc = new Date(
       now.getTime() - template.minutesAgo * 60_000
@@ -207,7 +208,7 @@ function buildInitialRemoteFeed(now = new Date()): RemoteFeed {
 
     return {
       ...unsigned,
-      signature: signEntry(unsigned, DEFAULT_SIGNING_SECRET),
+      signature: signEntry(unsigned, secret),
     };
   });
 
@@ -217,9 +218,9 @@ function buildInitialRemoteFeed(now = new Date()): RemoteFeed {
   };
 }
 
-const INITIAL_REMOTE_FEED: RemoteFeed = buildInitialRemoteFeed();
-
-export const INITIAL_WIKI_FEED = JSON.stringify(INITIAL_REMOTE_FEED);
+export function buildInitialWikiFeed(secret: string, now = new Date()): string {
+  return JSON.stringify(buildInitialRemoteFeed(secret, now));
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;

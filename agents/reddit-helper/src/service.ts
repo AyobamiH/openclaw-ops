@@ -67,9 +67,36 @@ interface KnowledgePack {
   docs: KnowledgePackDoc[];
 }
 
+interface ServiceState {
+  lastProcessedAt?: string;
+  processedIds?: string[];
+  lastSeenCursor?: string;
+  budgetDate?: string;
+  llmCallsToday?: number;
+  tokensToday?: number;
+  budgetStatus?: "ok" | "exhausted";
+  lastBudgetExceededAt?: string;
+  consecutiveFailures?: number;
+  backoffUntil?: string | null;
+}
+
+interface ServiceLoopConfig {
+  maxJobsPerCycle: number;
+  minSleepMs: number;
+  backoffBaseMs: number;
+  backoffMaxMs: number;
+  jitter: boolean;
+}
+
 const telemetry = new Telemetry({ component: "reddit-helper-service" });
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const DEFAULT_PROCESSED_ID_LIMIT = 500;
+const DEFAULT_MAX_JOBS_PER_CYCLE = 3;
+const DEFAULT_MIN_SLEEP_MS = 1_500;
+const DEFAULT_BACKOFF_BASE_MS = 5_000;
+const DEFAULT_BACKOFF_MAX_MS = 600_000;
+const DEFAULT_POLL_INTERVAL_MS = 60_000;
 
 function assertServiceBoundary() {
   if (process.env.ALLOW_DIRECT_SERVICE !== "true") {
@@ -156,35 +183,130 @@ async function saveState(path: string, state: OrchestratorState) {
   await writeFile(path, JSON.stringify(state, null, 2), "utf-8");
 }
 
-async function loadServiceState(path: string): Promise<{ lastProcessedAt?: string }>
-{
+async function loadServiceState(path: string): Promise<ServiceState> {
   try {
     const raw = await readFile(path, "utf-8");
-    return JSON.parse(raw) as { lastProcessedAt?: string };
+    return JSON.parse(raw) as ServiceState;
   } catch {
     return {};
   }
 }
 
-async function saveServiceState(path: string, state: { lastProcessedAt?: string }) {
+async function saveServiceState(path: string, state: ServiceState) {
   await ensureDir(path);
   await writeFile(path, JSON.stringify(state, null, 2), "utf-8");
 }
 
+function parsePositiveIntEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
+function loadServiceLoopConfig(): ServiceLoopConfig {
+  return {
+    maxJobsPerCycle: parsePositiveIntEnv(
+      "REDDIT_HELPER_MAX_JOBS_PER_CYCLE",
+      DEFAULT_MAX_JOBS_PER_CYCLE,
+    ),
+    minSleepMs: parsePositiveIntEnv(
+      "REDDIT_HELPER_MIN_SLEEP_MS",
+      DEFAULT_MIN_SLEEP_MS,
+    ),
+    backoffBaseMs: parsePositiveIntEnv(
+      "REDDIT_HELPER_BACKOFF_BASE_MS",
+      DEFAULT_BACKOFF_BASE_MS,
+    ),
+    backoffMaxMs: parsePositiveIntEnv(
+      "REDDIT_HELPER_BACKOFF_MAX_MS",
+      DEFAULT_BACKOFF_MAX_MS,
+    ),
+    jitter:
+      (process.env.REDDIT_HELPER_JITTER ?? "true").toLowerCase() !== "false",
+  };
+}
+
+function normalizeServiceState(state: ServiceState): ServiceState {
+  return {
+    ...state,
+    processedIds: state.processedIds ?? [],
+    llmCallsToday: state.llmCallsToday ?? 0,
+    tokensToday: state.tokensToday ?? 0,
+    consecutiveFailures: state.consecutiveFailures ?? 0,
+    backoffUntil: state.backoffUntil ?? null,
+  };
+}
+
+export function selectEligibleDrafts(
+  drafts: RssDraftRecord[],
+  serviceState: ServiceState,
+  maxJobsPerCycle: number,
+) {
+  const processedIds = new Set(serviceState.processedIds ?? []);
+  return drafts
+    .filter((draft) => !processedIds.has(draft.draftId))
+    .sort((left, right) => {
+      return new Date(left.queuedAt).getTime() - new Date(right.queuedAt).getTime();
+    })
+    .slice(0, maxJobsPerCycle);
+}
+
+function rememberProcessedId(serviceState: ServiceState, draftId: string) {
+  const processedIds = [draftId, ...(serviceState.processedIds ?? []).filter((id) => id !== draftId)];
+  serviceState.processedIds = processedIds.slice(0, DEFAULT_PROCESSED_ID_LIMIT);
+}
+
+function computeBackoffDelay(
+  consecutiveFailures: number,
+  config: ServiceLoopConfig,
+) {
+  const exponent = Math.max(0, consecutiveFailures - 1);
+  const delay = Math.min(
+    config.backoffMaxMs,
+    config.backoffBaseMs * 2 ** exponent,
+  );
+  if (!config.jitter) return delay;
+  return Math.round(delay * (0.85 + Math.random() * 0.3));
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function runOnce(config: AgentConfig) {
   const state = await loadState(config.orchestratorStatePath);
-  const serviceState = await loadServiceState(config.serviceStatePath);
-  const lastProcessed = serviceState.lastProcessedAt ? new Date(serviceState.lastProcessedAt).getTime() : 0;
+  const loopConfig = loadServiceLoopConfig();
+  const serviceState = normalizeServiceState(
+    await loadServiceState(config.serviceStatePath),
+  );
+  const backoffUntilMs = serviceState.backoffUntil
+    ? Date.parse(serviceState.backoffUntil)
+    : NaN;
+  if (Number.isFinite(backoffUntilMs) && backoffUntilMs > Date.now()) {
+    return;
+  }
 
-  const drafts = (state.rssDrafts ?? []).filter((draft) => new Date(draft.queuedAt).getTime() > lastProcessed);
-  if (!drafts.length) return;
+  const drafts = selectEligibleDrafts(
+    state.rssDrafts ?? [],
+    serviceState,
+    loopConfig.maxJobsPerCycle,
+  );
+  if (!drafts.length) {
+    serviceState.consecutiveFailures = 0;
+    serviceState.backoffUntil = null;
+    await saveServiceState(config.serviceStatePath, serviceState);
+    return;
+  }
 
   const latestPack = await loadKnowledgePackFromDir(config.knowledgePackDir);
 
-  for (const draft of drafts) {
+  for (const [index, draft] of drafts.entries()) {
     const docSnippet = pickDocSnippet(latestPack?.pack, draft);
     const replyText = buildReply(draft, docSnippet);
     const confidence = deriveConfidence(draft.tag);
+    const processedAt = new Date().toISOString();
 
     const record: RedditReplyRecord = {
       queueId: draft.draftId,
@@ -194,7 +316,7 @@ async function runOnce(config: AgentConfig) {
       responder: "reddit-helper-service",
       confidence,
       status: "drafted",
-      respondedAt: new Date().toISOString(),
+      respondedAt: processedAt,
       link: draft.link,
       notes: `rssDraft:${draft.draftId}`,
       rssDraftId: draft.draftId,
@@ -209,12 +331,12 @@ async function runOnce(config: AgentConfig) {
       stage: "service",
       queueId: draft.draftId,
       subreddit: draft.subreddit,
-      replyText,
-      cta: null,
-      pillar: draft.pillar,
-      link: draft.link,
-      createdAt: new Date().toISOString(),
-    });
+        replyText,
+        cta: null,
+        pillar: draft.pillar,
+        link: draft.link,
+        createdAt: processedAt,
+      });
 
     if (config.devvitQueuePath) {
       await appendJsonl(config.devvitQueuePath, {
@@ -223,32 +345,56 @@ async function runOnce(config: AgentConfig) {
         subreddit: draft.subreddit,
         link: draft.link,
         body: replyText,
-        createdAt: new Date().toISOString(),
+        createdAt: processedAt,
         tag: draft.tag,
       });
     }
 
+    rememberProcessedId(serviceState, draft.draftId);
+    serviceState.lastProcessedAt = processedAt;
+    serviceState.lastSeenCursor = draft.draftId;
+
     await telemetry.info("draft.generated", { queueId: draft.draftId, subreddit: draft.subreddit });
+
+    if (index < drafts.length - 1) {
+      await sleep(loopConfig.minSleepMs);
+    }
   }
 
   await saveState(config.orchestratorStatePath, state);
-  await saveServiceState(config.serviceStatePath, { lastProcessedAt: new Date().toISOString() });
+  serviceState.consecutiveFailures = 0;
+  serviceState.backoffUntil = null;
+  await saveServiceState(config.serviceStatePath, serviceState);
 }
 
 async function loop() {
   assertServiceBoundary();
   const config = await loadConfig();
+  const loopConfig = loadServiceLoopConfig();
   while (true) {
     try {
       await runOnce(config);
+      await sleep(DEFAULT_POLL_INTERVAL_MS);
     } catch (error) {
       await telemetry.error("service.error", { message: (error as Error).message });
+      const serviceState = normalizeServiceState(
+        await loadServiceState(config.serviceStatePath),
+      );
+      serviceState.consecutiveFailures = (serviceState.consecutiveFailures ?? 0) + 1;
+      const delayMs = computeBackoffDelay(
+        serviceState.consecutiveFailures,
+        loopConfig,
+      );
+      serviceState.backoffUntil = new Date(Date.now() + delayMs).toISOString();
+      await saveServiceState(config.serviceStatePath, serviceState);
+      await sleep(delayMs);
     }
-    await new Promise((resolve) => setTimeout(resolve, 60_000));
   }
 }
 
-loop().catch(async (error) => {
-  await telemetry.error("service.fatal", { message: (error as Error).message });
-  process.exit(1);
-});
+if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+  loop().catch(async (error) => {
+    await telemetry.error("service.fatal", { message: (error as Error).message });
+    process.exit(1);
+  });
+}
