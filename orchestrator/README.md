@@ -51,3 +51,235 @@ Useful targeted checks:
   paths where useful.
 - The active documentation surface for runtime and operations lives under
   `../docs/`.
+
+## Runtime Task Surface (Operational Truth)
+
+- **Internal runtime allowlist (broader):** enforced by
+  `src/taskHandlers.ts` (`ALLOWED_TASK_TYPES`) for orchestrator-internal queue
+  routing.
+- **Public trigger subset (narrower):** enforced by
+  `src/middleware/validation.ts` (`TaskTriggerSchema`) on `POST /api/tasks/trigger`.
+- **Internal-only tasks:** `startup`, `doc-change` (internally allowlisted but
+  not publicly triggerable).
+- **Default approval-gated tasks:** `agent-deploy`, `build-refactor` (from the
+  `approvalGate` defaults unless `approvalRequiredTaskTypes` overrides them).
+- **Dynamic approval gate:** any allowlisted task can still require approval if
+  `payload.requiresApproval === true`.
+- **Per-task operator classification:** see `../docs/reference/task-types.md`
+  for the current internal-only / public-triggerable / approval-gated /
+  confirmed-working / degraded split.
+
+## Current Runtime Confidence
+
+- **Confirmed working paths:**
+  - `heartbeat`
+  - `build-refactor` after approval
+  - `market-research` in query-only mode
+  - `drift-repair` (`2026-03-07` local smoke: `run_id=auto-8ef2eb1a3ff49ddd4237ee019d646b4810f9418c699b3a2a1de7682e388fd502`, knowledge-pack verification recorded in `/api/tasks/runs` and `/api/dashboard/overview.selfHealing`)
+  - `summarize-content` (`2026-03-07` spawned-worker sweep via `/api/tasks/trigger` -> `/api/tasks/runs` -> `/api/memory/recall`)
+  - `normalize-data` (`2026-03-07` spawned-worker sweep)
+  - `data-extraction` inline-source lane (`2026-03-07` spawned-worker sweep)
+  - `security-audit` (`2026-03-07` spawned-worker sweep; current worker logic is local/simulated)
+  - `system-monitor` (`2026-03-07` spawned-worker sweep; current worker logic is local/simulated)
+  - `content-generate` (`2026-03-07` spawned-worker sweep; current worker logic is local/template-based)
+  - `integration-workflow` (`2026-03-07` spawned-worker sweep; current worker logic is local/simulated)
+  - `qa-verification` (`2026-03-07` live smoke: dry-run `run_id=auto-ab9d0a9c26592ea10df5debebc06ada2ad4e8c69a5c2c87551bc487323e38c0b`, real `build-verify` run `run_id=auto-873d79d22f76f8513265122ea60b438a56b72dba1775b22eef894a21f59ba2c7`, execute-mode `testRunner` evidence visible in `/api/skills/audit`)
+  - `skill-audit` (`2026-03-07` live smoke: `run_id=auto-422824bdb596425df615628fe035edd607304a5a7dd052b85706b3e2748b24d1`)
+- **Approval-gated but not yet confirmed end-to-end:**
+  - `agent-deploy`
+- **Partially operational / degraded paths:**
+  - `reddit-response`
+  - `send-digest`
+  - `market-research` URL mode
+- **Externally dependent path:**
+  - `rss-sweep` (depends on runtime config + external network/feed availability)
+- **Historical-only evidence in protected recent-task view (not safely re-run in the `2026-03-07` sweep):**
+  - `nightly-batch` (`2026-03-06T23:00:01.268Z` in `/api/dashboard/overview.recentTasks`)
+    - `nightly-batch` now derives `selectedForDraft` from RSS routing tags instead of a redundant score check: only `priority` leads are auto-selected for `reddit-response`; `manual-review` leads create mandatory operator approvals; and the top `10` `draft` leads create optional promotion approvals. `reddit-response` now consumes only selected queue items unless an approved review-gated queue payload is replayed.
+
+Safe-sweep note: `send-digest` was not re-run on `2026-03-07` because the live
+config points at an outbound notifier target; routing truth and historical task
+success remain separate from safe local re-run truth.
+
+Current stabilisation truth after the approved production-grade pass:
+
+- Auto `doc-change -> drift-repair` is still threshold-driven, but identical
+  buffered doc sets now cool down before re-enqueueing another auto repair.
+- Fast-start no longer disables doc/cookbook freshness; the runtime now
+  constructs the indexers immediately, attaches watch hooks, and warms the
+  initial crawl after HTTP startup so `3312` does not stall during boot.
+- The canonical non-fast-start path is now proven on `3312`: Mongo-backed
+  persistence, MemoryScheduler, and KnowledgeIntegration all start cleanly, and
+  hourly snapshots now write under `resolve(config.logsDir, "snapshots")`
+  instead of the legacy `orchestrator/data/snapshots` path.
+- `/api/agents/overview` now separates `serviceAvailable` from
+  `serviceInstalled` and `serviceRunning`; the orchestrator no longer implies
+  host-running proof for agent services it cannot actually verify.
+- Placeholder agent systemd units are now explicitly gated on `src/service.ts`
+  with `ConditionPathExists=` so unfinished daemon surfaces do not present as
+  runnable services.
+- `security-audit`, `summarize-content`, and `system-monitor` no longer report
+  green when the agent returns `success !== true`.
+- `reddit-response` still remains partially operational because of provider
+  dependence, but its local context path is now stronger: `reddit-helper`
+  pulls runtime doctrine/model defaults from `workspace/orchestrator_config.json`
+  and the latest `drift-repair` pack remains dual-source (OpenClaw docs +
+  OpenAI Cookbook) even for targeted repairs. The helper now also uses
+  service-state backlog dedupe, per-cycle throttles, daily LLM budgets,
+  deterministic local scoring, and local-first hybrid drafting so the model is
+  only used for an optional final polish pass when budget allows. Real helper
+  exceptions now fail the task instead of silently recording a drafted success.
+
+Operational interpretation: queue acceptance and task routing can succeed while
+the downstream dependency chain for a task is still degraded. Approval posture,
+route acceptance, and downstream completion should be read as separate truths.
+The operator-facing self-healing model is now explicit but still partial:
+`/api/dashboard/overview.selfHealing` and `/api/health/extended.repairs`
+expose bounded repair evidence for the live `doc-drift -> drift-repair ->
+knowledge-pack verification` loop and for retry-recovery bookkeeping. This is
+evidence-backed repair coordination, not a claim of universal autonomous
+healing across every task lane.
+
+## Private Operator Console
+
+- **Route:** `GET /operator`
+- **Purpose:** private orchestrator-facing UI shell for non-CLI operators.
+- **Boundary:** this surface is separate from `openclawdbot` (public proof/community).
+- **Auth model:** the UI itself is served locally from orchestrator, and it uses
+  bearer-protected API routes for protected actions/data.
+
+The console is intentionally aligned to current runtime truth and exposes:
+
+- protected aggregation (`/api/dashboard/overview`)
+- protected self-healing summary (`/api/dashboard/overview.selfHealing`,
+  `/api/health/extended.repairs`)
+- auth context (`/api/auth/me`)
+- curated task runner (`/api/tasks/catalog`, `/api/tasks/trigger`)
+- run visibility (`/api/tasks/runs`, `/api/tasks/runs/:runId`)
+- approvals (`/api/approvals/pending`, `/api/approvals/:id/decision`)
+- agents operational matrix (`/api/agents/overview`)
+- governed-skill visibility (`/api/skills/registry`, `/api/skills/policy`, `/api/skills/telemetry`, `/api/skills/audit`) — read-only GET surfaces
+- activity + memory recall (`/api/memory/recall`)
+- liveness + dependency + authoritative health (`/health`, `/api/persistence/health`, `/api/health/extended`)
+- persistence summaries (`/api/persistence/historical`, `/api/persistence/summary`)
+- knowledge summary/query (`/api/knowledge/summary`, `/api/knowledge/query`)
+
+It does **not** convert internal-only tasks (`startup`, `doc-change`) into
+normal user-runnable actions, and it keeps public proof surfaces separate from
+private operator actions.
+
+Route contract for operator/frontends:
+
+- `/api/health/extended`: authoritative protected operator-health surface.
+- `/api/dashboard/overview`: protected operator aggregation surface; useful for
+  queue, approvals, governance, and recent-task visibility, but not
+  authoritative system health.
+- `/api/tasks/runs` and `/api/tasks/runs/:runId` now include bounded `repair`
+  metadata when a task run is part of a tracked repair attempt.
+- `/api/persistence/health`: public persistence dependency truth only.
+- `/health`: shallow public liveness only. Its returned `metrics`,
+  `knowledge`, and `persistence` URLs are internal `localhost` helper links and
+  must not be treated as browser targets by external frontends.
+- `/api/agents/overview`: runtime worker/service truth surface. Prefer
+  `serviceAvailable`, `serviceInstalled`, and `serviceRunning`; the legacy
+  `serviceImplementation` and `serviceOperational` fields remain as
+  compatibility aliases. `serviceRunning=false` is now valid host truth when a
+  unit is absent or inactive; `null` should be reserved for probe-unavailable
+  cases only.
+- `/system-health`: not a backend route; if present in a UI, it is a frontend
+  page path that should consume the routes above.
+
+External Operator Station frontends must also persist the bearer token across
+preview/auth-bridge redirects. In-memory-only token storage is not a reliable
+protected-route strategy when the hosting shell can redirect before protected
+fetches complete.
+
+## Auth + RBAC Runtime Truth
+
+- Protected APIs still require bearer authentication.
+- Server-side RBAC is now enforced on protected routes with role context:
+  - `viewer`: read-only operator visibility
+  - `operator`: task submission + approval decisions
+  - `admin`: export-heavy privileged routes
+- Route authorization is deny-by-default unless explicitly role-annotated.
+- Governed skills remain frontend read-only: no direct skill invocation
+  endpoint is exposed to the UI. Skill execution remains task/approval-flow
+  governed.
+- Audit logging now includes actor, role, request ID, action, and outcome for
+  protected route activity.
+
+## CORS + API Base URL Runtime Truth
+
+- CORS is enforced directly by the orchestrator backend with a strict
+  deny-by-default origin allowlist.
+- Wildcard CORS (`*`) is not used.
+- Disallowed cross-origin requests are rejected by policy (`403`).
+- CORS preflight is validated for requested method and headers before route
+  handlers run.
+- Bearer-auth frontend calls are supported via explicit
+  `Authorization` allow-header.
+- Default allowed methods are `GET, POST` (plus `OPTIONS` for preflight).
+- Default allowed request headers are `Authorization, Content-Type`.
+- Default exposed response headers are `X-Request-Id, X-API-Key-Expires,
+  ratelimit-limit, ratelimit-remaining, ratelimit-reset, Retry-After`.
+- Credentials mode defaults to disabled (`corsAllowCredentials=false`) because
+  the operator API is bearer-token based.
+
+Configuration surface (config file and env overrides):
+
+- `corsAllowedOrigins` / `ORCHESTRATOR_CORS_ALLOWED_ORIGINS`
+  comma-separated exact origins (for example:
+  `https://ops.example.com,https://staging-ops.example.com,http://localhost:5173`).
+- `corsAllowedMethods` / `ORCHESTRATOR_CORS_ALLOWED_METHODS`
+- `corsAllowedHeaders` / `ORCHESTRATOR_CORS_ALLOWED_HEADERS`
+- `corsExposedHeaders` / `ORCHESTRATOR_CORS_EXPOSED_HEADERS`
+- `corsAllowCredentials` / `ORCHESTRATOR_CORS_ALLOW_CREDENTIALS`
+- `corsMaxAgeSeconds` / `ORCHESTRATOR_CORS_MAX_AGE_SECONDS`
+
+Integration note:
+
+- External frontends (including Lovable-hosted frontends) should call the
+  orchestrator API directly at the deployed orchestrator base URL
+  (for example `https://orchestrator.example.com`), and that exact frontend
+  origin must be in the backend CORS allowlist.
+
+## Rate Limiting Policy (Public vs Protected)
+
+- **Public monitoring routes stay separate and lenient:**
+  - `/health`: `1000 requests / 60s / IP`
+  - `/api/persistence/health`: `1000 requests / 60s / IP`
+- **Public lightweight read routes:**
+  - `/api/knowledge/summary`, `/api/openapi.json`: `30 requests / 60s / IP`
+- **Protected pre-auth abuse control:**
+  - protected routes enforce a coarse pre-auth limiter of
+    `300 requests / 60s / IP`
+- **Protected bucket A — viewer-read (`120 / 60s`):**
+  - Global bucket across authenticated read routes (`GET` operator visibility
+    endpoints), keyed by authenticated actor/API key label.
+  - Includes Lovable polling surfaces such as `/api/skills/audit`,
+    `/api/health/extended`, `/api/persistence/summary`,
+    `/api/tasks/runs`, `/api/tasks/runs/:runId`, `/api/dashboard/overview`.
+- **Protected bucket B — operator-write (`30 / 60s`):**
+  - Global bucket across authenticated mutation routes, keyed by authenticated
+    actor/API key label.
+  - Routes: `POST /api/tasks/trigger`,
+    `POST /api/approvals/:id/decision`, `POST /api/knowledge/query`.
+- **Protected bucket C — admin-export (`10 / 60s`):**
+  - Global bucket across admin export routes, keyed by authenticated actor/API
+    key label.
+  - Routes: `GET /api/knowledge/export`, `GET /api/persistence/export`.
+- **Keying model for authenticated buckets:**
+  - Primary key: `req.auth.actor`
+  - Fallback: `req.auth.apiKeyLabel[:version]`
+  - Last-resort fallback (unexpected unauth context): client IP
+
+429 handling contract:
+
+- Protected and public limiters return `ratelimit-limit`,
+  `ratelimit-remaining`, `ratelimit-reset`.
+- `Retry-After` is explicitly returned on 429 responses.
+- Operator clients must back off immediately on 429, respect `Retry-After`
+  when present, otherwise wait until `ratelimit-reset` before retry.
+- Normal operator-console polling is supported by the viewer-read bucket; UI
+  polling should still be staggered/jittered instead of firing synchronized
+  bursts across all panels.
