@@ -11,12 +11,16 @@ Keep OpenClaw documentation synchronized with reality and generate fresh knowled
 
 ### Inputs
 - `doc-diff` payloads from the Orchestrator (`drift-repair` tasks)
-- Local mirrors referenced by `docsPath` and `cookbookPath` in `agent.config.json`
+- Local mirrors referenced by `docsPath` and optional `cookbookPath` in `agent.config.json`
 - Optional escalation context from `orchestratorStatePath`
+
+The knowledge input policy is intentionally broader than markdown-only. The
+agent ingests curated text, code, and config clue files from the mirrored docs
+trees while excluding heavyweight media, notebook, and dataset paths.
 
 ### File Path Scope
 - `docsPath`
-- `cookbookPath`
+- `cookbookPath` (optional supplemental source)
 - `orchestratorStatePath`
 - `knowledgePackDir`
 - `serviceStatePath`

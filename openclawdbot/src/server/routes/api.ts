@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { redis } from '@devvit/web/server';
 import type {
   CommandCenterControlResponse,
   CommandCenterDemandResponse,
@@ -8,15 +7,18 @@ import type {
 import type { MilestoneEvent } from '../../shared/milestones';
 import { COMMAND_CENTER_CONTROL_CLUSTERS } from '../../shared/command-center-static';
 import {
+  MILESTONE_SYNC_AT_KEY,
+} from '../core/milestone-keys';
+import {
   REALTIME_CHANNEL,
   normalizeStoredFeed,
 } from '../core/milestone-pipeline';
 import { FEED_KEY, MAX_FEED_ITEMS, REJECTED_KEY } from './milestones';
-import { LAST_POLL_KEY } from './scheduler';
 import {
   buildCommandCenterDemandResponse,
   loadDemandSummaryFeed,
 } from './demand';
+import { runtimeGet } from '../runtime/standalone-state';
 
 const POLL_STALE_MS = 5 * 60 * 1000;
 
@@ -52,7 +54,7 @@ function getFreshnessDetail(lastPollAt: string | null): {
   if (!lastPollAt) {
     return {
       stale: true,
-      detail: 'Warm poll pending',
+      detail: 'Warm sync pending',
     };
   }
 
@@ -60,7 +62,7 @@ function getFreshnessDetail(lastPollAt: string | null): {
   if (Number.isNaN(timestamp)) {
     return {
       stale: true,
-      detail: 'Poll status unavailable',
+      detail: 'Proof sync status unavailable',
     };
   }
 
@@ -68,14 +70,14 @@ function getFreshnessDetail(lastPollAt: string | null): {
   if (ageMs > POLL_STALE_MS) {
     return {
       stale: true,
-      detail: 'Poll signal is stale',
+      detail: 'Proof sync is stale',
     };
   }
 
   const ageMinutes = Math.max(1, Math.floor(ageMs / 60_000));
   return {
     stale: false,
-    detail: `Last poll ${ageMinutes}m ago`,
+    detail: `Last sync ${ageMinutes}m ago`,
   };
 }
 
@@ -83,9 +85,9 @@ export const api = new Hono();
 
 api.get('/command-center/overview', async (c) => {
   const [feedRaw, deadLetterRaw, lastPollAt] = await Promise.all([
-    redis.get(FEED_KEY),
-    redis.get(REJECTED_KEY),
-    redis.get(LAST_POLL_KEY),
+    runtimeGet(FEED_KEY),
+    runtimeGet(REJECTED_KEY),
+    runtimeGet(MILESTONE_SYNC_AT_KEY),
   ]);
 
   const feed = normalizeStoredFeed(parseJson(feedRaw));
@@ -127,6 +129,7 @@ api.get('/command-center/overview', async (c) => {
   const overview: CommandCenterOverviewResponse = {
     ok: true,
     latest,
+    stale: freshness.stale,
     visibleFeedCount: visibleFeed.length,
     evidenceCount,
     activeLaneCount: activeLanes.length,

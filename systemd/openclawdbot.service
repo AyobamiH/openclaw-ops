@@ -1,0 +1,24 @@
+[Unit]
+Description=OpenClawDBot Service
+After=network-online.target
+PartOf=orchestrator.service
+BindsTo=orchestrator.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/oneclickwebsitedesignfactory/.openclaw/workspace/openclawdbot
+Environment=PATH=/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.12.0/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+Environment=WEBBIT_PORT=3310
+Environment=OPENCLAWDBOT_STATE_PATH=/home/oneclickwebsitedesignfactory/.openclaw/workspace/openclawdbot/data/standalone-state.json
+EnvironmentFile=-/home/oneclickwebsitedesignfactory/.openclaw/workspace/orchestrator/.env
+ExecStartPre=/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.12.0/bin/npm run build
+ExecStart=/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.12.0/bin/node dist/server/index.cjs
+Restart=always
+RestartSec=10
+TimeoutStartSec=120
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

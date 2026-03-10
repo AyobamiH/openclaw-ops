@@ -1,6 +1,5 @@
 import { createHmac } from 'node:crypto';
 import { Hono } from 'hono';
-import { redis, realtime } from '@devvit/web/server';
 import type { CommandCenterDemandResponse } from '../../shared/command-center';
 import { COMMAND_CENTER_DEMAND_SEGMENTS } from '../../shared/command-center-static';
 import type {
@@ -11,6 +10,12 @@ import type {
   DemandSummarySnapshot,
 } from '../../shared/demand-summary';
 import { SIGNING_SECRET_REDIS_KEY } from './forms';
+import {
+  resolveSigningSecret,
+  runtimeGet,
+  runtimeSend,
+  runtimeSet,
+} from '../runtime/standalone-state';
 
 export const DEMAND_SUMMARY_KEY = 'demand:summary:latest';
 const DEMAND_SEEN_KEY_PREFIX = 'demand:summary:seen:';
@@ -178,7 +183,7 @@ export function isDemandSnapshotStale(
 
 async function recordRejection(entry: RejectedEntry): Promise<void> {
   try {
-    const raw = await redis.get(DEMAND_REJECTED_KEY);
+    const raw = await runtimeGet(DEMAND_REJECTED_KEY);
     const list: RejectedEntry[] = raw
       ? (JSON.parse(raw) as RejectedEntry[])
       : [];
@@ -186,14 +191,14 @@ async function recordRejection(entry: RejectedEntry): Promise<void> {
     if (list.length > MAX_REJECTED_ITEMS) {
       list.splice(0, list.length - MAX_REJECTED_ITEMS);
     }
-    await redis.set(DEMAND_REJECTED_KEY, JSON.stringify(list));
+    await runtimeSet(DEMAND_REJECTED_KEY, JSON.stringify(list));
   } catch {
     // Never block ingest on rejection logging.
   }
 }
 
 export async function loadDemandSummaryFeed(): Promise<DemandSummaryFeedResponse> {
-  const raw = await redis.get(DEMAND_SUMMARY_KEY);
+  const raw = await runtimeGet(DEMAND_SUMMARY_KEY);
   let parsed: unknown = null;
 
   try {
@@ -306,7 +311,7 @@ export const demandApi = new Hono();
 
 demandIngest.post('/ingest', async (c) => {
   const now = new Date().toISOString();
-  const secret = await redis.get(SIGNING_SECRET_REDIS_KEY);
+  const secret = await resolveSigningSecret(SIGNING_SECRET_REDIS_KEY);
   if (!secret) {
     return c.json<DemandSummaryIngestResponse>(
       {
@@ -392,7 +397,7 @@ demandIngest.post('/ingest', async (c) => {
 
   const idempotencyKey = body.idempotencyKey.trim();
   const seenKey = DEMAND_SEEN_KEY_PREFIX + idempotencyKey;
-  const alreadySeen = await redis.get(seenKey);
+  const alreadySeen = await runtimeGet(seenKey);
   if (alreadySeen) {
     return c.json<DemandSummaryIngestResponse>(
       { ok: true, status: 'duplicate', summaryId: snapshot.summaryId },
@@ -400,13 +405,20 @@ demandIngest.post('/ingest', async (c) => {
     );
   }
 
-  await redis.set(DEMAND_SUMMARY_KEY, JSON.stringify(snapshot));
-  await redis.set(DEMAND_LAST_UPDATE_KEY, now);
-  await redis.set(seenKey, '1');
-  await realtime.send<DemandSummaryRealtimeMessage>(DEMAND_REALTIME_CHANNEL, {
-    summaryId: snapshot.summaryId,
-    generatedAtUtc: snapshot.generatedAtUtc,
-  });
+  await runtimeSet(DEMAND_SUMMARY_KEY, JSON.stringify(snapshot));
+  await runtimeSet(DEMAND_LAST_UPDATE_KEY, now);
+  await runtimeSet(seenKey, '1');
+  try {
+    await runtimeSend<DemandSummaryRealtimeMessage>(DEMAND_REALTIME_CHANNEL, {
+      summaryId: snapshot.summaryId,
+      generatedAtUtc: snapshot.generatedAtUtc,
+    });
+  } catch (error) {
+    console.warn(
+      '[demand] state committed but realtime broadcast failed:',
+      (error as Error).message
+    );
+  }
 
   return c.json<DemandSummaryIngestResponse>(
     { ok: true, status: 'accepted', summaryId: snapshot.summaryId },

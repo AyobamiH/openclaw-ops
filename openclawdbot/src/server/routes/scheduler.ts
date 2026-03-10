@@ -6,9 +6,12 @@ import type {
   MilestoneRealtimeMessage,
 } from '../../shared/milestones';
 import {
+  MILESTONE_SYNC_AT_KEY,
+} from '../core/milestone-keys';
+import {
+  buildInitialWikiFeed,
   DEFAULT_FEED_URL,
   FeedEntry,
-  INITIAL_WIKI_FEED,
   isLegacyStartupOnlyFeed,
   MILESTONE_WIKI_PAGE,
   normalizeFeedUrl,
@@ -24,7 +27,7 @@ const FEED_KEY = 'milestones:feed';
 const SEEN_KEY_PREFIX = 'milestone:seen:';
 const MAX_FEED_ITEMS = 50;
 export const FEED_URL_REDIS_KEY = 'milestones:feed-url';
-export const LAST_POLL_KEY = 'milestones:last-poll';
+export const LAST_POLL_KEY = MILESTONE_SYNC_AT_KEY;
 
 function sortObjectKeys(obj: unknown): unknown {
   if (Array.isArray(obj)) return obj.map(sortObjectKeys);
@@ -83,7 +86,7 @@ async function refreshWikiFromRemote(feedUrl: string): Promise<void> {
   }
 }
 
-async function readCanonicalWikiFeed(): Promise<RemoteFeed> {
+async function readCanonicalWikiFeed(secret: string): Promise<RemoteFeed> {
   try {
     const wikiPage = await reddit.getWikiPage(
       context.subredditName,
@@ -101,7 +104,8 @@ async function readCanonicalWikiFeed(): Promise<RemoteFeed> {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[scheduler] wiki read failed, reseeding default feed:', msg);
 
-    const fallback = parseRemoteFeedText(INITIAL_WIKI_FEED);
+    const fallbackText = buildInitialWikiFeed(secret);
+    const fallback = parseRemoteFeedText(fallbackText);
     if (!fallback) {
       throw new Error('built-in fallback feed is invalid');
     }
@@ -109,7 +113,7 @@ async function readCanonicalWikiFeed(): Promise<RemoteFeed> {
     await reddit.updateWikiPage({
       subredditName: context.subredditName,
       page: MILESTONE_WIKI_PAGE,
-      content: INITIAL_WIKI_FEED,
+      content: fallbackText,
       reason: 'scheduler recovery',
     });
 
@@ -139,7 +143,7 @@ export async function runPoll(): Promise<PollResult> {
 
   let remoteFeed: RemoteFeed;
   try {
-    remoteFeed = await readCanonicalWikiFeed();
+    remoteFeed = await readCanonicalWikiFeed(secret);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[scheduler] wiki read failed:', msg);

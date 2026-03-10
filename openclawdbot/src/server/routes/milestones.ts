@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { redis, realtime } from '@devvit/web/server';
 import { SIGNING_SECRET_REDIS_KEY } from './forms';
 import { createHmac } from 'node:crypto';
 import type {
@@ -10,10 +9,19 @@ import type {
   MilestoneRealtimeMessage,
 } from '../../shared/milestones';
 import {
+  MILESTONE_SYNC_AT_KEY,
+} from '../core/milestone-keys';
+import {
   normalizeMilestoneEvent,
   normalizeStoredFeed,
   REALTIME_CHANNEL,
 } from '../core/milestone-pipeline';
+import {
+  resolveSigningSecret,
+  runtimeGet,
+  runtimeSend,
+  runtimeSet,
+} from '../runtime/standalone-state';
 
 export const FEED_KEY = 'milestones:feed';
 const SEEN_KEY_PREFIX = 'milestone:seen:';
@@ -61,14 +69,14 @@ export const milestoneIngest = new Hono();
 /** Append a rejection record to the bounded Redis dead-letter list (fire-and-forget). */
 async function recordRejection(entry: RejectedEntry): Promise<void> {
   try {
-    const raw = await redis.get(REJECTED_KEY);
+    const raw = await runtimeGet(REJECTED_KEY);
     const list: RejectedEntry[] = raw
       ? (JSON.parse(raw) as RejectedEntry[])
       : [];
     list.push(entry);
     if (list.length > MAX_REJECTED_ITEMS)
       list.splice(0, list.length - MAX_REJECTED_ITEMS);
-    await redis.set(REJECTED_KEY, JSON.stringify(list));
+    await runtimeSet(REJECTED_KEY, JSON.stringify(list));
   } catch {
     // Non-fatal — never block ingest on dead-letter write
   }
@@ -76,7 +84,7 @@ async function recordRejection(entry: RejectedEntry): Promise<void> {
 
 milestoneIngest.post('/ingest', async (c) => {
   const now = new Date().toISOString();
-  const secret = await redis.get(SIGNING_SECRET_REDIS_KEY);
+  const secret = await resolveSigningSecret(SIGNING_SECRET_REDIS_KEY);
   if (!secret) {
     return c.json<MilestoneIngestResponse>(
       {
@@ -159,7 +167,7 @@ milestoneIngest.post('/ingest', async (c) => {
   // Idempotency check
   const idempotencyKey = body.idempotencyKey.trim();
   const seenKey = SEEN_KEY_PREFIX + idempotencyKey;
-  const alreadySeen = await redis.get(seenKey);
+  const alreadySeen = await runtimeGet(seenKey);
   if (alreadySeen) {
     return c.json<MilestoneIngestResponse>(
       { ok: true, status: 'duplicate', milestoneId: event.milestoneId },
@@ -168,7 +176,7 @@ milestoneIngest.post('/ingest', async (c) => {
   }
 
   // Append to feed (bounded circular buffer in Redis)
-  const feedStr = await redis.get(FEED_KEY);
+  const feedStr = await runtimeGet(FEED_KEY);
   let parsedFeed: unknown = [];
   try {
     parsedFeed = feedStr ? JSON.parse(feedStr) : [];
@@ -180,11 +188,23 @@ milestoneIngest.post('/ingest', async (c) => {
   if (feed.length > MAX_FEED_ITEMS) {
     feed.splice(0, feed.length - MAX_FEED_ITEMS);
   }
-  await redis.set(FEED_KEY, JSON.stringify(feed));
-  await redis.set(seenKey, '1');
+  await runtimeSet(FEED_KEY, JSON.stringify(feed));
+  await runtimeSet(seenKey, '1');
+  await runtimeSet(MILESTONE_SYNC_AT_KEY, now);
 
   // Broadcast to any connected clients for live updates
-  await realtime.send<MilestoneRealtimeMessage>(REALTIME_CHANNEL, { event });
+  try {
+    await runtimeSend<MilestoneRealtimeMessage>(REALTIME_CHANNEL, { event });
+  } catch (error) {
+    console.warn(
+      '[milestones] state committed but realtime broadcast failed:',
+      (error as Error).message
+    );
+  }
+
+  console.log(
+    `[milestones] ingest accepted milestoneId=${event.milestoneId} idempotencyKey=${idempotencyKey}`
+  );
 
   return c.json<MilestoneIngestResponse>(
     { ok: true, status: 'accepted', milestoneId: event.milestoneId },
@@ -202,7 +222,7 @@ milestoneFeed.get('/latest', async (c) => {
     Math.max(1, parseInt(limitParam ?? '20', 10) || 20)
   );
 
-  const feedStr = await redis.get(FEED_KEY);
+  const feedStr = await runtimeGet(FEED_KEY);
   let parsedFeed: unknown = [];
   try {
     parsedFeed = feedStr ? JSON.parse(feedStr) : [];
@@ -212,7 +232,7 @@ milestoneFeed.get('/latest', async (c) => {
 
   const feed = normalizeStoredFeed(parsedFeed);
   if (feedStr) {
-    await redis.set(FEED_KEY, JSON.stringify(feed.slice(-MAX_FEED_ITEMS)));
+    await runtimeSet(FEED_KEY, JSON.stringify(feed.slice(-MAX_FEED_ITEMS)));
   }
   const items = feed.slice(-limit).reverse();
 
@@ -221,7 +241,7 @@ milestoneFeed.get('/latest', async (c) => {
 
 /** GET /api/milestones/dead-letter — returns recent ingest rejections for operator visibility. */
 milestoneFeed.get('/dead-letter', async (c) => {
-  const raw = await redis.get(REJECTED_KEY);
+  const raw = await runtimeGet(REJECTED_KEY);
   const items: MilestoneDeadLetterResponse['items'] = raw
     ? (JSON.parse(raw) as MilestoneDeadLetterResponse['items'])
     : [];

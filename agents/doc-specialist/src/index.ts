@@ -1,5 +1,5 @@
 import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
-import { dirname, resolve, relative } from "node:path";
+import { basename, dirname, extname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Telemetry } from "../../shared/telemetry.js";
 
@@ -54,6 +54,67 @@ const telemetry = new Telemetry({ component: "doc-specialist" });
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const KNOWLEDGE_EXTENSIONS = new Set([
+  ".md",
+  ".mdx",
+  ".txt",
+  ".json",
+  ".yaml",
+  ".yml",
+  ".py",
+  ".js",
+  ".cjs",
+  ".mjs",
+  ".ts",
+  ".tsx",
+  ".html",
+  ".css",
+  ".scss",
+  ".toml",
+  ".ini",
+  ".cfg",
+  ".conf",
+  ".sh",
+  ".sql",
+]);
+
+const KNOWLEDGE_BASENAMES = new Set([
+  "license",
+  "makefile",
+  "dockerfile",
+  "justfile",
+  "procfile",
+  ".funcignore",
+  ".gitignore",
+]);
+
+const IGNORED_KNOWLEDGE_DIRECTORIES = new Set([
+  "__pycache__",
+  "node_modules",
+  "dist",
+  "build",
+  "coverage",
+  "data",
+  "datasets",
+  "images",
+  "image",
+  "input_images",
+  "output_images",
+  "outputs",
+  "audio",
+  "video",
+]);
+
+function isIgnoredKnowledgeDirectory(segment: string): boolean {
+  const normalizedSegment = segment.toLowerCase();
+  return (
+    normalizedSegment.startsWith(".") ||
+    normalizedSegment === "results" ||
+    normalizedSegment.startsWith("results_") ||
+    IGNORED_KNOWLEDGE_DIRECTORIES.has(normalizedSegment)
+  );
+}
+
 async function loadAgentConfig(): Promise<AgentConfig> {
   const configPath = resolve(__dirname, "../agent.config.json");
   const raw = await readFile(configPath, "utf-8");
@@ -68,7 +129,7 @@ async function loadAgentConfig(): Promise<AgentConfig> {
     agentsRootPath: resolve(dirname(configPath), parsed.agentsRootPath || "../../agents"),
     orchestratorConfigPath: resolve(
       dirname(configPath),
-      parsed.orchestratorConfigPath || "../../orchestrator/orchestrator_config.json"
+      parsed.orchestratorConfigPath || "../../orchestrator_config.json"
     ),
   };
 }
@@ -211,7 +272,36 @@ function normalizeDocPath(docPath: string, docsRoot: string) {
   return resolve(docsRoot, trimmed);
 }
 
-async function findMarkdownFiles(
+function shouldIgnoreKnowledgePath(relativePath: string): boolean {
+  const segments = relativePath
+    .split(/[\\/]+/)
+    .filter(Boolean)
+    .map((segment) => segment.toLowerCase());
+
+  for (const segment of segments.slice(0, -1)) {
+    if (isIgnoredKnowledgeDirectory(segment)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function shouldIncludeKnowledgeFile(filePath: string, relativePath: string): boolean {
+  if (shouldIgnoreKnowledgePath(relativePath)) {
+    return false;
+  }
+
+  const normalizedBasename = basename(filePath).toLowerCase();
+  if (KNOWLEDGE_BASENAMES.has(normalizedBasename)) {
+    return true;
+  }
+
+  const extension = extname(filePath).toLowerCase();
+  return KNOWLEDGE_EXTENSIONS.has(extension);
+}
+
+async function findKnowledgeFiles(
   dir: string,
   prefix = "",
 ): Promise<Array<{ path: string; absolutePath: string }>> {
@@ -221,15 +311,17 @@ async function findMarkdownFiles(
     const entries = await readdir(dir, { withFileTypes: true });
 
     for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue;
-
       const absolutePath = resolve(dir, entry.name);
       const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
 
       if (entry.isDirectory()) {
-        const subFiles = await findMarkdownFiles(absolutePath, relativePath);
+        if (isIgnoredKnowledgeDirectory(entry.name)) {
+          continue;
+        }
+
+        const subFiles = await findKnowledgeFiles(absolutePath, relativePath);
         results.push(...subFiles);
-      } else if (entry.name.endsWith(".md")) {
+      } else if (shouldIncludeKnowledgeFile(entry.name, relativePath)) {
         results.push({ path: relativePath, absolutePath });
       }
     }
@@ -296,9 +388,9 @@ async function collectDocsFromPath(
   source: "openclaw" | "openai",
 ): Promise<ProcessedDocSummary[]> {
   const summaries: ProcessedDocSummary[] = [];
-  const mdFiles = await findMarkdownFiles(docsPath);
+  const knowledgeFiles = await findKnowledgeFiles(docsPath);
 
-  for (const file of mdFiles) {
+  for (const file of knowledgeFiles) {
     try {
       const content = await readFile(file.absolutePath, "utf-8");
       const summary = summarize(content);
@@ -325,25 +417,36 @@ async function collectDocsFromPath(
   return summaries;
 }
 
+function dedupeSummaries(summaries: ProcessedDocSummary[]): ProcessedDocSummary[] {
+  const seen = new Set<string>();
+  const deduped: ProcessedDocSummary[] = [];
+
+  for (const summary of summaries) {
+    const key = summary.absolutePath || `${summary.source}:${summary.path}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(summary);
+  }
+
+  return deduped;
+}
+
 async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConfig) {
   await telemetry.info("pack.start", { files: task.docPaths.length, useDualSources: !!config.cookbookPath });
-  
-  let summaries: ProcessedDocSummary[] = [];
   const configAudit = await runConfigAudit(task, config);
-
-  // If custom docPaths provided, use those (backward compatibility)
-  if (task.docPaths && task.docPaths.length > 0) {
-    summaries = await collectDocSummaries(task.docPaths, config.docsPath);
-  } else {
-    // Otherwise, scan both openclaw docs and openai cookbook
-    const openclawDocs = await collectDocsFromPath(config.docsPath, "openclaw");
-    summaries.push(...openclawDocs);
-
-    if (config.cookbookPath) {
-      const cookbookDocs = await collectDocsFromPath(config.cookbookPath, "openai");
-      summaries.push(...cookbookDocs);
-    }
-  }
+  const targetedDocs =
+    task.docPaths && task.docPaths.length > 0
+      ? await collectDocSummaries(task.docPaths, config.docsPath)
+      : [];
+  const openclawDocs = await collectDocsFromPath(config.docsPath, "openclaw");
+  const cookbookDocs = config.cookbookPath
+    ? await collectDocsFromPath(config.cookbookPath, "openai")
+    : [];
+  const summaries = dedupeSummaries([
+    ...targetedDocs,
+    ...openclawDocs,
+    ...cookbookDocs,
+  ]);
 
   await mkdir(config.knowledgePackDir, { recursive: true });
   const packId = `knowledge-pack-${Date.now()}`;
@@ -395,6 +498,15 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
 }
 
 async function run() {
+  if (
+    process.env.ALLOW_ORCHESTRATOR_TASK_RUN !== "true" &&
+    process.env.ALLOW_DIRECT_TASK_RUN !== "true"
+  ) {
+    throw new Error(
+      "Direct task execution is disabled. Use the orchestrator spawn path or set ALLOW_DIRECT_TASK_RUN=true for a reviewed manual run."
+    );
+  }
+
   const payloadPath = process.argv[2];
   if (!payloadPath) {
     throw new Error("Usage: tsx src/index.ts <payload.json>");
