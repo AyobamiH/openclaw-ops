@@ -179,6 +179,7 @@ type AgentWorkerEvidenceSummary = {
 
 type ClaimedTruthLayer = {
   status: "declared";
+  summary: string;
   controlPlane: "orchestrator";
   privateOperatorSurface: string;
   authoritativeHealthRoute: string;
@@ -187,6 +188,8 @@ type ClaimedTruthLayer = {
   declaredAgents: number;
   allowlistedTaskTypes: number;
   approvalGatedTaskTypes: string[];
+  evidence: TruthEvidenceItem[];
+  signals: TruthSignal[];
 };
 
 type ProofTransportStatus =
@@ -228,10 +231,29 @@ type ProofDeliveryTelemetry = {
   overallStatus: ProofTransportStatus;
 };
 
+type TruthEvidenceSeverity = "info" | "warning" | "critical";
+
+type TruthEvidenceItem = {
+  id: string;
+  label: string;
+  status: string;
+  detail: string;
+  route?: string | null;
+  value?: string | number | boolean | null;
+};
+
+type TruthSignal = {
+  id: string;
+  severity: TruthEvidenceSeverity;
+  message: string;
+  relatedRoutes?: string[];
+};
+
 type RuntimeTruthLayers = {
   claimed: ClaimedTruthLayer;
   configured: {
     status: "configured" | "partial" | "local-only";
+    summary: string;
     fastStartMode: boolean;
     docsConfigured: boolean;
     cookbookConfigured: boolean;
@@ -241,9 +263,12 @@ type RuntimeTruthLayers = {
     demandSummaryIngestConfigured: boolean;
     signingSecretConfigured: boolean;
     proofTransportsConfigured: number;
+    evidence: TruthEvidenceItem[];
+    signals: TruthSignal[];
   };
   observed: {
     status: "stable" | "warning" | "degraded";
+    summary: string;
     queue: {
       queued: number;
       processing: number;
@@ -269,16 +294,125 @@ type RuntimeTruthLayers = {
     knowledgeIndexedEntries: number;
     lastMilestoneDeliveryAt: string | null;
     lastDemandSummaryDeliveryAt: string | null;
+    evidence: TruthEvidenceItem[];
+    signals: TruthSignal[];
   };
   public: {
     status: ProofTransportStatus;
+    summary: string;
     boundary: "openclawdbot";
     milestoneStatus: ProofTransportStatus;
     demandSummaryStatus: ProofTransportStatus;
     lastMilestoneDeliveryAt: string | null;
     lastDemandSummaryDeliveryAt: string | null;
     deadLetterCount: number;
+    evidence: TruthEvidenceItem[];
+    signals: TruthSignal[];
   };
+};
+
+type TopologyNodeKind = "control-plane" | "task" | "agent" | "skill" | "surface";
+type TopologyNodeStatus = "declared" | "live" | "warning" | "degraded";
+type TopologyEdgeRelationship =
+  | "dispatches-task"
+  | "routes-to-agent"
+  | "uses-skill"
+  | "publishes-proof";
+type TopologyEdgeStatus = "declared" | "live" | "warning" | "degraded";
+
+type AgentTopologyNode = {
+  id: string;
+  kind: TopologyNodeKind;
+  label: string;
+  status: TopologyNodeStatus;
+  detail: string;
+  route?: string | null;
+};
+
+type AgentTopologyEdge = {
+  id: string;
+  from: string;
+  to: string;
+  relationship: TopologyEdgeRelationship;
+  status: TopologyEdgeStatus;
+  detail: string;
+  evidence: string[];
+};
+
+type AgentTopology = {
+  generatedAt: string;
+  status: "stable" | "warning" | "degraded";
+  counts: {
+    controlPlaneNodes: number;
+    taskNodes: number;
+    agentNodes: number;
+    skillNodes: number;
+    surfaceNodes: number;
+    totalNodes: number;
+    dispatchEdges: number;
+    routeEdges: number;
+    skillEdges: number;
+    proofEdges: number;
+    totalEdges: number;
+  };
+  hotspots: string[];
+  nodes: AgentTopologyNode[];
+  edges: AgentTopologyEdge[];
+};
+
+type RuntimeIncidentSeverity = "info" | "warning" | "critical";
+type RuntimeIncidentStatus = "active" | "watching";
+type RuntimeIncidentClassification =
+  | "runtime-mode"
+  | "persistence"
+  | "proof-delivery"
+  | "repair"
+  | "retry-recovery"
+  | "knowledge"
+  | "service-runtime"
+  | "approval-backlog";
+type RuntimeIncidentTruthLayer = "configured" | "observed" | "public";
+type RuntimeIncidentRemediationOwner = "auto" | "operator" | "mixed";
+type RuntimeIncidentRemediationStatus =
+  | "ready"
+  | "in-progress"
+  | "blocked"
+  | "watching";
+
+type RuntimeIncident = {
+  id: string;
+  title: string;
+  classification: RuntimeIncidentClassification;
+  severity: RuntimeIncidentSeverity;
+  status: RuntimeIncidentStatus;
+  truthLayer: RuntimeIncidentTruthLayer;
+  summary: string;
+  detectedAt: string | null;
+  affectedSurfaces: string[];
+  evidence: string[];
+  remediation: {
+    owner: RuntimeIncidentRemediationOwner;
+    status: RuntimeIncidentRemediationStatus;
+    summary: string;
+    nextAction: string;
+    blockers: string[];
+    linkedRepairIds: string[];
+    linkedTaskIds: string[];
+  };
+};
+
+type RuntimeIncidentModel = {
+  generatedAt: string;
+  overallStatus: "stable" | "warning" | "critical";
+  openCount: number;
+  activeCount: number;
+  watchingCount: number;
+  bySeverity: {
+    critical: number;
+    warning: number;
+    info: number;
+  };
+  incidents: RuntimeIncident[];
 };
 
 type RunWorkflowStage =
@@ -1826,6 +1960,7 @@ function buildClaimedTruthLayer(
 
   return {
     status: "declared",
+    summary: `${declaredAgents} declared agents, ${ALLOWED_TASK_TYPES.length} allowlisted task types, separate public proof boundary via openclawdbot.`,
     controlPlane: "orchestrator",
     privateOperatorSurface: "/operator",
     authoritativeHealthRoute: "/api/health/extended",
@@ -1834,6 +1969,55 @@ function buildClaimedTruthLayer(
     declaredAgents,
     allowlistedTaskTypes: ALLOWED_TASK_TYPES.length,
     approvalGatedTaskTypes,
+    evidence: [
+      {
+        id: "claimed-control-plane",
+        label: "Control Plane",
+        status: "declared",
+        detail: "Orchestrator owns private operator APIs, queueing, approvals, and runtime state.",
+        route: "/operator",
+        value: "orchestrator",
+      },
+      {
+        id: "claimed-health-route",
+        label: "Authoritative Health Route",
+        status: "declared",
+        detail: "Extended health is the protected runtime truth surface.",
+        route: "/api/health/extended",
+      },
+      {
+        id: "claimed-overview-route",
+        label: "Aggregate Overview Route",
+        status: "declared",
+        detail: "Dashboard overview is an operator aggregation, not stronger than its source routes.",
+        route: "/api/dashboard/overview",
+      },
+      {
+        id: "claimed-agent-catalog",
+        label: "Declared Agents",
+        status: "declared",
+        detail: "Agent catalog discovered from manifests and runtime registry.",
+        value: declaredAgents,
+      },
+      {
+        id: "claimed-proof-boundary",
+        label: "Public Proof Boundary",
+        status: "declared",
+        detail: "Public proof is intentionally split into the openclawdbot surface.",
+        value: "openclawdbot",
+      },
+    ],
+    signals:
+      approvalGatedTaskTypes.length > 0
+        ? [
+            {
+              id: "claimed-approval-policy",
+              severity: "info",
+              message: `${approvalGatedTaskTypes.length} task type(s) are approval-gated by declared policy.`,
+              relatedRoutes: ["/api/approvals/pending"],
+            },
+          ]
+        : [],
   };
 }
 
@@ -1947,12 +2131,13 @@ function buildRuntimeTruthLayers({
   state,
   fastStartMode,
   persistenceStatus,
-  knowledgeIndexedEntries,
+  knowledgeRuntime,
   queueQueued,
   queueProcessing,
   pendingApprovalsCount,
   repairs,
   retryRecoveries,
+  agents,
   proofDelivery,
 }: {
   claimed: ClaimedTruthLayer;
@@ -1960,7 +2145,7 @@ function buildRuntimeTruthLayers({
   state: OrchestratorState;
   fastStartMode: boolean;
   persistenceStatus: string;
-  knowledgeIndexedEntries: number;
+  knowledgeRuntime: ReturnType<typeof buildKnowledgeRuntimeSignals>;
   queueQueued: number;
   queueProcessing: number;
   pendingApprovalsCount: number;
@@ -1974,6 +2159,7 @@ function buildRuntimeTruthLayers({
     count: number;
     nextRetryAt: string | null;
   };
+  agents: Awaited<ReturnType<typeof buildAgentOperationalOverview>>;
   proofDelivery: ProofDeliveryTelemetry;
 }): RuntimeTruthLayers {
   const signingSecretConfigured = Boolean(
@@ -2015,10 +2201,158 @@ function buildRuntimeTruthLayers({
         ? "warning"
         : "stable";
 
+  const serviceAvailableCount = agents.filter((agent) => agent.serviceAvailable).length;
+  const serviceInstalledCount = agents.filter(
+    (agent) => agent.serviceInstalled === true,
+  ).length;
+  const serviceRunningCount = agents.filter(
+    (agent) => agent.serviceRunning === true,
+  ).length;
+  const knowledgeIndexedEntries = Number(knowledgeRuntime.coverage.entryCount ?? 0);
+
+  const configuredSignals: TruthSignal[] = [];
+  if (configuredStatus === "local-only") {
+    configuredSignals.push({
+      id: "configured-local-only",
+      severity: "warning",
+      message: "Proof transport targets are not configured, so this runtime is operating as local-only.",
+      relatedRoutes: ["/api/dashboard/overview", "/api/health/extended"],
+    });
+  }
+  if (!signingSecretConfigured) {
+    configuredSignals.push({
+      id: "configured-missing-signing-secret",
+      severity: "critical",
+      message: "MILESTONE_SIGNING_SECRET is not configured; signed proof delivery cannot be trusted end-to-end.",
+      relatedRoutes: ["/api/dashboard/overview", "/api/health/extended"],
+    });
+  }
+  if (!config.docsPath) {
+    configuredSignals.push({
+      id: "configured-docs-missing",
+      severity: "warning",
+      message: "docsPath is not configured; repository knowledge intake is reduced.",
+    });
+  }
+  if (!config.stateFile) {
+    configuredSignals.push({
+      id: "configured-state-file-missing",
+      severity: "critical",
+      message: "stateFile is not configured; durable orchestrator state is undefined.",
+    });
+  }
+
+  const observedSignals: TruthSignal[] = [];
+  if (persistenceStatus !== "healthy") {
+    observedSignals.push({
+      id: "observed-persistence-degraded",
+      severity: "critical",
+      message: `Persistence is currently ${persistenceStatus}.`,
+      relatedRoutes: ["/api/persistence/health", "/api/health/extended"],
+    });
+  }
+  if (queueQueued > 0 || queueProcessing > 0) {
+    observedSignals.push({
+      id: "observed-queue-pressure",
+      severity: queueQueued > 10 ? "warning" : "info",
+      message: `${queueQueued} queued and ${queueProcessing} processing tasks are currently in flight.`,
+      relatedRoutes: ["/api/tasks/runs"],
+    });
+  }
+  if (pendingApprovalsCount > 0) {
+    observedSignals.push({
+      id: "observed-approval-backlog",
+      severity: pendingApprovalsCount > 3 ? "warning" : "info",
+      message: `${pendingApprovalsCount} approval-gated task(s) are waiting on operator review.`,
+      relatedRoutes: ["/api/approvals/pending"],
+    });
+  }
+  if (repairs.failedCount > 0 || repairs.activeCount > 0) {
+    observedSignals.push({
+      id: "observed-repairs-active",
+      severity: repairs.failedCount > 0 ? "critical" : "warning",
+      message:
+        repairs.failedCount > 0
+          ? `${repairs.failedCount} repair flow(s) have failed verification.`
+          : `${repairs.activeCount} repair flow(s) are actively running.`,
+      relatedRoutes: ["/api/dashboard/overview", "/api/health/extended"],
+    });
+  }
+  if (retryRecoveries.count > 0) {
+    observedSignals.push({
+      id: "observed-retry-recovery",
+      severity: "warning",
+      message: `${retryRecoveries.count} persisted retry recovery task(s) are awaiting replay.`,
+      relatedRoutes: ["/api/tasks/runs"],
+    });
+  }
+  if (serviceAvailableCount > serviceRunningCount) {
+    observedSignals.push({
+      id: "observed-service-gaps",
+      severity: "warning",
+      message: `${serviceRunningCount}/${serviceAvailableCount} agent service entrypoints are currently running.`,
+      relatedRoutes: ["/api/agents/overview"],
+    });
+  }
+  if ((knowledgeRuntime.signals.staleness?.length ?? 0) > 0) {
+    observedSignals.push({
+      id: "observed-knowledge-staleness",
+      severity: "warning",
+      message: `${knowledgeRuntime.signals.staleness.length} knowledge freshness signal(s) are active.`,
+      relatedRoutes: ["/api/knowledge/summary"],
+    });
+  }
+  if ((knowledgeRuntime.signals.contradictions?.length ?? 0) > 0) {
+    observedSignals.push({
+      id: "observed-knowledge-contradictions",
+      severity: "warning",
+      message: `${knowledgeRuntime.signals.contradictions.length} knowledge contradiction signal(s) were detected.`,
+      relatedRoutes: ["/api/knowledge/summary"],
+    });
+  }
+
+  const publicSignals: TruthSignal[] = [];
+  if (proofDelivery.overallStatus === "not-configured") {
+    publicSignals.push({
+      id: "public-proof-unconfigured",
+      severity: "warning",
+      message: "No proof transport targets are configured for the public proof boundary.",
+      relatedRoutes: ["/api/dashboard/overview", "/api/health/extended"],
+    });
+  }
+  if (
+    proofDelivery.milestone.deliveryStatus === "degraded" ||
+    proofDelivery.demandSummary.deliveryStatus === "degraded"
+  ) {
+    publicSignals.push({
+      id: "public-proof-degraded",
+      severity: "critical",
+      message: "Public proof delivery has dead-letter or rejected records.",
+      relatedRoutes: ["/api/dashboard/overview", "/api/health/extended"],
+    });
+  }
+  if (
+    proofDelivery.milestone.deliveryStatus === "catching-up" ||
+    proofDelivery.demandSummary.deliveryStatus === "catching-up"
+  ) {
+    publicSignals.push({
+      id: "public-proof-catching-up",
+      severity: "warning",
+      message: "Public proof delivery is retrying or catching up on queued records.",
+      relatedRoutes: ["/api/dashboard/overview", "/api/health/extended"],
+    });
+  }
+
   return {
     claimed,
     configured: {
       status: configuredStatus,
+      summary:
+        configuredStatus === "local-only"
+          ? "Control plane is configured locally, but public proof transport targets are not wired."
+          : configuredStatus === "partial"
+            ? "Some proof transport prerequisites are configured, but signing or transport readiness is incomplete."
+            : "Runtime configuration is present for control-plane and proof transport surfaces.",
       fastStartMode,
       docsConfigured: Boolean(config.docsPath),
       cookbookConfigured: Boolean(config.cookbookPath),
@@ -2028,9 +2362,61 @@ function buildRuntimeTruthLayers({
       demandSummaryIngestConfigured: Boolean(config.demandSummaryIngestUrl),
       signingSecretConfigured,
       proofTransportsConfigured,
+      evidence: [
+        {
+          id: "configured-docs-path",
+          label: "Docs Root",
+          status: config.docsPath ? "configured" : "missing",
+          detail: config.docsPath
+            ? "Primary repository docs root is configured."
+            : "Primary docs root is not configured.",
+          value: config.docsPath ?? null,
+        },
+        {
+          id: "configured-cookbook-path",
+          label: "Cookbook Root",
+          status: config.cookbookPath ? "configured" : "optional",
+          detail: config.cookbookPath
+            ? "Cookbook clue root is configured."
+            : "Cookbook clue root is not configured.",
+          value: config.cookbookPath ?? null,
+        },
+        {
+          id: "configured-state-file",
+          label: "State File",
+          status: config.stateFile ? "configured" : "missing",
+          detail: config.stateFile
+            ? "Durable orchestrator state file is configured."
+            : "No durable state file is configured.",
+          value: config.stateFile ?? null,
+        },
+        {
+          id: "configured-proof-targets",
+          label: "Proof Targets",
+          status: configuredStatus,
+          detail: `${proofTransportsConfigured} proof transport path(s) are configured.`,
+          value: proofTransportsConfigured,
+        },
+        {
+          id: "configured-signing-secret",
+          label: "Proof Signing Secret",
+          status: signingSecretConfigured ? "configured" : "missing",
+          detail: signingSecretConfigured
+            ? "Signed proof delivery secret is configured."
+            : "Signed proof delivery secret is missing.",
+          value: signingSecretConfigured,
+        },
+      ],
+      signals: configuredSignals,
     },
     observed: {
       status: observedStatus,
+      summary:
+        observedStatus === "degraded"
+          ? "Runtime evidence shows degraded persistence, repairs, or proof delivery."
+          : observedStatus === "warning"
+            ? "Runtime evidence shows queue, approval, retry, or freshness pressure."
+            : "Runtime evidence is stable across queue, approvals, services, and proof delivery.",
       queue: {
         queued: queueQueued,
         processing: queueProcessing,
@@ -2048,9 +2434,58 @@ function buildRuntimeTruthLayers({
       knowledgeIndexedEntries,
       lastMilestoneDeliveryAt: state.lastMilestoneDeliveryAt ?? null,
       lastDemandSummaryDeliveryAt: state.lastDemandSummaryDeliveryAt ?? null,
+      evidence: [
+        {
+          id: "observed-queue",
+          label: "Queue Runtime",
+          status: queueQueued > 0 || queueProcessing > 0 ? "active" : "idle",
+          detail: `${queueQueued} queued, ${queueProcessing} processing.`,
+        },
+        {
+          id: "observed-approvals",
+          label: "Approval Runtime",
+          status: pendingApprovalsCount > 0 ? "waiting" : "clear",
+          detail: `${pendingApprovalsCount} approval-gated task(s) are pending.`,
+        },
+        {
+          id: "observed-repairs",
+          label: "Repair Runtime",
+          status:
+            repairs.failedCount > 0
+              ? "degraded"
+              : repairs.activeCount > 0
+                ? "active"
+                : "stable",
+          detail: `${repairs.activeCount} active, ${repairs.verifiedCount} verified, ${repairs.failedCount} failed.`,
+        },
+        {
+          id: "observed-services",
+          label: "Agent Services",
+          status:
+            serviceAvailableCount > serviceRunningCount ? "warning" : "stable",
+          detail: `${serviceRunningCount}/${serviceAvailableCount} running, ${serviceInstalledCount} installed.`,
+        },
+        {
+          id: "observed-knowledge",
+          label: "Knowledge Runtime",
+          status: String(knowledgeRuntime.freshness.status ?? "empty"),
+          detail: `${knowledgeIndexedEntries} entries, ${knowledgeRuntime.signals.contradictions.length} contradiction signal(s).`,
+        },
+      ],
+      signals: observedSignals,
     },
     public: {
       status: proofDelivery.overallStatus,
+      summary:
+        proofDelivery.overallStatus === "publishing"
+          ? "Public proof delivery is publishing signed runtime evidence."
+          : proofDelivery.overallStatus === "catching-up"
+            ? "Public proof delivery is configured but still catching up."
+            : proofDelivery.overallStatus === "degraded"
+              ? "Public proof delivery is degraded and has dead-letter or rejected records."
+              : proofDelivery.overallStatus === "misconfigured"
+                ? "Public proof delivery is partially configured but not ready."
+                : "Public proof transport is idle or not configured.",
       boundary: "openclawdbot",
       milestoneStatus: proofDelivery.milestone.deliveryStatus,
       demandSummaryStatus: proofDelivery.demandSummary.deliveryStatus,
@@ -2059,7 +2494,713 @@ function buildRuntimeTruthLayers({
       deadLetterCount:
         proofDelivery.milestone.ledger.deadLetterCount +
         proofDelivery.demandSummary.ledger.deadLetterCount,
+      evidence: [
+        {
+          id: "public-milestones",
+          label: "Milestone Delivery",
+          status: proofDelivery.milestone.deliveryStatus,
+          detail: `${proofDelivery.milestone.ledger.deliveredCount} delivered, ${proofDelivery.milestone.ledger.deadLetterCount} dead-letter.`,
+          value: proofDelivery.milestone.targetUrl ?? proofDelivery.milestone.feedPath ?? null,
+        },
+        {
+          id: "public-demand-summaries",
+          label: "Demand Summary Delivery",
+          status: proofDelivery.demandSummary.deliveryStatus,
+          detail: `${proofDelivery.demandSummary.ledger.deliveredCount} delivered, ${proofDelivery.demandSummary.ledger.deadLetterCount} dead-letter.`,
+          value: proofDelivery.demandSummary.targetUrl ?? null,
+        },
+        {
+          id: "public-signing",
+          label: "Signing Readiness",
+          status: proofDelivery.signingSecretConfigured ? "configured" : "missing",
+          detail: proofDelivery.signingSecretConfigured
+            ? "Signed proof boundary secret is configured."
+            : "Signed proof boundary secret is missing.",
+          value: proofDelivery.signingSecretConfigured,
+        },
+      ],
+      signals: publicSignals,
     },
+  };
+}
+
+async function buildAgentTopology({
+  agents,
+  proofDelivery,
+}: {
+  agents: Awaited<ReturnType<typeof buildAgentOperationalOverview>>;
+  proofDelivery: ProofDeliveryTelemetry;
+}): Promise<AgentTopology> {
+  const registry = await getAgentRegistry();
+  const nodes = new Map<string, AgentTopologyNode>();
+  const edges = new Map<string, AgentTopologyEdge>();
+
+  const addNode = (node: AgentTopologyNode) => {
+    if (!nodes.has(node.id)) nodes.set(node.id, node);
+  };
+
+  const addEdge = (edge: AgentTopologyEdge) => {
+    if (!edges.has(edge.id)) edges.set(edge.id, edge);
+  };
+
+  const proofNodeStatus: TopologyNodeStatus =
+    proofDelivery.overallStatus === "degraded" ||
+    proofDelivery.overallStatus === "misconfigured"
+      ? "degraded"
+      : proofDelivery.overallStatus === "catching-up" ||
+          proofDelivery.overallStatus === "idle" ||
+          proofDelivery.overallStatus === "not-configured"
+        ? "warning"
+        : "live";
+
+  addNode({
+    id: "surface:orchestrator",
+    kind: "control-plane",
+    label: "orchestrator",
+    status: "live",
+    detail:
+      "Private control plane for queueing, approvals, runtime truth, and task dispatch.",
+    route: "/api/dashboard/overview",
+  });
+
+  addNode({
+    id: "surface:openclawdbot",
+    kind: "surface",
+    label: "openclawdbot",
+    status: proofNodeStatus,
+    detail:
+      "Separate public proof boundary that receives signed milestones and demand summaries.",
+    route: "/api/command-center/overview",
+  });
+
+  const taskProfileByType = new Map(
+    OPERATOR_TASK_PROFILES.map((profile) => [profile.type, profile]),
+  );
+
+  for (const agent of agents) {
+    const agentStatus: TopologyNodeStatus =
+      agent.serviceAvailable &&
+      (agent.serviceInstalled === false || agent.serviceRunning === false)
+        ? "warning"
+        : agent.workerValidationStatus === "not-yet-verified" ||
+            agent.workerValidationStatus === "partial-worker"
+          ? "warning"
+          : agent.spawnedWorkerCapable || agent.serviceAvailable
+            ? "live"
+            : "degraded";
+
+    addNode({
+      id: `agent:${agent.id}`,
+      kind: "agent",
+      label: agent.name,
+      status: agentStatus,
+      detail:
+        agent.description ??
+        agent.notes?.[0] ??
+        "Registered agent runtime surface.",
+      route: "/api/agents/overview",
+    });
+
+    const allowedSkills = registry.getAllowedSkills(agent.id);
+    for (const skillId of allowedSkills) {
+      addNode({
+        id: `skill:${skillId}`,
+        kind: "skill",
+        label: skillId,
+        status: agentStatus === "degraded" ? "warning" : "declared",
+        detail: "Skill permission declared in the agent manifest.",
+      });
+
+      addEdge({
+        id: `edge:agent:${agent.id}:skill:${skillId}`,
+        from: `agent:${agent.id}`,
+        to: `skill:${skillId}`,
+        relationship: "uses-skill",
+        status: agentStatus === "degraded" ? "warning" : "declared",
+        detail: `${agent.name} is permitted to invoke ${skillId}.`,
+        evidence: [`manifest skill permission: ${skillId}`],
+      });
+    }
+
+    if (agent.orchestratorTask) {
+      const profile = taskProfileByType.get(agent.orchestratorTask) ?? null;
+      addNode({
+        id: `task:${agent.orchestratorTask}`,
+        kind: "task",
+        label: profile?.label ?? agent.orchestratorTask,
+        status: agentStatus === "degraded" ? "warning" : "declared",
+        detail: profile?.purpose ?? "Manifest-routed runtime task.",
+        route: "/api/tasks/catalog",
+      });
+
+      addEdge({
+        id: `edge:orchestrator:task:${agent.orchestratorTask}`,
+        from: "surface:orchestrator",
+        to: `task:${agent.orchestratorTask}`,
+        relationship: "dispatches-task",
+        status: "declared",
+        detail: `Orchestrator accepts ${agent.orchestratorTask} into the runtime queue.`,
+        evidence: [`allowlisted task: ${agent.orchestratorTask}`],
+      });
+
+      addEdge({
+        id: `edge:task:${agent.orchestratorTask}:agent:${agent.id}`,
+        from: `task:${agent.orchestratorTask}`,
+        to: `agent:${agent.id}`,
+        relationship: "routes-to-agent",
+        status: agentStatus === "degraded" ? "warning" : "live",
+        detail: `${agent.orchestratorTask} routes to ${agent.name}.`,
+        evidence: [`agent manifest orchestratorTask: ${agent.orchestratorTask}`],
+      });
+    }
+  }
+
+  for (const [taskType, requirement] of Object.entries(TASK_AGENT_SKILL_REQUIREMENTS)) {
+    const agent = agents.find((item) => item.id === requirement.agentId) ?? null;
+    const agentName = agent?.name ?? requirement.agentId;
+    const taskProfile = taskProfileByType.get(taskType) ?? null;
+    const taskNodeId = `task:${taskType}`;
+    const agentNodeId = `agent:${requirement.agentId}`;
+    const skillNodeId = `skill:${requirement.skillId}`;
+
+    addNode({
+      id: taskNodeId,
+      kind: "task",
+      label: taskProfile?.label ?? taskType,
+      status: agent ? "declared" : "warning",
+      detail: taskProfile?.purpose ?? "Runtime task with explicit agent/skill requirement.",
+      route: "/api/tasks/catalog",
+    });
+    addNode({
+      id: skillNodeId,
+      kind: "skill",
+      label: requirement.skillId,
+      status: agent ? "declared" : "warning",
+      detail: "Skill required by a routed task contract.",
+    });
+
+    addEdge({
+      id: `edge:orchestrator:task:${taskType}`,
+      from: "surface:orchestrator",
+      to: taskNodeId,
+      relationship: "dispatches-task",
+      status: "declared",
+      detail: `Orchestrator can dispatch ${taskType}.`,
+      evidence: [`task requirement: ${taskType}`],
+    });
+    addEdge({
+      id: `edge:task:${taskType}:agent:${requirement.agentId}`,
+      from: taskNodeId,
+      to: agentNodeId,
+      relationship: "routes-to-agent",
+      status: agent ? "live" : "warning",
+      detail: `${taskType} routes to ${agentName}.`,
+      evidence: [`task requirement agent: ${requirement.agentId}`],
+    });
+    addEdge({
+      id: `edge:agent:${requirement.agentId}:skill:${requirement.skillId}`,
+      from: agentNodeId,
+      to: skillNodeId,
+      relationship: "uses-skill",
+      status: agent ? "declared" : "warning",
+      detail: `${agentName} uses ${requirement.skillId} for ${taskType}.`,
+      evidence: [`task requirement skill: ${requirement.skillId}`],
+    });
+  }
+
+  if (
+    proofDelivery.milestone.targetConfigured ||
+    proofDelivery.milestone.feedConfigured ||
+    proofDelivery.demandSummary.targetConfigured
+  ) {
+    addEdge({
+      id: "edge:orchestrator:openclawdbot",
+      from: "surface:orchestrator",
+      to: "surface:openclawdbot",
+      relationship: "publishes-proof",
+      status:
+        proofNodeStatus === "degraded"
+          ? "degraded"
+          : proofNodeStatus === "warning"
+            ? "warning"
+            : "live",
+      detail:
+        "Orchestrator publishes signed milestones and demand summaries across the public proof boundary.",
+      evidence: [
+        proofDelivery.milestone.targetUrl
+          ? `milestone target: ${proofDelivery.milestone.targetUrl}`
+          : "milestone target not configured",
+        proofDelivery.demandSummary.targetUrl
+          ? `demand target: ${proofDelivery.demandSummary.targetUrl}`
+          : "demand target not configured",
+      ],
+    });
+  }
+
+  const nodeList = Array.from(nodes.values());
+  const edgeList = Array.from(edges.values());
+  const hotspots: string[] = [];
+  const serviceGapCount = agents.filter(
+    (agent) =>
+      agent.serviceAvailable &&
+      (agent.serviceInstalled === false || agent.serviceRunning === false),
+  ).length;
+
+  if (serviceGapCount > 0) {
+    hotspots.push(`${serviceGapCount} agent service path(s) are declared but not fully running.`);
+  }
+  if (proofNodeStatus === "degraded") {
+    hotspots.push("Public proof transport is degraded.");
+  } else if (proofNodeStatus === "warning") {
+    hotspots.push("Public proof transport is configured but not yet fully steady.");
+  }
+  if (
+    agents.some(
+      (agent) =>
+        agent.workerValidationStatus === "partial-worker" ||
+        agent.workerValidationStatus === "not-yet-verified",
+    )
+  ) {
+    hotspots.push("One or more worker paths remain partial or not yet verified.");
+  }
+
+  const status =
+    proofNodeStatus === "degraded"
+      ? "degraded"
+      : hotspots.length > 0
+        ? "warning"
+        : "stable";
+
+  return {
+    generatedAt: new Date().toISOString(),
+    status,
+    counts: {
+      controlPlaneNodes: nodeList.filter((node) => node.kind === "control-plane").length,
+      taskNodes: nodeList.filter((node) => node.kind === "task").length,
+      agentNodes: nodeList.filter((node) => node.kind === "agent").length,
+      skillNodes: nodeList.filter((node) => node.kind === "skill").length,
+      surfaceNodes: nodeList.filter((node) => node.kind === "surface").length,
+      totalNodes: nodeList.length,
+      dispatchEdges: edgeList.filter((edge) => edge.relationship === "dispatches-task").length,
+      routeEdges: edgeList.filter((edge) => edge.relationship === "routes-to-agent").length,
+      skillEdges: edgeList.filter((edge) => edge.relationship === "uses-skill").length,
+      proofEdges: edgeList.filter((edge) => edge.relationship === "publishes-proof").length,
+      totalEdges: edgeList.length,
+    },
+    hotspots,
+    nodes: nodeList,
+    edges: edgeList,
+  };
+}
+
+function buildRuntimeIncidentModel({
+  config,
+  state,
+  fastStartMode,
+  persistence,
+  agents,
+  governance,
+  pendingApprovalsCount,
+  proofDelivery,
+  knowledgeRuntime,
+}: {
+  config: Awaited<ReturnType<typeof loadConfig>>;
+  state: OrchestratorState;
+  fastStartMode: boolean;
+  persistence: Awaited<ReturnType<typeof PersistenceIntegration.healthCheck>>;
+  agents: Awaited<ReturnType<typeof buildAgentOperationalOverview>>;
+  governance: ReturnType<typeof summarizeGovernanceVisibility>;
+  pendingApprovalsCount: number;
+  proofDelivery: ProofDeliveryTelemetry;
+  knowledgeRuntime: ReturnType<typeof buildKnowledgeRuntimeSignals>;
+}): RuntimeIncidentModel {
+  const incidents: RuntimeIncident[] = [];
+
+  const addIncident = (incident: RuntimeIncident) => {
+    incidents.push(incident);
+  };
+
+  if (fastStartMode) {
+    addIncident({
+      id: "incident:runtime-fast-start",
+      title: "Fast-start mode active",
+      classification: "runtime-mode",
+      severity: "warning",
+      status: "watching",
+      truthLayer: "configured",
+      summary:
+        "The orchestrator is running in fast-start mode, so some deep integrations may be intentionally reduced.",
+      detectedAt: state.lastStartedAt ?? state.updatedAt ?? null,
+      affectedSurfaces: ["control-plane", "knowledge", "persistence"],
+      evidence: ["ORCHESTRATOR_FAST_START=true"],
+      remediation: {
+        owner: "operator",
+        status: "ready",
+        summary: "Exit fast-start mode to regain the full boot path.",
+        nextAction: "Restart the orchestrator without ORCHESTRATOR_FAST_START=true.",
+        blockers: [],
+        linkedRepairIds: [],
+        linkedTaskIds: [],
+      },
+    });
+  }
+
+  if (persistence.status !== "healthy") {
+    addIncident({
+      id: "incident:persistence-degraded",
+      title: "Persistence degraded",
+      classification: "persistence",
+      severity: "critical",
+      status: "active",
+      truthLayer: "observed",
+      summary: `Persistence health is currently ${String(persistence.status)}.`,
+      detectedAt: state.updatedAt ?? null,
+      affectedSurfaces: ["persistence", "knowledge", "control-plane"],
+      evidence: [
+        `persistence status: ${String(persistence.status)}`,
+        `database connected: ${String((persistence as any).database ?? false)}`,
+      ],
+      remediation: {
+        owner: "operator",
+        status: "ready",
+        summary: "Restore database connectivity and re-run health checks.",
+        nextAction: "Inspect /api/persistence/health and backing database credentials or connectivity.",
+        blockers: [],
+        linkedRepairIds: [],
+        linkedTaskIds: [],
+      },
+    });
+  }
+
+  const pushProofIncident = ({
+    id,
+    title,
+    deliveryStatus,
+    ledger,
+    targetConfigured,
+    targetReady,
+    detectedAt,
+    targetUrl,
+  }: {
+    id: string;
+    title: string;
+    deliveryStatus: ProofTransportStatus;
+    ledger: ReturnType<typeof summarizeDeliveryRecords>;
+    targetConfigured: boolean;
+    targetReady: boolean;
+    detectedAt: string | null;
+    targetUrl: string | null;
+  }) => {
+    if (deliveryStatus === "publishing" || deliveryStatus === "idle") return;
+
+    const severity: RuntimeIncidentSeverity =
+      deliveryStatus === "degraded" || deliveryStatus === "misconfigured"
+        ? "critical"
+        : "warning";
+    const status: RuntimeIncidentStatus =
+      deliveryStatus === "catching-up" ? "watching" : "active";
+    const blockers: string[] = [];
+    if (!targetConfigured) blockers.push("delivery target not configured");
+    if (targetConfigured && !targetReady) blockers.push("signing secret or target readiness incomplete");
+
+    addIncident({
+      id,
+      title,
+      classification: "proof-delivery",
+      severity,
+      status,
+      truthLayer: "public",
+      summary:
+        deliveryStatus === "not-configured"
+          ? "Proof delivery target is not configured."
+          : deliveryStatus === "misconfigured"
+            ? "Proof delivery target exists but is not ready for signed delivery."
+            : deliveryStatus === "catching-up"
+              ? "Proof delivery is retrying or draining queued records."
+              : "Proof delivery has dead-letter or rejected records.",
+      detectedAt,
+      affectedSurfaces: ["openclawdbot", "proof-pipeline"],
+      evidence: [
+        `delivery status: ${deliveryStatus}`,
+        `target: ${targetUrl ?? "not configured"}`,
+        `pending=${ledger.pendingCount}, retrying=${ledger.retryingCount}, deadLetter=${ledger.deadLetterCount}, delivered=${ledger.deliveredCount}`,
+      ],
+      remediation: {
+        owner: blockers.length > 0 ? "operator" : "mixed",
+        status:
+          blockers.length > 0
+            ? "blocked"
+            : deliveryStatus === "catching-up"
+              ? "in-progress"
+              : "ready",
+        summary:
+          blockers.length > 0
+            ? "Configuration must be completed before delivery can recover."
+            : "Delivery path is configured; operator attention is needed until the backlog or dead-letter state clears.",
+        nextAction:
+          blockers.length > 0
+            ? "Restore signing or target configuration for the proof transport."
+            : "Inspect proof delivery ledger and replay or clear dead-letter records.",
+        blockers,
+        linkedRepairIds: [],
+        linkedTaskIds: [],
+      },
+    });
+  };
+
+  pushProofIncident({
+    id: "incident:proof-milestones",
+    title: "Milestone proof delivery impaired",
+    deliveryStatus: proofDelivery.milestone.deliveryStatus,
+    ledger: proofDelivery.milestone.ledger,
+    targetConfigured:
+      proofDelivery.milestone.targetConfigured || proofDelivery.milestone.feedConfigured,
+    targetReady:
+      proofDelivery.milestone.targetReady || proofDelivery.milestone.feedReady,
+    detectedAt:
+      proofDelivery.milestone.ledger.lastAttemptAt ??
+      proofDelivery.milestone.lastDeliveredAt,
+    targetUrl:
+      proofDelivery.milestone.targetUrl ?? proofDelivery.milestone.feedPath ?? null,
+  });
+
+  pushProofIncident({
+    id: "incident:proof-demand",
+    title: "Demand summary proof delivery impaired",
+    deliveryStatus: proofDelivery.demandSummary.deliveryStatus,
+    ledger: proofDelivery.demandSummary.ledger,
+    targetConfigured: proofDelivery.demandSummary.targetConfigured,
+    targetReady: proofDelivery.demandSummary.targetReady,
+    detectedAt:
+      proofDelivery.demandSummary.ledger.lastAttemptAt ??
+      proofDelivery.demandSummary.lastDeliveredAt,
+    targetUrl: proofDelivery.demandSummary.targetUrl,
+  });
+
+  const activeRepairRecords = state.repairRecords.filter((record) =>
+    ["detected", "queued", "running", "failed"].includes(record.status),
+  );
+  if (governance.repairs.activeCount > 0 || governance.repairs.failedCount > 0) {
+    addIncident({
+      id: "incident:repair-runtime",
+      title: "Repair runtime needs attention",
+      classification: "repair",
+      severity: governance.repairs.failedCount > 0 ? "critical" : "warning",
+      status: governance.repairs.failedCount > 0 ? "active" : "watching",
+      truthLayer: "observed",
+      summary:
+        governance.repairs.failedCount > 0
+          ? `${governance.repairs.failedCount} repair flow(s) failed verification.`
+          : `${governance.repairs.activeCount} repair flow(s) are still in progress.`,
+      detectedAt:
+        governance.repairs.lastFailedAt ??
+        governance.repairs.lastDetectedAt ??
+        null,
+      affectedSurfaces: ["repair-runtime", "knowledge", "task-queue"],
+      evidence: [
+        `${governance.repairs.activeCount} active repair(s)`,
+        `${governance.repairs.verifiedCount} verified repair(s)`,
+        `${governance.repairs.failedCount} failed repair(s)`,
+      ],
+      remediation: {
+        owner: governance.repairs.failedCount > 0 ? "mixed" : "auto",
+        status:
+          governance.repairs.failedCount > 0 ? "ready" : "in-progress",
+        summary:
+          governance.repairs.failedCount > 0
+            ? "Some repair flows need operator review or requeue."
+            : "Auto-remediation is already in progress.",
+        nextAction:
+          governance.repairs.failedCount > 0
+            ? "Inspect repair evidence and decide whether to rerun or verify manually."
+            : "Allow the active repair flows to finish and verify their outputs.",
+        blockers: [],
+        linkedRepairIds: activeRepairRecords.map((record) => record.repairId).slice(0, 10),
+        linkedTaskIds: activeRepairRecords
+          .map((record) => record.repairTaskId)
+          .filter((value): value is string => Boolean(value))
+          .slice(0, 10),
+      },
+    });
+  }
+
+  if (governance.taskRetryRecoveries.count > 0) {
+    addIncident({
+      id: "incident:retry-recovery",
+      title: "Retry recovery backlog detected",
+      classification: "retry-recovery",
+      severity: "warning",
+      status: "watching",
+      truthLayer: "observed",
+      summary: `${governance.taskRetryRecoveries.count} retry recovery record(s) are waiting to replay.`,
+      detectedAt: governance.taskRetryRecoveries.nextRetryAt,
+      affectedSurfaces: ["task-queue", "worker-runtime"],
+      evidence: [
+        `retry recovery count: ${governance.taskRetryRecoveries.count}`,
+        `next retry at: ${governance.taskRetryRecoveries.nextRetryAt ?? "n/a"}`,
+      ],
+      remediation: {
+        owner: "auto",
+        status: "in-progress",
+        summary: "Persisted retry recoveries are replayed by the orchestrator on schedule.",
+        nextAction: "Monitor task runs until persisted retries clear.",
+        blockers: [],
+        linkedRepairIds: [],
+        linkedTaskIds: Array.from(
+          new Set(
+            state.taskRetryRecoveries
+              .map((record) => record.sourceTaskId)
+              .filter((value): value is string => Boolean(value)),
+          ),
+        ).slice(0, 10),
+      },
+    });
+  }
+
+  const contradictionSignals = knowledgeRuntime.signals.contradictions ?? [];
+  const stalenessSignals = knowledgeRuntime.signals.staleness ?? [];
+  if (contradictionSignals.length > 0 || stalenessSignals.length > 0) {
+    addIncident({
+      id: "incident:knowledge-runtime",
+      title: "Knowledge runtime drift signals active",
+      classification: "knowledge",
+      severity: contradictionSignals.length > 0 ? "warning" : "info",
+      status: contradictionSignals.length > 0 ? "active" : "watching",
+      truthLayer: "observed",
+      summary:
+        contradictionSignals.length > 0
+          ? `${contradictionSignals.length} contradiction signal(s) and ${stalenessSignals.length} freshness signal(s) are active.`
+          : `${stalenessSignals.length} knowledge freshness signal(s) are active.`,
+      detectedAt:
+        knowledgeRuntime.freshness.latestEntryUpdatedAt ??
+        knowledgeRuntime.freshness.lastDriftRepairAt ??
+        null,
+      affectedSurfaces: ["knowledge-base", "doc-index", "agent-context"],
+      evidence: [
+        ...stalenessSignals.map((signal) => signal.message),
+        ...contradictionSignals.slice(0, 5).map((signal: any) => signal.message ?? signal.title),
+      ].slice(0, 10),
+      remediation: {
+        owner: "mixed",
+        status: contradictionSignals.length > 0 ? "ready" : "watching",
+        summary:
+          contradictionSignals.length > 0
+            ? "Review contradictions and refresh knowledge packs."
+            : "Knowledge aging should be monitored and refreshed as drift repair progresses.",
+        nextAction:
+          contradictionSignals.length > 0
+            ? "Run drift repair or reconcile conflicting knowledge entries."
+            : "Refresh indexed docs and regenerate knowledge packs if aging persists.",
+        blockers: [],
+        linkedRepairIds: state.repairRecords
+          .filter((record) => record.classification === "doc-drift")
+          .map((record) => record.repairId)
+          .slice(0, 10),
+        linkedTaskIds: [],
+      },
+    });
+  }
+
+  const serviceGapAgents = agents.filter(
+    (agent) =>
+      agent.serviceAvailable &&
+      (agent.serviceInstalled === false || agent.serviceRunning === false),
+  );
+  if (serviceGapAgents.length > 0) {
+    addIncident({
+      id: "incident:agent-service-gaps",
+      title: "Agent service coverage is incomplete",
+      classification: "service-runtime",
+      severity: "warning",
+      status: "active",
+      truthLayer: "observed",
+      summary: `${serviceGapAgents.length} agent service path(s) exist but are not fully installed or running.`,
+      detectedAt:
+        serviceGapAgents
+          .map((agent) => agent.lastEvidenceAt)
+          .filter((value): value is string => Boolean(value))
+          .sort()
+          .at(-1) ?? state.updatedAt ?? null,
+      affectedSurfaces: serviceGapAgents.map((agent) => agent.id),
+      evidence: serviceGapAgents.slice(0, 10).map((agent) => {
+        const runtime = [agent.serviceUnitState, agent.serviceUnitSubState]
+          .filter(Boolean)
+          .join("/");
+        return `${agent.id}: installed=${String(agent.serviceInstalled)}, running=${String(agent.serviceRunning)}${runtime ? ` (${runtime})` : ""}`;
+      }),
+      remediation: {
+        owner: "operator",
+        status: "ready",
+        summary: "Install or restart the missing agent service units if they are intended to be live.",
+        nextAction: "Inspect agent systemd unit state and bring required services up.",
+        blockers: [],
+        linkedRepairIds: [],
+        linkedTaskIds: [],
+      },
+    });
+  }
+
+  if (pendingApprovalsCount > 0) {
+    addIncident({
+      id: "incident:approval-backlog",
+      title: "Approval backlog waiting on operator action",
+      classification: "approval-backlog",
+      severity: pendingApprovalsCount > 3 ? "warning" : "info",
+      status: "watching",
+      truthLayer: "observed",
+      summary: `${pendingApprovalsCount} approval-gated task(s) are paused pending operator review.`,
+      detectedAt:
+        listPendingApprovals(state)
+          .map((approval) => approval.requestedAt)
+          .sort()
+          .at(0) ?? null,
+      affectedSurfaces: ["approval-gate", "task-queue"],
+      evidence: listPendingApprovals(state)
+        .slice(0, 10)
+        .map((approval) => `${approval.type} requested at ${approval.requestedAt}`),
+      remediation: {
+        owner: "operator",
+        status: "ready",
+        summary: "Operator review is required before the queued work can resume.",
+        nextAction: "Review pending approvals and decide whether to approve or reject them.",
+        blockers: [],
+        linkedRepairIds: [],
+        linkedTaskIds: listPendingApprovals(state)
+          .map((approval) => approval.taskId)
+          .slice(0, 10),
+      },
+    });
+  }
+
+  const severityRank: Record<RuntimeIncidentSeverity, number> = {
+    critical: 3,
+    warning: 2,
+    info: 1,
+  };
+
+  incidents.sort((left, right) => {
+    const severityDiff = severityRank[right.severity] - severityRank[left.severity];
+    if (severityDiff !== 0) return severityDiff;
+    const leftTime = left.detectedAt ? Date.parse(left.detectedAt) : 0;
+    const rightTime = right.detectedAt ? Date.parse(right.detectedAt) : 0;
+    return rightTime - leftTime;
+  });
+
+  const bySeverity = {
+    critical: incidents.filter((incident) => incident.severity === "critical").length,
+    warning: incidents.filter((incident) => incident.severity === "warning").length,
+    info: incidents.filter((incident) => incident.severity === "info").length,
+  };
+
+  return {
+    generatedAt: new Date().toISOString(),
+    overallStatus:
+      bySeverity.critical > 0 ? "critical" : bySeverity.warning > 0 ? "warning" : "stable",
+    openCount: incidents.length,
+    activeCount: incidents.filter((incident) => incident.status === "active").length,
+    watchingCount: incidents.filter((incident) => incident.status === "watching").length,
+    bySeverity,
+    incidents,
   };
 }
 
@@ -3193,6 +4334,7 @@ async function bootstrap() {
     async (_req, res) => {
       try {
         const persistence = await PersistenceIntegration.healthCheck();
+        const agents = await buildAgentOperationalOverview(state);
         const pendingApprovals = listPendingApprovals(state);
         const pendingApprovalDetails = pendingApprovals.map((approval) => ({
           ...approval,
@@ -3205,6 +4347,11 @@ async function bootstrap() {
         const queueQueued = queue.getQueuedCount();
         const queueProcessing = queue.getPendingCount();
         const knowledge = knowledgeIntegration.getSummary();
+        const knowledgeRuntime = buildKnowledgeRuntimeSignals({
+          summary: knowledge,
+          config,
+          state,
+        });
         const proofDelivery = buildProofDeliveryTelemetry(config, state);
         const truthLayers = buildRuntimeTruthLayers({
           claimed: claimedTruthLayer,
@@ -3213,19 +4360,38 @@ async function bootstrap() {
           fastStartMode,
           persistenceStatus:
             typeof persistence.status === "string" ? persistence.status : "unknown",
-          knowledgeIndexedEntries: Number(knowledge.stats?.total ?? 0),
+          knowledgeRuntime,
           queueQueued,
           queueProcessing,
           pendingApprovalsCount: pendingApprovals.length,
           repairs: selfHealing,
           retryRecoveries: governance.taskRetryRecoveries,
+          agents,
           proofDelivery,
         });
+        const topology = await buildAgentTopology({ agents, proofDelivery });
+        const incidents = buildRuntimeIncidentModel({
+          config,
+          state,
+          fastStartMode,
+          persistence,
+          agents,
+          governance,
+          pendingApprovalsCount: pendingApprovals.length,
+          proofDelivery,
+          knowledgeRuntime,
+        });
+        const overviewHealthStatus =
+          incidents.overallStatus === "critical" || truthLayers.observed.status === "degraded"
+            ? "degraded"
+            : incidents.overallStatus === "warning" || truthLayers.observed.status === "warning"
+              ? "warning"
+              : "healthy";
 
         res.json({
           generatedAt: new Date().toISOString(),
           health: {
-            status: "healthy",
+            status: overviewHealthStatus,
             fastStartMode,
           },
           persistence,
@@ -3246,6 +4412,8 @@ async function bootstrap() {
           governance,
           truthLayers,
           proofDelivery,
+          topology,
+          incidents,
           recentTasks: state.taskHistory.slice(-20),
         });
       } catch (error: any) {
@@ -3264,10 +4432,13 @@ async function bootstrap() {
     async (_req, res) => {
       try {
         const agents = await buildAgentOperationalOverview(state);
+        const proofDelivery = buildProofDeliveryTelemetry(config, state);
+        const topology = await buildAgentTopology({ agents, proofDelivery });
         res.json({
           generatedAt: new Date().toISOString(),
           count: agents.length,
           agents,
+          topology,
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -3642,6 +4813,11 @@ async function bootstrap() {
         const persistence = await PersistenceIntegration.healthCheck();
         const agents = await buildAgentOperationalOverview(state);
         const knowledge = knowledgeIntegration.getSummary();
+        const knowledgeRuntime = buildKnowledgeRuntimeSignals({
+          summary: knowledge,
+          config,
+          state,
+        });
         const governance = summarizeGovernanceVisibility(state);
         const queueQueued = queue.getQueuedCount();
         const queueProcessing = queue.getPendingCount();
@@ -3673,23 +4849,48 @@ async function bootstrap() {
           fastStartMode,
           persistenceStatus:
             typeof persistence.status === "string" ? persistence.status : "unknown",
-          knowledgeIndexedEntries: Number(knowledge.stats?.total ?? 0),
+          knowledgeRuntime,
           queueQueued,
           queueProcessing,
           pendingApprovalsCount,
           repairs: repairSummary,
           retryRecoveries: governance.taskRetryRecoveries,
+          agents,
           proofDelivery,
         });
+        const topology = await buildAgentTopology({ agents, proofDelivery });
+        const incidents = buildRuntimeIncidentModel({
+          config,
+          state,
+          fastStartMode,
+          persistence,
+          agents,
+          governance,
+          pendingApprovalsCount,
+          proofDelivery,
+          knowledgeRuntime,
+        });
+        const healthStatus =
+          controlPlaneHealthy &&
+          dependencyStatus === "healthy" &&
+          incidents.overallStatus === "stable"
+            ? "healthy"
+            : incidents.overallStatus === "critical" || dependencyStatus !== "healthy"
+              ? "degraded"
+              : "warning";
 
         res.json({
           generatedAt: new Date().toISOString(),
-          status:
-            controlPlaneHealthy && dependencyStatus === "healthy"
-              ? "healthy"
-              : "degraded",
+          status: healthStatus,
           controlPlane: {
-            routing: controlPlaneHealthy ? "healthy" : "degraded",
+            routing:
+              incidents.overallStatus === "critical"
+                ? "degraded"
+                : controlPlaneHealthy
+                  ? incidents.overallStatus === "warning"
+                    ? "warning"
+                    : "healthy"
+                  : "degraded",
             queue: {
               queued: queueQueued,
               processing: queueProcessing,
@@ -3721,6 +4922,12 @@ async function bootstrap() {
           },
           truthLayers,
           proofDelivery,
+          topology: {
+            status: topology.status,
+            counts: topology.counts,
+            hotspots: topology.hotspots,
+          },
+          incidents,
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message });

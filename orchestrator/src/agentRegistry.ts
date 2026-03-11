@@ -21,27 +21,27 @@ export interface AgentConfig {
     fallback: string;
     tier: 'cheap' | 'balanced' | 'heavy' | 'strategic';
   };
-  permissions: {
-    skills: Record<string, { allowed: boolean }>;
-    fileSystem: {
-      readPaths: string[];
-      writePaths: string[];
+  permissions?: {
+    skills?: Record<string, { allowed: boolean }>;
+    fileSystem?: {
+      readPaths?: string[];
+      writePaths?: string[];
     };
-    network: {
-      allowed: boolean;
+    network?: {
+      allowed?: boolean;
       allowedDomains?: string[];
     };
   };
-  constraints: {
-    timeout: number;
-    maxRetries: number;
-    memory: string;
-    cpu: string;
+  constraints?: {
+    timeout?: number;
+    maxRetries?: number;
+    memory?: string;
+    cpu?: string;
   };
-  heartbeat: {
-    enabled: boolean;
-    interval: number;
-    checks: string[];
+  heartbeat?: {
+    enabled?: boolean;
+    interval?: number;
+    checks?: string[];
   };
 }
 
@@ -155,7 +155,7 @@ export class AgentRegistry {
     const agent = this.agents.get(agentId);
     if (!agent) return false;
 
-    const skillPerms = agent.permissions.skills[skillId];
+    const skillPerms = agent.permissions?.skills?.[skillId];
     return skillPerms?.allowed === true;
   }
 
@@ -166,7 +166,9 @@ export class AgentRegistry {
     const agent = this.agents.get(agentId);
     if (!agent) return [];
 
-    return Object.entries(agent.permissions.skills)
+    const skills = agent.permissions?.skills ?? {};
+
+    return Object.entries(skills)
       .filter(([_, perms]) => perms.allowed === true)
       .map(([skillId, _]) => skillId);
   }
@@ -275,7 +277,9 @@ export class AgentRegistry {
     }
 
     // Check at least one skill is allowed
-    const allowedSkills = Object.values(agent.permissions.skills).filter(p => p.allowed);
+    const allowedSkills = Object.values(agent.permissions?.skills ?? {}).filter(
+      (p) => p.allowed,
+    );
     if (allowedSkills.length === 0) {
       errors.push('No skills are allowed for this agent');
     }

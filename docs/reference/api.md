@@ -85,9 +85,14 @@ Do not render these nested objects directly:
 - `/api/dashboard/overview.governance`
 - `/api/dashboard/overview.truthLayers`
 - `/api/dashboard/overview.proofDelivery`
+- `/api/dashboard/overview.topology`
+- `/api/dashboard/overview.incidents`
 - `/api/dashboard/overview.recentTasks`
 - `/api/health/extended.truthLayers`
 - `/api/health/extended.proofDelivery`
+- `/api/health/extended.topology`
+- `/api/health/extended.incidents`
+- `/api/agents/overview.topology`
 
 Safe leaf fields to render:
 
@@ -105,22 +110,51 @@ Safe leaf fields to render:
   `dependencies.knowledge.indexedEntries`,
   `dependencies.knowledge.conceptCount`,
   `truthLayers.configured.status`,
+  `truthLayers.configured.summary`,
   `truthLayers.observed.status`,
+  `truthLayers.observed.summary`,
   `truthLayers.public.status`,
+  `truthLayers.public.summary`,
   `proofDelivery.milestone.deliveryStatus`,
-  `proofDelivery.demandSummary.deliveryStatus`
+  `proofDelivery.demandSummary.deliveryStatus`,
+  `topology.status`,
+  `topology.counts.totalNodes`,
+  `topology.counts.totalEdges`,
+  `topology.hotspots[]`,
+  `incidents.overallStatus`,
+  `incidents.openCount`,
+  `incidents.activeCount`,
+  `incidents.bySeverity.critical`,
+  `incidents.bySeverity.warning`,
+  `incidents.bySeverity.info`
 - `/api/dashboard/overview`: `health.fastStartMode`, `queue.queued`,
   `queue.processing`, `approvals.pendingCount`,
   `selfHealing.summary.totalCount`, `selfHealing.summary.activeCount`,
   `selfHealing.summary.verifiedCount`, governance count fields,
   `truthLayers.claimed.publicProofBoundary`,
+  `truthLayers.claimed.summary`,
   `truthLayers.configured.status`,
+  `truthLayers.configured.summary`,
+  `truthLayers.configured.evidence[].label`,
+  `truthLayers.configured.evidence[].status`,
+  `truthLayers.configured.signals[].severity`,
+  `truthLayers.configured.signals[].message`,
   `truthLayers.configured.proofTransportsConfigured`,
   `truthLayers.observed.status`,
+  `truthLayers.observed.summary`,
+  `truthLayers.observed.evidence[].label`,
+  `truthLayers.observed.evidence[].status`,
+  `truthLayers.observed.signals[].severity`,
+  `truthLayers.observed.signals[].message`,
   `truthLayers.observed.recentTasks.count`,
   `truthLayers.observed.lastMilestoneDeliveryAt`,
   `truthLayers.observed.lastDemandSummaryDeliveryAt`,
   `truthLayers.public.status`,
+  `truthLayers.public.summary`,
+  `truthLayers.public.evidence[].label`,
+  `truthLayers.public.evidence[].status`,
+  `truthLayers.public.signals[].severity`,
+  `truthLayers.public.signals[].message`,
   `truthLayers.public.milestoneStatus`,
   `truthLayers.public.demandSummaryStatus`,
   `proofDelivery.boundary.surface`,
@@ -141,6 +175,27 @@ Safe leaf fields to render:
   `proofDelivery.demandSummary.ledger.retryingCount`,
   `proofDelivery.demandSummary.ledger.deadLetterCount`,
   `proofDelivery.demandSummary.ledger.deliveredCount`,
+  `topology.status`,
+  `topology.counts.totalNodes`,
+  `topology.counts.totalEdges`,
+  `topology.counts.routeEdges`,
+  `topology.counts.skillEdges`,
+  `topology.counts.proofEdges`,
+  `topology.hotspots[]`,
+  `incidents.overallStatus`,
+  `incidents.openCount`,
+  `incidents.activeCount`,
+  `incidents.watchingCount`,
+  `incidents.bySeverity.critical`,
+  `incidents.bySeverity.warning`,
+  `incidents.bySeverity.info`,
+  `incidents.incidents[].title`,
+  `incidents.incidents[].severity`,
+  `incidents.incidents[].status`,
+  `incidents.incidents[].truthLayer`,
+  `incidents.incidents[].summary`,
+  `incidents.incidents[].remediation.status`,
+  `incidents.incidents[].remediation.owner`,
   `recentTasks[].handledAt`, `recentTasks[].type`, `recentTasks[].result`,
   `recentTasks[].message`
   Approval payloads can now include review-gated Reddit lead promotions:
@@ -204,11 +259,21 @@ Interpretation note from the `2026-03-07` repair follow-up:
   inactive; `null` is reserved for probe-unavailable cases. Per-agent host
   hints now also include `serviceUnitState`, `serviceUnitSubState`, and
   `serviceUnitFileState`.
+- `GET /api/agents/overview` now also exposes `topology`, a derived graph of
+  `orchestrator -> task -> agent -> skill` relationships plus the separate
+  `orchestrator -> openclawdbot` proof edge. This is derived from manifests,
+  task/skill contracts, and current runtime evidence. It is not a speculative
+  agent-to-agent graph.
 - `GET /api/dashboard/overview` and `GET /api/health/extended` now expose
   `truthLayers` and `proofDelivery` so frontends can distinguish declared
   control-plane intent, current runtime configuration, observed operator state,
   and the separate public-proof delivery boundary without inventing those
   distinctions client-side.
+- `GET /api/dashboard/overview` and `GET /api/health/extended` now also expose
+  `incidents`, a derived incident/remediation model built from persistence,
+  proof delivery, repairs, retry recovery, agent service gaps, approval backlog,
+  and knowledge freshness/contradiction signals. These are runtime evidence
+  summaries, not ticket-system records.
 - `GET /api/knowledge/summary` and `POST /api/knowledge/query` now expose
   knowledge freshness, provenance, contradiction signals, and runtime
   coverage/staleness signals. These are deterministic diagnostics based on the
