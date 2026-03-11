@@ -104,6 +104,28 @@ export function buildOpenApiSpec(port: string | number = 3000) {
         },
       },
     },
+    '/api/incidents/{id}/acknowledge': {
+      post: {
+        summary: 'Acknowledge a persistent runtime incident',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Incident acknowledgement persisted' },
+          '400': { description: 'Invalid request or unknown incident' },
+          '401': { description: 'Unauthorized' },
+        },
+      },
+    },
+    '/api/incidents/{id}/owner': {
+      post: {
+        summary: 'Assign or update a persistent runtime incident owner',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Incident owner persisted' },
+          '400': { description: 'Invalid request or unknown incident' },
+          '401': { description: 'Unauthorized' },
+        },
+      },
+    },
     '/api/auth/me': {
       get: {
         summary: 'Resolved auth actor and role context',

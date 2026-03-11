@@ -82,6 +82,17 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     return body.taskId;
   };
 
+  const fetchProtected = async <T>(path: string): Promise<T> => {
+    const response = await fetch(`${baseUrl}${path}`, {
+      headers: {
+        Authorization: `Bearer ${TEST_API_KEY}`,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    return (await response.json()) as T;
+  };
+
   const waitForTaskHistoryRecord = async (taskId: string, timeoutMs = 45000) => {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -101,6 +112,22 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     }
 
     throw new Error(`Task history record not found for taskId=${taskId}`);
+  };
+
+  const waitForTaskRun = async (taskId: string, timeoutMs = 45000) => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const payload = await fetchProtected<{
+        runs: Array<{ taskId?: string; runId?: string }>;
+      }>('/api/tasks/runs?limit=100');
+      const found = payload.runs.find((run) => run.taskId === taskId);
+      if (found?.runId) {
+        return found;
+      }
+      await sleep(250);
+    }
+
+    throw new Error(`Task run not found for taskId=${taskId}`);
   };
 
   beforeAll(async () => {
@@ -378,6 +405,122 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     });
 
     expect(response.status).toBe(401);
+  });
+
+  it('exposes enriched incidents and persists acknowledgement and owner updates', async () => {
+    const overview = await fetchProtected<{
+      incidents?: {
+        openCount?: number;
+        incidents?: Array<{
+          id?: string;
+          firstSeenAt?: string | null;
+          lastSeenAt?: string | null;
+          remediation?: { nextAction?: string | null };
+        }>;
+      };
+    }>('/api/dashboard/overview');
+
+    expect(overview.incidents?.openCount ?? 0).toBeGreaterThan(0);
+    const incident = overview.incidents?.incidents?.[0];
+    expect(incident?.id).toBeTruthy();
+    expect(incident?.firstSeenAt).toBeTruthy();
+    expect(incident?.lastSeenAt).toBeTruthy();
+    expect(incident?.remediation?.nextAction).toBeTruthy();
+
+    const acknowledgeResponse = await fetch(
+      `${baseUrl}/api/incidents/${encodeURIComponent(String(incident?.id))}/acknowledge`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${TEST_API_KEY}`,
+        },
+        body: JSON.stringify({
+          actor: 'integration-test-operator',
+          note: 'Acknowledged by integration test',
+        }),
+      },
+    );
+    expect(acknowledgeResponse.status).toBe(200);
+    const acknowledged = await acknowledgeResponse.json() as {
+      incident?: { acknowledgedAt?: string | null; acknowledgedBy?: string | null };
+    };
+    expect(acknowledged.incident?.acknowledgedAt).toBeTruthy();
+    expect(acknowledged.incident?.acknowledgedBy).toBe('integration-test-operator');
+
+    const ownerResponse = await fetch(
+      `${baseUrl}/api/incidents/${encodeURIComponent(String(incident?.id))}/owner`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${TEST_API_KEY}`,
+        },
+        body: JSON.stringify({ owner: 'integration-test-operator' }),
+      },
+    );
+    expect(ownerResponse.status).toBe(200);
+    const owned = await ownerResponse.json() as {
+      incident?: { owner?: string | null };
+    };
+    expect(owned.incident?.owner).toBe('integration-test-operator');
+  });
+
+  it('returns workflow summaries, workflow graph detail, and agent capability surfaces', async () => {
+    const taskId = await triggerTask('heartbeat', {
+      reason: 'workflow-graph-validation',
+    });
+
+    await waitForTaskHistoryRecord(taskId);
+    const run = await waitForTaskRun(taskId);
+
+    const runsPayload = await fetchProtected<{
+      runs: Array<{
+        taskId?: string;
+        workflow?: {
+          graphStatus?: string;
+          nodeCount?: number;
+          edgeCount?: number;
+          stageDurations?: Record<string, number>;
+        };
+      }>;
+    }>('/api/tasks/runs?limit=100');
+
+    const runSummary = runsPayload.runs.find((item) => item.taskId === taskId);
+    expect(runSummary?.workflow?.graphStatus).toBeTruthy();
+    expect(runSummary?.workflow?.nodeCount ?? 0).toBeGreaterThan(0);
+    expect(runSummary?.workflow?.edgeCount ?? 0).toBeGreaterThan(0);
+    expect(runSummary?.workflow?.stageDurations).toBeTruthy();
+
+    const detailPayload = await fetchProtected<{
+      run?: {
+        workflowGraph?: {
+          nodes?: unknown[];
+          edges?: unknown[];
+          events?: unknown[];
+        };
+      };
+    }>(`/api/tasks/runs/${encodeURIComponent(String(run.runId))}`);
+    expect((detailPayload.run?.workflowGraph?.nodes ?? []).length).toBeGreaterThan(0);
+    expect((detailPayload.run?.workflowGraph?.edges ?? []).length).toBeGreaterThan(0);
+    expect((detailPayload.run?.workflowGraph?.events ?? []).length).toBeGreaterThan(0);
+
+    const agentsPayload = await fetchProtected<{
+      agents?: Array<{
+        capability?: {
+          currentReadiness?: string;
+          evidence?: string[];
+          ultraGapSummary?: string;
+        };
+      }>;
+    }>('/api/agents/overview');
+
+    expect((agentsPayload.agents ?? []).length).toBeGreaterThan(0);
+    for (const agent of agentsPayload.agents ?? []) {
+      expect(agent.capability?.currentReadiness).toBeTruthy();
+      expect(Array.isArray(agent.capability?.evidence)).toBe(true);
+      expect(agent.capability?.ultraGapSummary).toBeTruthy();
+    }
   });
 
   it('keeps process alive during middleware assertions', () => {

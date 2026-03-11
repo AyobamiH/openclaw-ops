@@ -2,6 +2,7 @@ import { loadConfig } from "./config.js";
 import { DocIndexer } from "./docIndexer.js";
 import { TaskQueue } from "./taskQueue.js";
 import {
+  appendWorkflowEventRecord,
   getRetryRecoveryDelayMs,
   loadState,
   reconcileTaskRetryRecoveryState,
@@ -23,12 +24,22 @@ import {
 } from "./alerter.js";
 import {
   ApprovalRecord,
+  IncidentLedgerRecord,
+  IncidentLedgerStatus,
+  IncidentLedgerClassification,
+  IncidentLedgerSeverity,
+  IncidentLedgerTruthLayer,
+  IncidentRemediationOwner,
+  IncidentRemediationStatus,
   OrchestratorState,
   Task,
   TaskRetryRecoveryRecord,
   ToolInvocation,
+  WorkflowEventRecord,
+  WorkflowEventStage,
 } from "./types.js";
 import { mkdir, readFile, stat } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import cron from "node-cron";
@@ -69,6 +80,8 @@ import {
   AlertManagerWebhookSchema,
   ApprovalDecisionSchema,
   KBQuerySchema,
+  IncidentAcknowledgeSchema,
+  IncidentOwnerSchema,
   PersistenceHistoricalSchema,
   SkillsAuditQuerySchema,
   TaskRunsQuerySchema,
@@ -360,44 +373,37 @@ type AgentTopology = {
   edges: AgentTopologyEdge[];
 };
 
-type RuntimeIncidentSeverity = "info" | "warning" | "critical";
-type RuntimeIncidentStatus = "active" | "watching";
-type RuntimeIncidentClassification =
-  | "runtime-mode"
-  | "persistence"
-  | "proof-delivery"
-  | "repair"
-  | "retry-recovery"
-  | "knowledge"
-  | "service-runtime"
-  | "approval-backlog";
-type RuntimeIncidentTruthLayer = "configured" | "observed" | "public";
-type RuntimeIncidentRemediationOwner = "auto" | "operator" | "mixed";
-type RuntimeIncidentRemediationStatus =
-  | "ready"
-  | "in-progress"
-  | "blocked"
-  | "watching";
-
 type RuntimeIncident = {
   id: string;
+  fingerprint: string;
   title: string;
-  classification: RuntimeIncidentClassification;
-  severity: RuntimeIncidentSeverity;
-  status: RuntimeIncidentStatus;
-  truthLayer: RuntimeIncidentTruthLayer;
+  classification: IncidentLedgerClassification;
+  severity: IncidentLedgerSeverity;
+  status: IncidentLedgerStatus;
+  truthLayer: IncidentLedgerTruthLayer;
   summary: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  resolvedAt: string | null;
   detectedAt: string | null;
+  acknowledgedAt: string | null;
+  acknowledgedBy: string | null;
+  acknowledgementNote: string | null;
+  owner: string | null;
   affectedSurfaces: string[];
+  linkedServiceIds: string[];
+  linkedTaskIds: string[];
+  linkedRunIds: string[];
+  linkedRepairIds: string[];
+  linkedProofDeliveries: string[];
   evidence: string[];
+  recommendedSteps: string[];
   remediation: {
-    owner: RuntimeIncidentRemediationOwner;
-    status: RuntimeIncidentRemediationStatus;
+    owner: IncidentRemediationOwner;
+    status: IncidentRemediationStatus;
     summary: string;
     nextAction: string;
     blockers: string[];
-    linkedRepairIds: string[];
-    linkedTaskIds: string[];
   };
 };
 
@@ -439,6 +445,67 @@ type RunWorkflowEvent = {
   message: string;
   evidence: string[];
 };
+
+type WorkflowGraphNodeStatus =
+  | "pending"
+  | "active"
+  | "completed"
+  | "blocked"
+  | "warning";
+
+type WorkflowGraphNode = {
+  id: string;
+  kind: "stage" | "agent" | "proof";
+  stage: WorkflowEventStage;
+  label: string;
+  status: WorkflowGraphNodeStatus;
+  timestamp: string | null;
+  detail: string;
+  evidence: string[];
+};
+
+type WorkflowGraphEdge = {
+  id: string;
+  from: string;
+  to: string;
+  status: "declared" | "active" | "completed" | "blocked";
+  detail: string;
+};
+
+type WorkflowGraph = {
+  graphStatus: "stable" | "warning" | "blocked" | "completed";
+  currentStage: WorkflowEventStage | null;
+  blockedStage: WorkflowEventStage | null;
+  stopReason: string | null;
+  stageDurations: Partial<Record<WorkflowEventStage, number>>;
+  nodeCount: number;
+  edgeCount: number;
+  nodes: WorkflowGraphNode[];
+  edges: WorkflowGraphEdge[];
+  events: WorkflowEventRecord[];
+  proofLinks: Array<{
+    id: string;
+    type: "milestone" | "demandSummary";
+    status: string;
+    summary: string;
+    target: string | null;
+    lastAttemptAt: string | null;
+  }>;
+};
+
+type AgentCapabilitySpine =
+  | "truth"
+  | "execution"
+  | "trust"
+  | "communication"
+  | "ingestion"
+  | "code";
+
+type AgentCapabilityReadiness =
+  | "declared"
+  | "foundation"
+  | "operational"
+  | "advanced";
 
 type ApprovalImpactMetadata = {
   riskLevel: "low" | "medium" | "high";
@@ -718,6 +785,159 @@ const CONFIRMED_WORKER_AGENTS = new Set([
   "market-research-agent",
 ]);
 const PARTIAL_WORKER_AGENTS = new Set(["doc-specialist", "reddit-helper"]);
+
+const AGENT_CAPABILITY_TARGETS: Record<
+  string,
+  {
+    role: string;
+    spine: AgentCapabilitySpine;
+    targetCapabilities: string[];
+  }
+> = {
+  "doc-specialist": {
+    role: "Repository intelligence engine",
+    spine: "truth",
+    targetCapabilities: [
+      "knowledge indexing",
+      "drift detection",
+      "pack generation",
+      "runtime evidence grounding",
+      "doc repair drafting",
+    ],
+  },
+  "integration-agent": {
+    role: "Workflow conductor",
+    spine: "execution",
+    targetCapabilities: [
+      "workflow planning",
+      "delegation routing",
+      "fallback routing",
+      "blocked-state explanation",
+      "workflow evidence emission",
+    ],
+  },
+  "system-monitor-agent": {
+    role: "Operational fusion monitor",
+    spine: "trust",
+    targetCapabilities: [
+      "service telemetry fusion",
+      "queue telemetry fusion",
+      "incident detection",
+      "proof freshness monitoring",
+      "budget posture awareness",
+    ],
+  },
+  "security-agent": {
+    role: "Trust-boundary auditor",
+    spine: "trust",
+    targetCapabilities: [
+      "policy auditing",
+      "secret posture review",
+      "permission drift detection",
+      "route-boundary review",
+      "bounded remediation guidance",
+    ],
+  },
+  "qa-verification-agent": {
+    role: "Final verifier",
+    spine: "trust",
+    targetCapabilities: [
+      "output verification",
+      "reproducibility checks",
+      "policy alignment review",
+      "regression checks",
+      "acceptance gating",
+    ],
+  },
+  "reddit-helper": {
+    role: "Community strategist",
+    spine: "communication",
+    targetCapabilities: [
+      "knowledge-grounded drafting",
+      "queue triage",
+      "signal routing",
+      "public communication feedback",
+      "reply verification",
+    ],
+  },
+  "content-agent": {
+    role: "Evidence-based publisher",
+    spine: "communication",
+    targetCapabilities: [
+      "documentation drafting",
+      "release-note drafting",
+      "proof narrative drafting",
+      "repo-grounded publishing",
+      "operator summary writing",
+    ],
+  },
+  "summarization-agent": {
+    role: "Compression layer",
+    spine: "communication",
+    targetCapabilities: [
+      "log summarization",
+      "run summarization",
+      "audit summarization",
+      "pack compression",
+      "context reduction",
+    ],
+  },
+  "data-extraction-agent": {
+    role: "External artifact ingestor",
+    spine: "ingestion",
+    targetCapabilities: [
+      "document parsing",
+      "artifact extraction",
+      "source normalization handoff",
+      "structured evidence capture",
+      "external artifact triage",
+    ],
+  },
+  "normalization-agent": {
+    role: "Schema and ETL normalizer",
+    spine: "ingestion",
+    targetCapabilities: [
+      "schema normalization",
+      "ETL cleanup",
+      "validation mapping",
+      "typed output shaping",
+      "ingestion standardization",
+    ],
+  },
+  "build-refactor-agent": {
+    role: "Governed code surgeon",
+    spine: "code",
+    targetCapabilities: [
+      "bounded patching",
+      "build validation",
+      "test execution",
+      "rollback-aware refactoring",
+      "repair-safe edits",
+    ],
+  },
+  "market-research-agent": {
+    role: "External signal intake",
+    spine: "ingestion",
+    targetCapabilities: [
+      "web research",
+      "competitive signal tracking",
+      "external change detection",
+      "signal-to-pack handoff",
+      "source evidence capture",
+    ],
+  },
+  "skill-audit-agent": {
+    role: "Governed skill auditor",
+    spine: "trust",
+    targetCapabilities: [
+      "skill review",
+      "permission review",
+      "governance evidence capture",
+      "supply-chain visibility",
+      "audit summarization",
+    ],
+  },
+};
 const DEFAULT_CORS_METHODS = ["GET", "POST"];
 const DEFAULT_CORS_HEADERS = ["Authorization", "Content-Type"];
 const DEFAULT_CORS_EXPOSED_HEADERS = [
@@ -1157,6 +1377,157 @@ function resolveAgentFrontendExposure(
   return "backend-only";
 }
 
+function buildAgentCapabilityReadiness(args: {
+  agent: {
+    id: string;
+    model?: { tier?: string | null };
+    permissions?: { skills?: Record<string, { allowed: boolean }> };
+  };
+  orchestratorTask: string | null;
+  spawnedWorkerCapable: boolean;
+  serviceAvailable: boolean;
+  serviceInstalled: boolean | null;
+  serviceRunning: boolean | null;
+  memory: AgentMemoryState | null;
+  workerEvidence: AgentWorkerEvidenceSummary;
+  state: OrchestratorState;
+}) {
+  const {
+    agent,
+    orchestratorTask,
+    spawnedWorkerCapable,
+    serviceAvailable,
+    serviceInstalled,
+    serviceRunning,
+    memory,
+    workerEvidence,
+    state,
+  } = args;
+
+  const target = AGENT_CAPABILITY_TARGETS[agent.id] ?? {
+    role: "Specialized agent",
+    spine: "execution" as AgentCapabilitySpine,
+    targetCapabilities: ["runtime execution", "evidence grounding"],
+  };
+  const modelTier =
+    typeof agent.model?.tier === "string" && agent.model.tier.length > 0
+      ? agent.model.tier
+      : null;
+  const allowedSkills = Object.entries(agent.permissions?.skills ?? {})
+    .filter(([, permission]) => permission.allowed)
+    .map(([skillId]) => skillId);
+  const memoryHasRun =
+    Boolean(memory?.lastRunAt) || Number(memory?.totalRuns ?? 0) > 0;
+  const verifiedRepairCount = state.repairRecords.filter((record) => {
+    if (record.status !== "verified") return false;
+    if (orchestratorTask && record.repairTaskType === orchestratorTask) return true;
+    if (orchestratorTask && record.sourceTaskType === orchestratorTask) return true;
+    return false;
+  }).length;
+
+  const evidence: string[] = [];
+  const presentCapabilities: string[] = [];
+  const missingCapabilities: string[] = [];
+
+  if (modelTier) {
+    evidence.push(`model tier declared: ${modelTier}`);
+    presentCapabilities.push("tiered model declaration");
+  } else {
+    missingCapabilities.push("tiered model declaration");
+  }
+
+  if (allowedSkills.length > 0) {
+    evidence.push(`allowed skills: ${allowedSkills.join(", ")}`);
+    presentCapabilities.push("governed skill access");
+  } else {
+    missingCapabilities.push("governed skill access");
+  }
+
+  if (spawnedWorkerCapable) {
+    evidence.push("spawned worker entrypoint detected");
+    presentCapabilities.push("spawned worker path");
+  }
+  if (serviceAvailable) {
+    evidence.push("service entrypoint detected");
+    presentCapabilities.push("service entrypoint");
+  }
+  if (!spawnedWorkerCapable && !serviceAvailable) {
+    missingCapabilities.push("runtime execution path");
+  }
+
+  if (serviceInstalled === true) {
+    evidence.push("service unit installed on host");
+    presentCapabilities.push("host-installed service");
+  }
+  if (serviceRunning === true) {
+    evidence.push("service unit running on host");
+    presentCapabilities.push("live service coverage");
+  } else if (serviceAvailable) {
+    missingCapabilities.push("live service coverage");
+  }
+
+  if (workerEvidence.lastSuccessfulRunId) {
+    evidence.push(`successful run evidence: ${workerEvidence.lastSuccessfulRunId}`);
+    presentCapabilities.push("successful runtime evidence");
+  } else {
+    missingCapabilities.push("successful runtime evidence");
+  }
+
+  if (workerEvidence.lastToolGateMode === "execute") {
+    evidence.push("tool execution evidence observed");
+    presentCapabilities.push("tool execution evidence");
+  } else if (workerEvidence.lastToolGateMode === "preflight") {
+    evidence.push("tool preflight evidence observed");
+    missingCapabilities.push("tool execution evidence");
+  } else {
+    missingCapabilities.push("tool execution evidence");
+  }
+
+  if (memoryHasRun) {
+    evidence.push("agent memory has run history");
+    presentCapabilities.push("memory-backed operational evidence");
+  } else {
+    missingCapabilities.push("memory-backed operational evidence");
+  }
+
+  if (verifiedRepairCount > 0) {
+    evidence.push(`${verifiedRepairCount} verified repair-linked run(s) observed`);
+    presentCapabilities.push("verification or repair evidence");
+  } else {
+    missingCapabilities.push("verification or repair evidence");
+  }
+
+  const readiness =
+    workerEvidence.lastSuccessfulRunId &&
+    allowedSkills.length > 0 &&
+    (serviceRunning === true || memoryHasRun) &&
+    workerEvidence.lastToolGateMode === "execute"
+      ? ("advanced" as AgentCapabilityReadiness)
+      : workerEvidence.lastSuccessfulRunId &&
+          allowedSkills.length > 0 &&
+          (spawnedWorkerCapable || serviceAvailable)
+        ? ("operational" as AgentCapabilityReadiness)
+        : (modelTier || allowedSkills.length > 0) &&
+            (spawnedWorkerCapable || serviceAvailable)
+          ? ("foundation" as AgentCapabilityReadiness)
+          : ("declared" as AgentCapabilityReadiness);
+
+  const uniqueMissing = [...new Set(missingCapabilities)];
+
+  return {
+    role: target.role,
+    spine: target.spine,
+    currentReadiness: readiness,
+    evidence,
+    presentCapabilities: [...new Set(presentCapabilities)],
+    missingCapabilities: uniqueMissing,
+    ultraGapSummary:
+      uniqueMissing.length > 0
+        ? `${uniqueMissing.length} capability gap${uniqueMissing.length === 1 ? "" : "s"} remain before this agent can be treated as ultra-capable in-role.`
+        : "Runtime evidence covers the current ultra-agent target checks exposed by the control plane.",
+  };
+}
+
 type HostServiceUnitState = {
   id: string;
   loadState: string | null;
@@ -1352,12 +1723,27 @@ export async function buildAgentOperationalOverview(state: OrchestratorState) {
       const serviceInstalled = resolveServiceInstalledState(hostUnitState);
       const serviceRunning = resolveServiceRunningState(hostUnitState);
       const serviceOperational = serviceRunning === true;
+      const allowedSkills = registry.getAllowedSkills(typedAgent.id);
       const dependencySensitivity = resolveDependencySensitivity(typedAgent.id);
       const frontendExposure = resolveAgentFrontendExposure(
         workerEvidence.workerValidationStatus,
         serviceAvailable,
         spawnedWorkerCapable,
       );
+      const capability = buildAgentCapabilityReadiness({
+        agent: typedAgent,
+        orchestratorTask:
+          typeof typedAgent.orchestratorTask === "string"
+            ? typedAgent.orchestratorTask
+            : null,
+        spawnedWorkerCapable,
+        serviceAvailable,
+        serviceInstalled,
+        serviceRunning,
+        memory,
+        workerEvidence,
+        state,
+      });
 
       const notes: string[] = [];
       if (!serviceAvailable) {
@@ -1398,6 +1784,9 @@ export async function buildAgentOperationalOverview(state: OrchestratorState) {
           typeof typedAgent.orchestratorTask === "string"
             ? typedAgent.orchestratorTask
             : null,
+        modelTier:
+          typeof typedAgent.model?.tier === "string" ? typedAgent.model.tier : null,
+        allowedSkills,
         declared: true,
         spawnedWorkerCapable,
         workerValidationStatus: workerEvidence.workerValidationStatus,
@@ -1417,6 +1806,7 @@ export async function buildAgentOperationalOverview(state: OrchestratorState) {
         serviceOperational,
         dependencySensitivity,
         frontendExposure,
+        capability,
         memory: memory
           ? {
               lastRunAt: memory.lastRunAt ?? null,
@@ -1497,6 +1887,165 @@ function normalizeIsoTimestamp(value?: string | null) {
   return new Date(parsed).toISOString();
 }
 
+const WORKFLOW_STAGE_ORDER: WorkflowEventStage[] = [
+  "ingress",
+  "queue",
+  "approval",
+  "agent",
+  "repair",
+  "result",
+  "proof",
+];
+
+function summarizeEvidence(evidence: string[], limit: number = 6) {
+  return [...new Set(evidence.filter(Boolean))].slice(0, limit);
+}
+
+function buildWorkflowEventId(
+  runId: string,
+  stage: WorkflowEventStage,
+  state: string,
+  timestamp: string,
+  nodeId: string,
+  detail: string,
+) {
+  const digest = createHash("sha1")
+    .update([runId, stage, state, timestamp, nodeId, detail].join("|"))
+    .digest("hex")
+    .slice(0, 12);
+  return `workflow:${stage}:${digest}`;
+}
+
+function appendWorkflowEvent(args: {
+  state: OrchestratorState;
+  runId: string;
+  taskId: string;
+  type: string;
+  stage: WorkflowEventStage;
+  stateLabel: string;
+  source: string;
+  actor?: string | null;
+  nodeId: string;
+  detail: string;
+  evidence?: string[];
+  timestamp?: string;
+}) {
+  const timestamp = normalizeIsoTimestamp(args.timestamp) ?? new Date().toISOString();
+  const detail = args.detail.trim();
+  const event: WorkflowEventRecord = {
+    eventId: buildWorkflowEventId(
+      args.runId,
+      args.stage,
+      args.stateLabel,
+      timestamp,
+      args.nodeId,
+      detail,
+    ),
+    runId: args.runId,
+    taskId: args.taskId,
+    type: args.type,
+    stage: args.stage,
+    state: args.stateLabel,
+    timestamp,
+    source: args.source,
+    actor:
+      typeof args.actor === "string" && args.actor.trim().length > 0
+        ? args.actor.trim()
+        : "system",
+    nodeId: args.nodeId,
+    detail,
+    evidence: summarizeEvidence(args.evidence ?? []),
+  };
+
+  const existing = args.state.workflowEvents.find(
+    (record) => record.eventId === event.eventId,
+  );
+  if (existing) return existing;
+
+  appendWorkflowEventRecord(args.state, event);
+  return event;
+}
+
+function mapWorkflowEventStageToLegacy(
+  stage: WorkflowEventStage,
+): RunWorkflowEvent["stage"] {
+  if (stage === "ingress" || stage === "queue") return "queue";
+  if (stage === "approval") return "approval";
+  if (stage === "agent") return "execution";
+  if (stage === "result") return "status";
+  if (stage === "proof") return "status";
+  return "repair";
+}
+
+function buildRunWorkflowEventsFromLedger(events: WorkflowEventRecord[]) {
+  return sortTimelineEvents(
+    events.map((event) => ({
+      id: event.eventId,
+      stage: mapWorkflowEventStageToLegacy(event.stage),
+      state: event.state,
+      source: [
+        "approval",
+        "repair",
+        "history",
+        "retry-recovery",
+      ].includes(event.source)
+        ? (event.source as RunWorkflowEvent["source"])
+        : "execution",
+      timestamp: normalizeIsoTimestamp(event.timestamp),
+      message: event.detail,
+      evidence: summarizeEvidence(event.evidence),
+    })),
+  );
+}
+
+function deriveWorkflowStageTimestamps(events: WorkflowEventRecord[]) {
+  const timestamps: Partial<Record<WorkflowEventStage, number>> = {};
+  for (const stage of WORKFLOW_STAGE_ORDER) {
+    const stageEvents = events
+      .filter((event) => event.stage === stage)
+      .map((event) => Date.parse(event.timestamp))
+      .filter((value) => Number.isFinite(value));
+    if (stageEvents.length > 0) {
+      timestamps[stage] = Math.min(...stageEvents);
+    }
+  }
+  return timestamps;
+}
+
+function buildWorkflowStageDurations(events: WorkflowEventRecord[]) {
+  const timestamps = deriveWorkflowStageTimestamps(events);
+  const durations: Partial<Record<WorkflowEventStage, number>> = {};
+
+  for (let index = 0; index < WORKFLOW_STAGE_ORDER.length; index += 1) {
+    const stage = WORKFLOW_STAGE_ORDER[index];
+    const nextStage = WORKFLOW_STAGE_ORDER[index + 1];
+    const start = timestamps[stage];
+    const next = nextStage ? timestamps[nextStage] : undefined;
+    if (typeof start !== "number" || typeof next !== "number" || next < start) {
+      continue;
+    }
+    durations[stage] = next - start;
+  }
+
+  return durations;
+}
+
+function sortWorkflowEventRecords(events: WorkflowEventRecord[]) {
+  return [...events].sort((left, right) => {
+    const leftTs = Date.parse(left.timestamp);
+    const rightTs = Date.parse(right.timestamp);
+    if (!Number.isFinite(leftTs) && !Number.isFinite(rightTs)) {
+      return left.eventId.localeCompare(right.eventId);
+    }
+    if (!Number.isFinite(leftTs)) return 1;
+    if (!Number.isFinite(rightTs)) return -1;
+    if (leftTs === rightTs) {
+      return left.eventId.localeCompare(right.eventId);
+    }
+    return leftTs - rightTs;
+  });
+}
+
 function sortTimelineEvents(events: RunWorkflowEvent[]) {
   return [...events].sort((left, right) => {
     if (!left.timestamp && !right.timestamp) return left.id.localeCompare(right.id);
@@ -1506,19 +2055,213 @@ function sortTimelineEvents(events: RunWorkflowEvent[]) {
   });
 }
 
+function buildProofLinksForRun(
+  state: OrchestratorState,
+  execution: OrchestratorState["taskExecutions"][number],
+) {
+  const milestoneLinks = state.milestoneDeliveries
+    .filter(
+      (record) =>
+        record.sourceRunId === execution.idempotencyKey ||
+        record.sourceTaskId === execution.taskId,
+    )
+    .map((record) => ({
+      id: record.idempotencyKey,
+      type: "milestone" as const,
+      status: record.status,
+      summary: record.event.claim,
+      target: record.event.scope ?? null,
+      lastAttemptAt: record.lastAttemptAt ?? null,
+    }));
+
+  const demandLinks = state.demandSummaryDeliveries
+    .filter(
+      (record) =>
+        record.sourceRunId === execution.idempotencyKey ||
+        record.sourceTaskId === execution.taskId,
+    )
+    .map((record) => ({
+      id: record.idempotencyKey,
+      type: "demandSummary" as const,
+      status: record.status,
+      summary: `Demand summary ${record.summaryId}`,
+      target: record.snapshot.summaryId ?? null,
+      lastAttemptAt: record.lastAttemptAt ?? null,
+    }));
+
+  return [...milestoneLinks, ...demandLinks];
+}
+
+function buildWorkflowGraph(args: {
+  execution: OrchestratorState["taskExecutions"][number];
+  approval: ApprovalRecord | null;
+  repair: OrchestratorState["repairRecords"][number] | null;
+  workflowEvents: WorkflowEventRecord[];
+  proofLinks: WorkflowGraph["proofLinks"];
+}) {
+  const { execution, approval, repair, workflowEvents, proofLinks } = args;
+  const stageDurations = buildWorkflowStageDurations(workflowEvents);
+  const requirement = TASK_AGENT_SKILL_REQUIREMENTS[execution.type];
+  const hasApprovalStage =
+    Boolean(approval) || workflowEvents.some((event) => event.stage === "approval");
+  const hasRepairStage =
+    Boolean(repair) || workflowEvents.some((event) => event.stage === "repair");
+  const hasProofStage =
+    proofLinks.length > 0 || workflowEvents.some((event) => event.stage === "proof");
+
+  const currentStage: WorkflowEventStage | null =
+    approval?.status === "pending"
+      ? "approval"
+      : repair?.status === "running"
+        ? "repair"
+        : execution.status === "running"
+          ? "agent"
+          : execution.status === "retrying"
+            ? "result"
+            : hasProofStage &&
+                proofLinks.some((link) =>
+                  ["pending", "retrying", "dead-letter", "rejected"].includes(link.status),
+                )
+              ? "proof"
+              : execution.status === "success" || execution.status === "failed"
+                ? "result"
+                : workflowEvents.at(-1)?.stage ?? null;
+
+  const blockedStage: WorkflowEventStage | null =
+    approval?.status === "pending" || approval?.status === "rejected"
+      ? "approval"
+      : repair?.status === "failed"
+        ? "repair"
+        : execution.status === "failed" || execution.status === "retrying"
+          ? "result"
+          : proofLinks.some((link) =>
+                ["dead-letter", "rejected", "retrying"].includes(link.status),
+              )
+            ? "proof"
+            : null;
+
+  const stopReason =
+    approval?.status === "pending"
+      ? "Awaiting operator approval."
+      : approval?.status === "rejected"
+        ? approval.note ?? "Approval was rejected by an operator."
+        : repair?.status === "failed"
+          ? repair.lastError ?? repair.verificationSummary ?? "Repair flow failed."
+          : execution.lastError ?? null;
+
+  const graphStatus: WorkflowGraph["graphStatus"] =
+    blockedStage === "approval" || blockedStage === "repair" || blockedStage === "result"
+      ? "blocked"
+      : hasProofStage &&
+          proofLinks.some((link) => ["dead-letter", "rejected", "retrying"].includes(link.status))
+        ? "warning"
+        : execution.status === "success" &&
+            (!hasProofStage ||
+              proofLinks.every((link) => ["delivered", "duplicate"].includes(link.status)))
+          ? "completed"
+          : execution.status === "pending"
+            ? "stable"
+          : execution.status === "running"
+            ? "stable"
+            : "warning";
+
+  const stageLabels: Record<WorkflowEventStage, string> = {
+    ingress: "Ingress",
+    queue: "Queue",
+    approval: "Approval",
+    agent: requirement?.agentId ?? "Agent",
+    result: "Result",
+    proof: "Proof",
+    repair: "Repair",
+  };
+
+  const stageNodes = WORKFLOW_STAGE_ORDER.filter((stage) => {
+    if (stage === "approval") return hasApprovalStage;
+    if (stage === "repair") return hasRepairStage;
+    if (stage === "proof") return hasProofStage;
+    return true;
+  }).map<WorkflowGraphNode>((stage) => {
+    const stageEvents = workflowEvents.filter((event) => event.stage === stage);
+    const latest = stageEvents.at(-1) ?? null;
+    const status: WorkflowGraphNodeStatus =
+      blockedStage === stage
+        ? "blocked"
+        : currentStage === stage && graphStatus !== "completed"
+          ? "active"
+          : latest
+            ? "completed"
+            : "pending";
+
+    return {
+      id: `workflow-node:${stage}`,
+      kind: stage === "agent" ? "agent" : stage === "proof" ? "proof" : "stage",
+      stage,
+      label: stageLabels[stage],
+      status,
+      timestamp: latest?.timestamp ?? null,
+      detail:
+        latest?.detail ??
+        (stage === "approval"
+          ? "Approval gate state is derived from the orchestrator approval ledger."
+          : stage === "proof"
+            ? "Proof-delivery state is derived from milestone and demand transport ledgers."
+            : `${stageLabels[stage]} stage declared for this run.`),
+      evidence: summarizeEvidence(latest?.evidence ?? []),
+    };
+  });
+
+  const edges = stageNodes.slice(0, -1).map<WorkflowGraphEdge>((node, index) => {
+    const next = stageNodes[index + 1];
+    const blocked = blockedStage === node.stage || blockedStage === next.stage;
+    return {
+      id: `workflow-edge:${node.id}:${next.id}`,
+      from: node.id,
+      to: next.id,
+      status: blocked
+        ? "blocked"
+        : node.status === "completed" && next.status !== "pending"
+          ? "completed"
+          : currentStage === next.stage
+            ? "active"
+            : "declared",
+      detail: `${node.label} -> ${next.label}`,
+    };
+  });
+
+  return {
+    graphStatus,
+    currentStage,
+    blockedStage,
+    stopReason,
+    stageDurations,
+    nodeCount: stageNodes.length,
+    edgeCount: edges.length,
+    nodes: stageNodes,
+    edges,
+    events: workflowEvents,
+    proofLinks,
+  };
+}
+
 function buildRunWorkflowEvents({
   execution,
   history,
   approval,
   retryRecovery,
   repair,
+  workflowEvents,
 }: {
   execution: OrchestratorState["taskExecutions"][number];
   history: OrchestratorState["taskHistory"];
   approval: ApprovalRecord | null;
   retryRecovery: OrchestratorState["taskRetryRecoveries"][number] | null;
   repair: OrchestratorState["repairRecords"][number] | null;
+  workflowEvents: WorkflowEventRecord[];
 }) {
+  if (workflowEvents.length > 0) {
+    return buildRunWorkflowEventsFromLedger(workflowEvents);
+  }
+
   const events: RunWorkflowEvent[] = [];
   const queueTimestamp =
     normalizeIsoTimestamp(approval?.requestedAt) ??
@@ -1692,12 +2435,29 @@ function buildRunRecord(
     state.taskRetryRecoveries.find(
       (record) => record.idempotencyKey === execution.idempotencyKey,
     ) ?? null;
+  const relatedWorkflowEvents = sortWorkflowEventRecords(
+    state.workflowEvents.filter(
+      (record) =>
+        record.runId === execution.idempotencyKey ||
+        (record.taskId === execution.taskId &&
+          record.runId === execution.idempotencyKey),
+    ),
+  );
+  const proofLinks = buildProofLinksForRun(state, execution);
   const workflowEvents = buildRunWorkflowEvents({
     execution,
     history: sortedHistory,
     approval: relatedApproval,
     retryRecovery: relatedRetryRecovery,
     repair: relatedRepair,
+    workflowEvents: relatedWorkflowEvents,
+  });
+  const workflowGraph = buildWorkflowGraph({
+    execution,
+    approval: relatedApproval,
+    repair: relatedRepair,
+    workflowEvents: relatedWorkflowEvents,
+    proofLinks,
   });
   const createdAt =
     workflowEvents[0]?.timestamp ?? normalizeIsoTimestamp(firstSeenAt) ?? null;
@@ -1753,6 +2513,10 @@ function buildRunRecord(
         },
     workflow: {
       stage: deriveRunWorkflowStage(execution, relatedApproval),
+      graphStatus: workflowGraph.graphStatus,
+      currentStage: workflowGraph.currentStage,
+      blockedStage: workflowGraph.blockedStage,
+      stopReason: workflowGraph.stopReason,
       awaitingApproval:
         relatedApproval?.status === "pending" && execution.status === "pending",
       retryScheduled: execution.status === "retrying",
@@ -1760,8 +2524,13 @@ function buildRunRecord(
       repairStatus: relatedRepair?.status ?? null,
       eventCount: workflowEvents.length,
       latestEventAt,
+      stageDurations: workflowGraph.stageDurations,
+      nodeCount: workflowGraph.nodeCount,
+      edgeCount: workflowGraph.edgeCount,
     },
     events: workflowEvents,
+    workflowGraph,
+    proofLinks,
     repair: relatedRepair
       ? {
           repairId: relatedRepair.repairId,
@@ -2793,6 +3562,244 @@ async function buildAgentTopology({
   };
 }
 
+type IncidentCandidate = {
+  fingerprint: string;
+  title: string;
+  classification: IncidentLedgerClassification;
+  severity: IncidentLedgerSeverity;
+  status: Extract<IncidentLedgerStatus, "active" | "watching">;
+  truthLayer: IncidentLedgerTruthLayer;
+  summary: string;
+  detectedAt: string | null;
+  affectedSurfaces: string[];
+  linkedServiceIds: string[];
+  linkedTaskIds: string[];
+  linkedRunIds: string[];
+  linkedRepairIds: string[];
+  linkedProofDeliveries: string[];
+  evidence: string[];
+  recommendedSteps: string[];
+  remediation: {
+    owner: IncidentRemediationOwner;
+    status: Exclude<IncidentRemediationStatus, "resolved">;
+    summary: string;
+    nextAction: string;
+    blockers: string[];
+  };
+};
+
+function buildIncidentFingerprint(
+  classification: IncidentLedgerClassification,
+  scope: string,
+) {
+  const digest = createHash("sha1").update(`${classification}:${scope}`).digest("hex");
+  return `incident:${classification}:${digest.slice(0, 14)}`;
+}
+
+function dedupeStrings(values: Array<string | null | undefined>, limit: number = 12) {
+  return [...new Set(values.filter((value): value is string => typeof value === "string" && value.length > 0))].slice(0, limit);
+}
+
+function recordsEqual(left: IncidentLedgerRecord, right: IncidentLedgerRecord) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function acknowledgeIncidentRecord(
+  state: OrchestratorState,
+  incidentId: string,
+  actor: string,
+  note?: string,
+) {
+  const target = state.incidentLedger.find((record) => record.incidentId === incidentId);
+  if (!target) {
+    throw new Error(`Incident not found: ${incidentId}`);
+  }
+
+  target.acknowledgedAt = new Date().toISOString();
+  target.acknowledgedBy = actor;
+  target.acknowledgementNote = note ?? null;
+  return target;
+}
+
+function assignIncidentOwner(
+  state: OrchestratorState,
+  incidentId: string,
+  owner: string,
+) {
+  const target = state.incidentLedger.find((record) => record.incidentId === incidentId);
+  if (!target) {
+    throw new Error(`Incident not found: ${incidentId}`);
+  }
+
+  target.owner = owner;
+  return target;
+}
+
+function reconcileRuntimeIncidentLedger(
+  state: OrchestratorState,
+  candidates: IncidentCandidate[],
+): { changed: boolean; model: RuntimeIncidentModel } {
+  const now = new Date().toISOString();
+  const ledgerByFingerprint = new Map(
+    state.incidentLedger.map((record) => [record.fingerprint, record]),
+  );
+  const seenFingerprints = new Set<string>();
+  let changed = false;
+
+  for (const candidate of candidates) {
+    seenFingerprints.add(candidate.fingerprint);
+    const detectedAt = candidate.detectedAt ?? now;
+    const existing = ledgerByFingerprint.get(candidate.fingerprint);
+
+    if (!existing) {
+      state.incidentLedger.push({
+        incidentId: randomUUID(),
+        fingerprint: candidate.fingerprint,
+        title: candidate.title,
+        classification: candidate.classification,
+        severity: candidate.severity,
+        truthLayer: candidate.truthLayer,
+        firstSeenAt: detectedAt,
+        lastSeenAt: detectedAt,
+        resolvedAt: null,
+        status: candidate.status,
+        acknowledgedAt: null,
+        acknowledgedBy: null,
+        acknowledgementNote: null,
+        owner: null,
+        summary: candidate.summary,
+        affectedSurfaces: dedupeStrings(candidate.affectedSurfaces),
+        linkedServiceIds: dedupeStrings(candidate.linkedServiceIds),
+        linkedTaskIds: dedupeStrings(candidate.linkedTaskIds),
+        linkedRunIds: dedupeStrings(candidate.linkedRunIds),
+        linkedRepairIds: dedupeStrings(candidate.linkedRepairIds),
+        linkedProofDeliveries: dedupeStrings(candidate.linkedProofDeliveries),
+        evidence: dedupeStrings(candidate.evidence),
+        recommendedSteps: dedupeStrings(candidate.recommendedSteps),
+        remediation: {
+          owner: candidate.remediation.owner,
+          status: candidate.remediation.status,
+          summary: candidate.remediation.summary,
+          nextAction: candidate.remediation.nextAction,
+          blockers: dedupeStrings(candidate.remediation.blockers),
+        },
+      });
+      changed = true;
+      continue;
+    }
+
+    const updated: IncidentLedgerRecord = {
+      ...existing,
+      title: candidate.title,
+      classification: candidate.classification,
+      severity: candidate.severity,
+      truthLayer: candidate.truthLayer,
+      lastSeenAt: detectedAt,
+      resolvedAt: null,
+      status: candidate.status,
+      summary: candidate.summary,
+      affectedSurfaces: dedupeStrings(candidate.affectedSurfaces),
+      linkedServiceIds: dedupeStrings(candidate.linkedServiceIds),
+      linkedTaskIds: dedupeStrings(candidate.linkedTaskIds),
+      linkedRunIds: dedupeStrings(candidate.linkedRunIds),
+      linkedRepairIds: dedupeStrings(candidate.linkedRepairIds),
+      linkedProofDeliveries: dedupeStrings(candidate.linkedProofDeliveries),
+      evidence: dedupeStrings(candidate.evidence),
+      recommendedSteps: dedupeStrings(candidate.recommendedSteps),
+      remediation: {
+        owner: candidate.remediation.owner,
+        status: candidate.remediation.status,
+        summary: candidate.remediation.summary,
+        nextAction: candidate.remediation.nextAction,
+        blockers: dedupeStrings(candidate.remediation.blockers),
+      },
+    };
+
+    if (!recordsEqual(existing, updated)) {
+      Object.assign(existing, updated);
+      changed = true;
+    }
+  }
+
+  for (const record of state.incidentLedger) {
+    if (seenFingerprints.has(record.fingerprint)) continue;
+    if (record.status === "resolved") continue;
+    record.status = "resolved";
+    record.resolvedAt = now;
+    record.remediation.status = "resolved";
+    changed = true;
+  }
+
+  const openIncidents = [...state.incidentLedger]
+    .filter((record) => record.status !== "resolved")
+    .sort((left, right) => {
+      const severityRank: Record<IncidentLedgerSeverity, number> = {
+        critical: 3,
+        warning: 2,
+        info: 1,
+      };
+      const severityDiff = severityRank[right.severity] - severityRank[left.severity];
+      if (severityDiff !== 0) return severityDiff;
+      return Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt);
+    });
+
+  const bySeverity = {
+    critical: openIncidents.filter((record) => record.severity === "critical").length,
+    warning: openIncidents.filter((record) => record.severity === "warning").length,
+    info: openIncidents.filter((record) => record.severity === "info").length,
+  };
+
+  return {
+    changed,
+    model: {
+      generatedAt: now,
+      overallStatus:
+        bySeverity.critical > 0
+          ? "critical"
+          : bySeverity.warning > 0
+            ? "warning"
+            : "stable",
+      openCount: openIncidents.length,
+      activeCount: openIncidents.filter((record) => record.status === "active").length,
+      watchingCount: openIncidents.filter((record) => record.status === "watching").length,
+      bySeverity,
+      incidents: openIncidents.map((record) => ({
+        id: record.incidentId,
+        fingerprint: record.fingerprint,
+        title: record.title,
+        classification: record.classification,
+        severity: record.severity,
+        status: record.status,
+        truthLayer: record.truthLayer,
+        summary: record.summary,
+        firstSeenAt: record.firstSeenAt,
+        lastSeenAt: record.lastSeenAt,
+        resolvedAt: record.resolvedAt ?? null,
+        detectedAt: record.lastSeenAt,
+        acknowledgedAt: record.acknowledgedAt ?? null,
+        acknowledgedBy: record.acknowledgedBy ?? null,
+        acknowledgementNote: record.acknowledgementNote ?? null,
+        owner: record.owner ?? null,
+        affectedSurfaces: record.affectedSurfaces,
+        linkedServiceIds: record.linkedServiceIds,
+        linkedTaskIds: record.linkedTaskIds,
+        linkedRunIds: record.linkedRunIds,
+        linkedRepairIds: record.linkedRepairIds,
+        linkedProofDeliveries: record.linkedProofDeliveries,
+        evidence: record.evidence,
+        recommendedSteps: record.recommendedSteps,
+        remediation: {
+          owner: record.remediation.owner,
+          status: record.remediation.status,
+          summary: record.remediation.summary,
+          nextAction: record.remediation.nextAction,
+          blockers: record.remediation.blockers,
+        },
+      })),
+    },
+  };
+}
+
 function buildRuntimeIncidentModel({
   config,
   state,
@@ -2813,16 +3820,16 @@ function buildRuntimeIncidentModel({
   pendingApprovalsCount: number;
   proofDelivery: ProofDeliveryTelemetry;
   knowledgeRuntime: ReturnType<typeof buildKnowledgeRuntimeSignals>;
-}): RuntimeIncidentModel {
-  const incidents: RuntimeIncident[] = [];
+}): { changed: boolean; model: RuntimeIncidentModel } {
+  const candidates: IncidentCandidate[] = [];
 
-  const addIncident = (incident: RuntimeIncident) => {
-    incidents.push(incident);
+  const addIncident = (incident: IncidentCandidate) => {
+    candidates.push(incident);
   };
 
   if (fastStartMode) {
     addIncident({
-      id: "incident:runtime-fast-start",
+      fingerprint: buildIncidentFingerprint("runtime-mode", "fast-start"),
       title: "Fast-start mode active",
       classification: "runtime-mode",
       severity: "warning",
@@ -2832,22 +3839,28 @@ function buildRuntimeIncidentModel({
         "The orchestrator is running in fast-start mode, so some deep integrations may be intentionally reduced.",
       detectedAt: state.lastStartedAt ?? state.updatedAt ?? null,
       affectedSurfaces: ["control-plane", "knowledge", "persistence"],
+      linkedServiceIds: ["orchestrator.service"],
+      linkedTaskIds: [],
+      linkedRunIds: [],
+      linkedRepairIds: [],
+      linkedProofDeliveries: [],
       evidence: ["ORCHESTRATOR_FAST_START=true"],
+      recommendedSteps: [
+        "Restart the orchestrator without ORCHESTRATOR_FAST_START=true.",
+      ],
       remediation: {
         owner: "operator",
         status: "ready",
         summary: "Exit fast-start mode to regain the full boot path.",
         nextAction: "Restart the orchestrator without ORCHESTRATOR_FAST_START=true.",
         blockers: [],
-        linkedRepairIds: [],
-        linkedTaskIds: [],
       },
     });
   }
 
   if (persistence.status !== "healthy") {
     addIncident({
-      id: "incident:persistence-degraded",
+      fingerprint: buildIncidentFingerprint("persistence", "primary"),
       title: "Persistence degraded",
       classification: "persistence",
       severity: "critical",
@@ -2856,9 +3869,18 @@ function buildRuntimeIncidentModel({
       summary: `Persistence health is currently ${String(persistence.status)}.`,
       detectedAt: state.updatedAt ?? null,
       affectedSurfaces: ["persistence", "knowledge", "control-plane"],
+      linkedServiceIds: ["mongodb", "orchestrator.service"],
+      linkedTaskIds: [],
+      linkedRunIds: [],
+      linkedRepairIds: [],
+      linkedProofDeliveries: [],
       evidence: [
         `persistence status: ${String(persistence.status)}`,
         `database connected: ${String((persistence as any).database ?? false)}`,
+      ],
+      recommendedSteps: [
+        "Inspect /api/persistence/health for the precise failure mode.",
+        "Verify database credentials and connectivity from the host.",
       ],
       remediation: {
         owner: "operator",
@@ -2866,14 +3888,12 @@ function buildRuntimeIncidentModel({
         summary: "Restore database connectivity and re-run health checks.",
         nextAction: "Inspect /api/persistence/health and backing database credentials or connectivity.",
         blockers: [],
-        linkedRepairIds: [],
-        linkedTaskIds: [],
       },
     });
   }
 
   const pushProofIncident = ({
-    id,
+    transport,
     title,
     deliveryStatus,
     ledger,
@@ -2882,7 +3902,7 @@ function buildRuntimeIncidentModel({
     detectedAt,
     targetUrl,
   }: {
-    id: string;
+    transport: "milestone" | "demandSummary";
     title: string;
     deliveryStatus: ProofTransportStatus;
     ledger: ReturnType<typeof summarizeDeliveryRecords>;
@@ -2893,18 +3913,18 @@ function buildRuntimeIncidentModel({
   }) => {
     if (deliveryStatus === "publishing" || deliveryStatus === "idle") return;
 
-    const severity: RuntimeIncidentSeverity =
+    const severity: IncidentLedgerSeverity =
       deliveryStatus === "degraded" || deliveryStatus === "misconfigured"
         ? "critical"
         : "warning";
-    const status: RuntimeIncidentStatus =
+    const status: Extract<IncidentLedgerStatus, "active" | "watching"> =
       deliveryStatus === "catching-up" ? "watching" : "active";
     const blockers: string[] = [];
     if (!targetConfigured) blockers.push("delivery target not configured");
     if (targetConfigured && !targetReady) blockers.push("signing secret or target readiness incomplete");
 
     addIncident({
-      id,
+      fingerprint: buildIncidentFingerprint("proof-delivery", transport),
       title,
       classification: "proof-delivery",
       severity,
@@ -2920,11 +3940,22 @@ function buildRuntimeIncidentModel({
               : "Proof delivery has dead-letter or rejected records.",
       detectedAt,
       affectedSurfaces: ["openclawdbot", "proof-pipeline"],
+      linkedServiceIds: ["openclawdbot.service", "cloudflared-openclawdbot.service"],
+      linkedTaskIds: [],
+      linkedRunIds: [],
+      linkedRepairIds: [],
+      linkedProofDeliveries: [transport],
       evidence: [
         `delivery status: ${deliveryStatus}`,
         `target: ${targetUrl ?? "not configured"}`,
         `pending=${ledger.pendingCount}, retrying=${ledger.retryingCount}, deadLetter=${ledger.deadLetterCount}, delivered=${ledger.deliveredCount}`,
       ],
+      recommendedSteps: blockers.length > 0
+        ? ["Restore signing or target configuration for the proof transport."]
+        : [
+            "Inspect proof delivery ledger state.",
+            "Replay or clear dead-letter proof records.",
+          ],
       remediation: {
         owner: blockers.length > 0 ? "operator" : "mixed",
         status:
@@ -2942,14 +3973,12 @@ function buildRuntimeIncidentModel({
             ? "Restore signing or target configuration for the proof transport."
             : "Inspect proof delivery ledger and replay or clear dead-letter records.",
         blockers,
-        linkedRepairIds: [],
-        linkedTaskIds: [],
       },
     });
   };
 
   pushProofIncident({
-    id: "incident:proof-milestones",
+    transport: "milestone",
     title: "Milestone proof delivery impaired",
     deliveryStatus: proofDelivery.milestone.deliveryStatus,
     ledger: proofDelivery.milestone.ledger,
@@ -2965,7 +3994,7 @@ function buildRuntimeIncidentModel({
   });
 
   pushProofIncident({
-    id: "incident:proof-demand",
+    transport: "demandSummary",
     title: "Demand summary proof delivery impaired",
     deliveryStatus: proofDelivery.demandSummary.deliveryStatus,
     ledger: proofDelivery.demandSummary.ledger,
@@ -2980,88 +4009,105 @@ function buildRuntimeIncidentModel({
   const activeRepairRecords = state.repairRecords.filter((record) =>
     ["detected", "queued", "running", "failed"].includes(record.status),
   );
-  if (governance.repairs.activeCount > 0 || governance.repairs.failedCount > 0) {
+  for (const record of activeRepairRecords) {
     addIncident({
-      id: "incident:repair-runtime",
-      title: "Repair runtime needs attention",
+      fingerprint: buildIncidentFingerprint("repair", record.repairId),
+      title: `Repair ${record.repairId} requires attention`,
       classification: "repair",
-      severity: governance.repairs.failedCount > 0 ? "critical" : "warning",
-      status: governance.repairs.failedCount > 0 ? "active" : "watching",
+      severity: record.status === "failed" ? "critical" : "warning",
+      status: record.status === "failed" ? "active" : "watching",
       truthLayer: "observed",
       summary:
-        governance.repairs.failedCount > 0
-          ? `${governance.repairs.failedCount} repair flow(s) failed verification.`
-          : `${governance.repairs.activeCount} repair flow(s) are still in progress.`,
+        record.status === "failed"
+          ? `Repair ${record.repairId} failed verification.`
+          : `Repair ${record.repairId} is ${record.status}.`,
       detectedAt:
-        governance.repairs.lastFailedAt ??
-        governance.repairs.lastDetectedAt ??
-        null,
-      affectedSurfaces: ["repair-runtime", "knowledge", "task-queue"],
-      evidence: [
-        `${governance.repairs.activeCount} active repair(s)`,
-        `${governance.repairs.verifiedCount} verified repair(s)`,
-        `${governance.repairs.failedCount} failed repair(s)`,
+        record.completedAt ??
+        record.startedAt ??
+        record.queuedAt ??
+        record.detectedAt,
+      affectedSurfaces: dedupeStrings([
+        "repair-runtime",
+        "knowledge",
+        "task-queue",
+        ...(record.affectedPaths ?? []),
+      ]),
+      linkedServiceIds: [],
+      linkedTaskIds: dedupeStrings([
+        record.sourceTaskId,
+        record.repairTaskId,
+      ]),
+      linkedRunIds: dedupeStrings([
+        record.sourceRunId,
+        record.repairRunId,
+      ]),
+      linkedRepairIds: [record.repairId],
+      linkedProofDeliveries: [],
+      evidence: dedupeStrings([
+        ...(record.evidence ?? []),
+        record.verificationSummary,
+        record.lastError,
+      ]),
+      recommendedSteps: [
+        record.status === "failed"
+          ? "Inspect repair evidence and decide whether to rerun or verify manually."
+          : "Allow the active repair flow to finish and verify the output.",
       ],
       remediation: {
-        owner: governance.repairs.failedCount > 0 ? "mixed" : "auto",
-        status:
-          governance.repairs.failedCount > 0 ? "ready" : "in-progress",
+        owner: record.status === "failed" ? "mixed" : "auto",
+        status: record.status === "failed" ? "ready" : "in-progress",
         summary:
-          governance.repairs.failedCount > 0
-            ? "Some repair flows need operator review or requeue."
-            : "Auto-remediation is already in progress.",
+          record.status === "failed"
+            ? "Repair flow needs operator review."
+            : "Repair flow is currently progressing through auto-remediation.",
         nextAction:
-          governance.repairs.failedCount > 0
+          record.status === "failed"
             ? "Inspect repair evidence and decide whether to rerun or verify manually."
-            : "Allow the active repair flows to finish and verify their outputs.",
+            : "Allow the active repair flow to finish and verify the output.",
         blockers: [],
-        linkedRepairIds: activeRepairRecords.map((record) => record.repairId).slice(0, 10),
-        linkedTaskIds: activeRepairRecords
-          .map((record) => record.repairTaskId)
-          .filter((value): value is string => Boolean(value))
-          .slice(0, 10),
       },
     });
   }
 
   if (governance.taskRetryRecoveries.count > 0) {
-    addIncident({
-      id: "incident:retry-recovery",
-      title: "Retry recovery backlog detected",
-      classification: "retry-recovery",
-      severity: "warning",
-      status: "watching",
-      truthLayer: "observed",
-      summary: `${governance.taskRetryRecoveries.count} retry recovery record(s) are waiting to replay.`,
-      detectedAt: governance.taskRetryRecoveries.nextRetryAt,
-      affectedSurfaces: ["task-queue", "worker-runtime"],
-      evidence: [
-        `retry recovery count: ${governance.taskRetryRecoveries.count}`,
-        `next retry at: ${governance.taskRetryRecoveries.nextRetryAt ?? "n/a"}`,
-      ],
-      remediation: {
-        owner: "auto",
-        status: "in-progress",
-        summary: "Persisted retry recoveries are replayed by the orchestrator on schedule.",
-        nextAction: "Monitor task runs until persisted retries clear.",
-        blockers: [],
+    for (const record of state.taskRetryRecoveries) {
+      addIncident({
+        fingerprint: buildIncidentFingerprint("retry-recovery", record.idempotencyKey),
+        title: `Retry recovery waiting for ${record.type}`,
+        classification: "retry-recovery",
+        severity: "warning",
+        status: "watching",
+        truthLayer: "observed",
+        summary: `Retry recovery for ${record.type} is queued for replay.`,
+        detectedAt: record.retryAt,
+        affectedSurfaces: ["task-queue", "worker-runtime"],
+        linkedServiceIds: [],
+        linkedTaskIds: [record.sourceTaskId],
+        linkedRunIds: [record.idempotencyKey],
         linkedRepairIds: [],
-        linkedTaskIds: Array.from(
-          new Set(
-            state.taskRetryRecoveries
-              .map((record) => record.sourceTaskId)
-              .filter((value): value is string => Boolean(value)),
-          ),
-        ).slice(0, 10),
-      },
-    });
+        linkedProofDeliveries: [],
+        evidence: [
+          `retry at: ${record.retryAt}`,
+          `attempt: ${record.attempt}`,
+          `max retries: ${record.maxRetries}`,
+        ],
+        recommendedSteps: ["Monitor task runs until persisted retries clear."],
+        remediation: {
+          owner: "auto",
+          status: "in-progress",
+          summary: "Persisted retry recoveries are replayed by the orchestrator on schedule.",
+          nextAction: "Monitor task runs until persisted retries clear.",
+          blockers: [],
+        },
+      });
+    }
   }
 
   const contradictionSignals = knowledgeRuntime.signals.contradictions ?? [];
   const stalenessSignals = knowledgeRuntime.signals.staleness ?? [];
   if (contradictionSignals.length > 0 || stalenessSignals.length > 0) {
     addIncident({
-      id: "incident:knowledge-runtime",
+      fingerprint: buildIncidentFingerprint("knowledge", "runtime-signals"),
       title: "Knowledge runtime drift signals active",
       classification: "knowledge",
       severity: contradictionSignals.length > 0 ? "warning" : "info",
@@ -3076,10 +4122,23 @@ function buildRuntimeIncidentModel({
         knowledgeRuntime.freshness.lastDriftRepairAt ??
         null,
       affectedSurfaces: ["knowledge-base", "doc-index", "agent-context"],
+      linkedServiceIds: [],
+      linkedTaskIds: [],
+      linkedRunIds: [],
+      linkedRepairIds: state.repairRecords
+        .filter((record) => record.classification === "doc-drift")
+        .map((record) => record.repairId)
+        .slice(0, 10),
+      linkedProofDeliveries: [],
       evidence: [
         ...stalenessSignals.map((signal) => signal.message),
         ...contradictionSignals.slice(0, 5).map((signal: any) => signal.message ?? signal.title),
       ].slice(0, 10),
+      recommendedSteps: [
+        contradictionSignals.length > 0
+          ? "Run drift repair or reconcile conflicting knowledge entries."
+          : "Refresh indexed docs and regenerate knowledge packs if aging persists.",
+      ],
       remediation: {
         owner: "mixed",
         status: contradictionSignals.length > 0 ? "ready" : "watching",
@@ -3092,11 +4151,6 @@ function buildRuntimeIncidentModel({
             ? "Run drift repair or reconcile conflicting knowledge entries."
             : "Refresh indexed docs and regenerate knowledge packs if aging persists.",
         blockers: [],
-        linkedRepairIds: state.repairRecords
-          .filter((record) => record.classification === "doc-drift")
-          .map((record) => record.repairId)
-          .slice(0, 10),
-        linkedTaskIds: [],
       },
     });
   }
@@ -3106,43 +4160,46 @@ function buildRuntimeIncidentModel({
       agent.serviceAvailable &&
       (agent.serviceInstalled === false || agent.serviceRunning === false),
   );
-  if (serviceGapAgents.length > 0) {
+  for (const agent of serviceGapAgents) {
+    const runtime = [agent.serviceUnitState, agent.serviceUnitSubState]
+      .filter(Boolean)
+      .join("/");
+
     addIncident({
-      id: "incident:agent-service-gaps",
-      title: "Agent service coverage is incomplete",
+      fingerprint: buildIncidentFingerprint("service-runtime", agent.id),
+      title: `${agent.id} service coverage is incomplete`,
       classification: "service-runtime",
       severity: "warning",
       status: "active",
       truthLayer: "observed",
-      summary: `${serviceGapAgents.length} agent service path(s) exist but are not fully installed or running.`,
-      detectedAt:
-        serviceGapAgents
-          .map((agent) => agent.lastEvidenceAt)
-          .filter((value): value is string => Boolean(value))
-          .sort()
-          .at(-1) ?? state.updatedAt ?? null,
-      affectedSurfaces: serviceGapAgents.map((agent) => agent.id),
-      evidence: serviceGapAgents.slice(0, 10).map((agent) => {
-        const runtime = [agent.serviceUnitState, agent.serviceUnitSubState]
-          .filter(Boolean)
-          .join("/");
-        return `${agent.id}: installed=${String(agent.serviceInstalled)}, running=${String(agent.serviceRunning)}${runtime ? ` (${runtime})` : ""}`;
-      }),
+      summary: `${agent.id} has a service entrypoint but is not fully installed or running on this host.`,
+      detectedAt: agent.lastEvidenceAt ?? state.updatedAt ?? null,
+      affectedSurfaces: [agent.id],
+      linkedServiceIds: [getAgentServiceUnitName(agent.id)],
+      linkedTaskIds: dedupeStrings([agent.lastSuccessfulTaskId]),
+      linkedRunIds: dedupeStrings([agent.lastSuccessfulRunId]),
+      linkedRepairIds: [],
+      linkedProofDeliveries: [],
+      evidence: [
+        `${agent.id}: installed=${String(agent.serviceInstalled)}, running=${String(agent.serviceRunning)}${runtime ? ` (${runtime})` : ""}`,
+      ],
+      recommendedSteps: [
+        "Inspect agent systemd unit state and bring the required service up.",
+      ],
       remediation: {
         owner: "operator",
         status: "ready",
-        summary: "Install or restart the missing agent service units if they are intended to be live.",
+        summary: "Install or restart the missing agent service unit if it is intended to be live.",
         nextAction: "Inspect agent systemd unit state and bring required services up.",
         blockers: [],
-        linkedRepairIds: [],
-        linkedTaskIds: [],
       },
     });
   }
 
   if (pendingApprovalsCount > 0) {
+    const pendingApprovals = listPendingApprovals(state);
     addIncident({
-      id: "incident:approval-backlog",
+      fingerprint: buildIncidentFingerprint("approval-backlog", "pending"),
       title: "Approval backlog waiting on operator action",
       classification: "approval-backlog",
       severity: pendingApprovalsCount > 3 ? "warning" : "info",
@@ -3150,58 +4207,42 @@ function buildRuntimeIncidentModel({
       truthLayer: "observed",
       summary: `${pendingApprovalsCount} approval-gated task(s) are paused pending operator review.`,
       detectedAt:
-        listPendingApprovals(state)
+        pendingApprovals
           .map((approval) => approval.requestedAt)
           .sort()
           .at(0) ?? null,
       affectedSurfaces: ["approval-gate", "task-queue"],
-      evidence: listPendingApprovals(state)
+      linkedServiceIds: ["orchestrator.service"],
+      linkedTaskIds: pendingApprovals
+        .map((approval) => approval.taskId)
+        .slice(0, 10),
+      linkedRunIds: pendingApprovals
+        .map(
+          (approval) =>
+            state.taskExecutions.find((execution) => execution.taskId === approval.taskId)
+              ?.idempotencyKey ?? null,
+        )
+        .filter((value): value is string => Boolean(value))
+        .slice(0, 10),
+      linkedRepairIds: [],
+      linkedProofDeliveries: [],
+      evidence: pendingApprovals
         .slice(0, 10)
         .map((approval) => `${approval.type} requested at ${approval.requestedAt}`),
+      recommendedSteps: [
+        "Review pending approvals and decide whether to approve or reject them.",
+      ],
       remediation: {
         owner: "operator",
         status: "ready",
         summary: "Operator review is required before the queued work can resume.",
         nextAction: "Review pending approvals and decide whether to approve or reject them.",
         blockers: [],
-        linkedRepairIds: [],
-        linkedTaskIds: listPendingApprovals(state)
-          .map((approval) => approval.taskId)
-          .slice(0, 10),
       },
     });
   }
 
-  const severityRank: Record<RuntimeIncidentSeverity, number> = {
-    critical: 3,
-    warning: 2,
-    info: 1,
-  };
-
-  incidents.sort((left, right) => {
-    const severityDiff = severityRank[right.severity] - severityRank[left.severity];
-    if (severityDiff !== 0) return severityDiff;
-    const leftTime = left.detectedAt ? Date.parse(left.detectedAt) : 0;
-    const rightTime = right.detectedAt ? Date.parse(right.detectedAt) : 0;
-    return rightTime - leftTime;
-  });
-
-  const bySeverity = {
-    critical: incidents.filter((incident) => incident.severity === "critical").length,
-    warning: incidents.filter((incident) => incident.severity === "warning").length,
-    info: incidents.filter((incident) => incident.severity === "info").length,
-  };
-
-  return {
-    generatedAt: new Date().toISOString(),
-    overallStatus:
-      bySeverity.critical > 0 ? "critical" : bySeverity.warning > 0 ? "warning" : "stable",
-    openCount: incidents.length,
-    activeCount: incidents.filter((incident) => incident.status === "active").length,
-    watchingCount: incidents.filter((incident) => incident.status === "watching").length,
-    bySeverity,
-    incidents,
-  };
+  return reconcileRuntimeIncidentLedger(state, candidates);
 }
 
 async function bootstrap() {
@@ -3464,6 +4505,44 @@ async function bootstrap() {
     return { existing: created, idempotencyKey };
   };
 
+  const resolveTaskActor = (task: Task) =>
+    typeof task.payload.__actor === "string" && task.payload.__actor.trim().length > 0
+      ? task.payload.__actor.trim()
+      : "system";
+
+  const findExecutionByTaskId = (taskId: string) =>
+    state.taskExecutions.find((item) => item.taskId === taskId) ?? null;
+
+  const appendTaskWorkflowEvent = (
+    task: Task,
+    stage: WorkflowEventStage,
+    stateLabel: string,
+    detail: string,
+    options?: {
+      source?: string;
+      actor?: string | null;
+      nodeId?: string;
+      evidence?: string[];
+      timestamp?: string;
+    },
+  ) => {
+    const { idempotencyKey } = ensureExecutionRecord(task);
+    return appendWorkflowEvent({
+      state,
+      runId: idempotencyKey,
+      taskId: task.id,
+      type: task.type,
+      stage,
+      stateLabel,
+      source: options?.source ?? "queue",
+      actor: options?.actor ?? resolveTaskActor(task),
+      nodeId: options?.nodeId ?? `${stage}:${task.type}`,
+      detail,
+      evidence: options?.evidence ?? [],
+      timestamp: options?.timestamp,
+    });
+  };
+
   const recordTaskResult = (
     task: Task,
     result: "ok" | "error",
@@ -3518,6 +4597,17 @@ async function bootstrap() {
         repairTaskId: task.id,
         repairRunId: idempotencyKey,
       }));
+      appendTaskWorkflowEvent(
+        task,
+        "repair",
+        "running",
+        `Repair ${repairId} started for ${task.type}.`,
+        {
+          source: "repair",
+          nodeId: repairId,
+          evidence: [repairId, task.type],
+        },
+      );
     }
 
     const retryRepairId = `retry:${idempotencyKey}`;
@@ -3529,6 +4619,17 @@ async function bootstrap() {
         repairTaskId: task.id,
         repairRunId: idempotencyKey,
       }));
+      appendTaskWorkflowEvent(
+        task,
+        "repair",
+        "running",
+        `Retry recovery repair ${retryRepairId} started for ${task.type}.`,
+        {
+          source: "repair",
+          nodeId: retryRepairId,
+          evidence: [retryRepairId, task.type],
+        },
+      );
     }
   };
 
@@ -3556,6 +4657,18 @@ async function bootstrap() {
         ].slice(-10),
         lastError: undefined,
       }));
+      appendTaskWorkflowEvent(
+        task,
+        "repair",
+        "verified",
+        message ?? `Repair ${repairId} verified successfully.`,
+        {
+          source: "repair",
+          nodeId: repairId,
+          evidence: [repairId, task.type],
+          timestamp: completedAt,
+        },
+      );
     }
 
     const retryRepairId = `retry:${idempotencyKey}`;
@@ -3575,6 +4688,18 @@ async function bootstrap() {
         ].slice(-10),
         lastError: undefined,
       }));
+      appendTaskWorkflowEvent(
+        task,
+        "repair",
+        "verified",
+        message ?? `Retry recovery ${retryRepairId} completed successfully.`,
+        {
+          source: "repair",
+          nodeId: retryRepairId,
+          evidence: [retryRepairId, task.type],
+          timestamp: completedAt,
+        },
+      );
     }
   };
 
@@ -3603,6 +4728,18 @@ async function bootstrap() {
           `task-failure:${task.type}`,
         ].slice(-10),
       }));
+      appendTaskWorkflowEvent(
+        task,
+        "repair",
+        "failed",
+        `Repair ${repairId} failed: ${err.message}`,
+        {
+          source: "repair",
+          nodeId: repairId,
+          evidence: [repairId, task.type],
+          timestamp: completedAt,
+        },
+      );
     }
 
     const retryRepairId = `retry:${idempotencyKey}`;
@@ -3628,6 +4765,18 @@ async function bootstrap() {
         ],
         lastError: err.message,
       });
+      appendTaskWorkflowEvent(
+        task,
+        "repair",
+        "queued",
+        `Automatic retry repair ${retryRepairId} queued after failure.`,
+        {
+          source: "repair",
+          nodeId: retryRepairId,
+          evidence: [retryRepairId, task.type],
+          timestamp: completedAt,
+        },
+      );
       return;
     }
 
@@ -3644,6 +4793,18 @@ async function bootstrap() {
           `task-failure:${task.type}`,
         ].slice(-10),
       }));
+      appendTaskWorkflowEvent(
+        task,
+        "repair",
+        "failed",
+        `Retry recovery ${retryRepairId} failed: ${err.message}`,
+        {
+          source: "repair",
+          nodeId: retryRepairId,
+          evidence: [retryRepairId, task.type],
+          timestamp: completedAt,
+        },
+      );
     }
   };
 
@@ -3694,6 +4855,34 @@ async function bootstrap() {
     retryRecoveryTimers.set(record.idempotencyKey, timer);
   };
 
+  queue.onEnqueue((task) => {
+    const { idempotencyKey } = ensureExecutionRecord(task);
+    appendTaskWorkflowEvent(
+      task,
+      "ingress",
+      "accepted",
+      `${task.type} accepted into the orchestrator control plane.`,
+      {
+        source: "queue",
+        nodeId: `ingress:${task.type}`,
+        evidence: [task.id, idempotencyKey],
+        timestamp: new Date(task.createdAt).toISOString(),
+      },
+    );
+    appendTaskWorkflowEvent(
+      task,
+      "queue",
+      "queued",
+      `${task.type} queued for processing.`,
+      {
+        source: "queue",
+        nodeId: `queue:${task.type}`,
+        evidence: [task.id, idempotencyKey],
+        timestamp: new Date(task.createdAt).toISOString(),
+      },
+    );
+  });
+
   queue.onProcess(async (task) => {
     const { existing: execution, idempotencyKey } = ensureExecutionRecord(task);
 
@@ -3714,12 +4903,62 @@ async function bootstrap() {
       ? Number(task.maxRetries)
       : execution.maxRetries;
     execution.lastHandledAt = new Date().toISOString();
+    const taskRequirement = TASK_AGENT_SKILL_REQUIREMENTS[task.type];
+    if (taskRequirement) {
+      appendTaskWorkflowEvent(
+        task,
+        "agent",
+        "selected",
+        `${taskRequirement.agentId} selected for ${task.type}.`,
+        {
+          source: "execution",
+          nodeId: taskRequirement.agentId,
+          evidence: [taskRequirement.agentId, taskRequirement.skillId],
+          timestamp: execution.lastHandledAt,
+        },
+      );
+      appendTaskWorkflowEvent(
+        task,
+        "agent",
+        "worker-dispatched",
+        `${taskRequirement.agentId} worker dispatched through ${taskRequirement.skillId}.`,
+        {
+          source: "execution",
+          nodeId: taskRequirement.agentId,
+          evidence: [taskRequirement.skillId],
+          timestamp: execution.lastHandledAt,
+        },
+      );
+    }
+    appendTaskWorkflowEvent(
+      task,
+      "agent",
+      "executing",
+      `${task.type} execution started.`,
+      {
+        source: "execution",
+        nodeId: taskRequirement?.agentId ?? `task:${task.type}`,
+        evidence: [idempotencyKey, String(task.attempt ?? execution.attempt ?? 1)],
+        timestamp: execution.lastHandledAt,
+      },
+    );
     syncRepairRecordOnTaskStart(task, idempotencyKey);
 
     const approval = assertApprovalIfRequired(task, state, config);
     if (!approval.allowed) {
       onApprovalRequested(task.id, task.type);
       execution.status = "pending";
+      appendTaskWorkflowEvent(
+        task,
+        "approval",
+        "requested",
+        approval.reason ?? `Approval requested for ${task.type}.`,
+        {
+          source: "approval",
+          nodeId: `approval:${task.id}`,
+          evidence: [task.id, task.type],
+        },
+      );
       recordTaskResult(task, "ok", approval.reason ?? "awaiting approval");
       getMilestoneEmitter()?.emit({
         milestoneId: `approval.requested.${task.id}`,
@@ -3736,6 +4975,10 @@ async function bootstrap() {
         riskStatus: "at-risk",
         nextAction: "Review the pending approval and either approve or reject the task.",
         source: "orchestrator",
+      }, {
+        sourceTaskId: task.id,
+        sourceRunId: task.idempotencyKey,
+        actor: "orchestrator",
       });
       await flushState();
       console.warn(
@@ -3751,6 +4994,18 @@ async function bootstrap() {
       execution.status = "success";
       execution.lastError = undefined;
       execution.lastHandledAt = new Date().toISOString();
+      appendTaskWorkflowEvent(
+        task,
+        "result",
+        "success",
+        typeof message === "string" ? message : `${task.type} completed successfully.`,
+        {
+          source: "execution",
+          nodeId: `result:${task.type}`,
+          evidence: [idempotencyKey],
+          timestamp: execution.lastHandledAt,
+        },
+      );
       recordTaskResult(
         task,
         "ok",
@@ -3797,10 +5052,37 @@ async function bootstrap() {
         };
         upsertRetryRecovery(retryRecord);
         scheduleRetryRecovery(retryRecord);
+        appendTaskWorkflowEvent(
+          task,
+          "result",
+          "retry-scheduled",
+          `Retry ${nextAttempt} scheduled for ${task.type}.`,
+          {
+            source: "retry-recovery",
+            nodeId: `retry:${idempotencyKey}`,
+            evidence: [retryRecord.retryAt, String(maxRetries)],
+            timestamp: retryRecord.scheduledAt,
+          },
+        );
       } else {
         execution.status = "failed";
         removeRetryRecovery(idempotencyKey);
       }
+
+      appendTaskWorkflowEvent(
+        task,
+        "result",
+        execution.status === "retrying" ? "warning" : "failed",
+        execution.status === "retrying"
+          ? `Execution failed and will retry: ${err.message}`
+          : `Execution failed: ${err.message}`,
+        {
+          source: "execution",
+          nodeId: `result:${task.type}`,
+          evidence: [idempotencyKey],
+          timestamp: execution.lastHandledAt,
+        },
+      );
 
       syncRepairRecordOnTaskFailure(
         task,
@@ -4258,6 +5540,7 @@ async function bootstrap() {
         const note =
           typeof req.body.note === "string" ? req.body.note : undefined;
         const approval = decideApproval(state, taskId, decision, actor, note);
+        const approvalExecution = findExecutionByTaskId(taskId);
 
         onApprovalCompleted(
           taskId,
@@ -4279,6 +5562,28 @@ async function bootstrap() {
             __requestId: req.auth?.requestId ?? null,
           });
           replayTaskId = replay.id;
+        }
+
+        if (approvalExecution) {
+          appendWorkflowEvent({
+            state,
+            runId: approvalExecution.idempotencyKey,
+            taskId: approval.taskId,
+            type: approval.type,
+            stage: "approval",
+            stateLabel: decision,
+            source: "approval",
+            actor: req.auth?.actor ?? actor,
+            nodeId: `approval:${approval.taskId}`,
+            detail:
+              decision === "approved"
+                ? `Approval granted for ${approval.type}.`
+                : `Approval rejected for ${approval.type}.`,
+            evidence: [
+              approval.note ?? "no-operator-note",
+              replayTaskId ?? "no-replay-task",
+            ],
+          });
         }
 
         getMilestoneEmitter()?.emit({
@@ -4309,6 +5614,10 @@ async function bootstrap() {
               ? `Monitor replay task ${replayTaskId ?? "queue"} for completion.`
               : "Adjust the payload or operator note before retrying this task.",
           source: "operator",
+        }, {
+          sourceTaskId: approval.taskId,
+          sourceRunId: approvalExecution?.idempotencyKey,
+          actor: req.auth?.actor ?? actor,
         });
 
         await flushState();
@@ -4318,6 +5627,55 @@ async function bootstrap() {
           approval,
           replayTaskId,
         });
+      } catch (error: any) {
+        res.status(400).json({ error: error.message });
+      }
+    },
+  );
+
+  app.post(
+    "/api/incidents/:id/acknowledge",
+    authLimiter,
+    requireBearerToken,
+    operatorWriteLimiter,
+    requireRole("operator"),
+    auditProtectedAction("incidents.acknowledge.write"),
+    createValidationMiddleware(IncidentAcknowledgeSchema, "body"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const incident = acknowledgeIncidentRecord(
+          state,
+          String(req.params.id),
+          typeof req.body.actor === "string"
+            ? req.body.actor
+            : req.auth?.actor ?? "api-user",
+          typeof req.body.note === "string" ? req.body.note : undefined,
+        );
+        await flushState();
+        res.json({ status: "ok", incident });
+      } catch (error: any) {
+        res.status(400).json({ error: error.message });
+      }
+    },
+  );
+
+  app.post(
+    "/api/incidents/:id/owner",
+    authLimiter,
+    requireBearerToken,
+    operatorWriteLimiter,
+    requireRole("operator"),
+    auditProtectedAction("incidents.owner.write"),
+    createValidationMiddleware(IncidentOwnerSchema, "body"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const incident = assignIncidentOwner(
+          state,
+          String(req.params.id),
+          String(req.body.owner),
+        );
+        await flushState();
+        res.json({ status: "ok", incident });
       } catch (error: any) {
         res.status(400).json({ error: error.message });
       }
@@ -4370,7 +5728,7 @@ async function bootstrap() {
           proofDelivery,
         });
         const topology = await buildAgentTopology({ agents, proofDelivery });
-        const incidents = buildRuntimeIncidentModel({
+        const incidentState = buildRuntimeIncidentModel({
           config,
           state,
           fastStartMode,
@@ -4381,6 +5739,10 @@ async function bootstrap() {
           proofDelivery,
           knowledgeRuntime,
         });
+        const incidents = incidentState.model;
+        if (incidentState.changed) {
+          await flushState();
+        }
         const overviewHealthStatus =
           incidents.overallStatus === "critical" || truthLayers.observed.status === "degraded"
             ? "degraded"
@@ -4859,7 +6221,7 @@ async function bootstrap() {
           proofDelivery,
         });
         const topology = await buildAgentTopology({ agents, proofDelivery });
-        const incidents = buildRuntimeIncidentModel({
+        const incidentState = buildRuntimeIncidentModel({
           config,
           state,
           fastStartMode,
@@ -4870,6 +6232,10 @@ async function bootstrap() {
           proofDelivery,
           knowledgeRuntime,
         });
+        const incidents = incidentState.model;
+        if (incidentState.changed) {
+          await flushState();
+        }
         const healthStatus =
           controlPlaneHealthy &&
           dependencyStatus === "healthy" &&

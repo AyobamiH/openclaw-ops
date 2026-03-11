@@ -80,6 +80,60 @@ export interface ApprovalRecord {
   note?: string;
 }
 
+export type IncidentLedgerClassification =
+  | "runtime-mode"
+  | "persistence"
+  | "proof-delivery"
+  | "repair"
+  | "retry-recovery"
+  | "knowledge"
+  | "service-runtime"
+  | "approval-backlog";
+
+export type IncidentLedgerSeverity = "info" | "warning" | "critical";
+export type IncidentLedgerTruthLayer = "configured" | "observed" | "public";
+export type IncidentLedgerStatus = "active" | "watching" | "resolved";
+export type IncidentRemediationOwner = "auto" | "operator" | "mixed";
+export type IncidentRemediationStatus =
+  | "ready"
+  | "in-progress"
+  | "blocked"
+  | "watching"
+  | "resolved";
+
+export interface IncidentLedgerRecord {
+  incidentId: string;
+  fingerprint: string;
+  title: string;
+  classification: IncidentLedgerClassification;
+  severity: IncidentLedgerSeverity;
+  truthLayer: IncidentLedgerTruthLayer;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  resolvedAt?: string | null;
+  status: IncidentLedgerStatus;
+  acknowledgedAt?: string | null;
+  acknowledgedBy?: string | null;
+  acknowledgementNote?: string | null;
+  owner?: string | null;
+  summary: string;
+  affectedSurfaces: string[];
+  linkedServiceIds: string[];
+  linkedTaskIds: string[];
+  linkedRunIds: string[];
+  linkedRepairIds: string[];
+  linkedProofDeliveries: string[];
+  evidence: string[];
+  recommendedSteps: string[];
+  remediation: {
+    owner: IncidentRemediationOwner;
+    status: IncidentRemediationStatus;
+    summary: string;
+    nextAction: string;
+    blockers: string[];
+  };
+}
+
 export interface TaskExecutionRecord {
   taskId: string;
   idempotencyKey: string;
@@ -89,6 +143,30 @@ export interface TaskExecutionRecord {
   maxRetries: number;
   lastHandledAt: string;
   lastError?: string;
+}
+
+export type WorkflowEventStage =
+  | "ingress"
+  | "queue"
+  | "approval"
+  | "agent"
+  | "result"
+  | "proof"
+  | "repair";
+
+export interface WorkflowEventRecord {
+  eventId: string;
+  runId: string;
+  taskId: string;
+  type: string;
+  stage: WorkflowEventStage;
+  state: string;
+  timestamp: string;
+  source: string;
+  actor: string;
+  nodeId: string;
+  detail: string;
+  evidence: string[];
 }
 
 export interface TaskRetryRecoveryRecord {
@@ -258,6 +336,8 @@ export interface MilestoneDeliveryRecord {
   milestoneId: string;
   sentAtUtc: string;
   event: MilestoneEvent;
+  sourceTaskId?: string;
+  sourceRunId?: string;
   status:
     | "pending"
     | "delivered"
@@ -275,6 +355,8 @@ export interface DemandSummaryDeliveryRecord {
   summaryId: string;
   sentAtUtc: string;
   snapshot: DemandSummarySnapshot;
+  sourceTaskId?: string;
+  sourceRunId?: string;
   status:
     | "pending"
     | "delivered"
@@ -335,6 +417,8 @@ export interface OrchestratorState {
   governedSkillState: PersistedGovernedSkillRecord[];
   milestoneDeliveries: MilestoneDeliveryRecord[];
   demandSummaryDeliveries: DemandSummaryDeliveryRecord[];
+  incidentLedger: IncidentLedgerRecord[];
+  workflowEvents: WorkflowEventRecord[];
   lastDriftRepairAt: string | null;
   lastRedditResponseAt: string | null;
   lastAgentDeployAt: string | null;

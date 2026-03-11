@@ -1,13 +1,20 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
+import { appendWorkflowEventRecord } from "../state.js";
 import type {
   DemandSummaryDeliveryRecord,
   OrchestratorConfig,
   OrchestratorState,
+  WorkflowEventRecord,
 } from "../types.js";
 import { buildDemandSummarySnapshot } from "./summary-builder.js";
 import { getMilestoneEmitter } from "../milestones/emitter.js";
 
 const MAX_DELIVERY_ATTEMPTS = 3;
+type ProofWorkflowContext = {
+  sourceTaskId?: string;
+  sourceRunId?: string;
+  actor?: string | null;
+};
 
 function sortObjectKeys(obj: unknown): unknown {
   if (Array.isArray(obj)) return obj.map(sortObjectKeys);
@@ -27,6 +34,66 @@ function signEnvelope(payload: unknown, secret: string): string {
     .digest("hex");
 }
 
+function buildProofWorkflowEventId(
+  recordId: string,
+  state: string,
+  attempt: number,
+  timestamp: string,
+) {
+  const digest = createHash("sha1")
+    .update(["demandSummary", recordId, state, String(attempt), timestamp].join("|"))
+    .digest("hex")
+    .slice(0, 12);
+  return `workflow:proof:demandSummary:${digest}`;
+}
+
+function appendProofWorkflowEvent(args: {
+  state: OrchestratorState;
+  recordId: string;
+  runId?: string;
+  taskId?: string;
+  actor?: string | null;
+  stateLabel: string;
+  detail: string;
+  attempt: number;
+  timestamp: string;
+  evidence?: string[];
+}) {
+  if (!args.runId || !args.taskId) {
+    return;
+  }
+
+  const event: WorkflowEventRecord = {
+    eventId: buildProofWorkflowEventId(
+      args.recordId,
+      args.stateLabel,
+      args.attempt,
+      args.timestamp,
+    ),
+    runId: args.runId,
+    taskId: args.taskId,
+    type: "proof.demandSummary",
+    stage: "proof",
+    state: args.stateLabel,
+    timestamp: args.timestamp,
+    source: "demandSummary-emitter",
+    actor:
+      typeof args.actor === "string" && args.actor.trim().length > 0
+        ? args.actor.trim()
+        : "system",
+    nodeId: `proof:demandSummary:${args.recordId}`,
+    detail: args.detail,
+    evidence: [...new Set((args.evidence ?? []).filter(Boolean))].slice(0, 8),
+  };
+
+  const existing = args.state.workflowEvents.find(
+    (record) => record.eventId === event.eventId,
+  );
+  if (!existing) {
+    appendWorkflowEventRecord(args.state, event);
+  }
+}
+
 export class DemandSummaryEmitter {
   constructor(
     private config: OrchestratorConfig,
@@ -34,7 +101,7 @@ export class DemandSummaryEmitter {
     private persistState: () => Promise<void>,
   ) {}
 
-  async emit(): Promise<void> {
+  async emit(context: ProofWorkflowContext = {}): Promise<void> {
     const now = new Date().toISOString();
     const snapshot = buildDemandSummarySnapshot(this.getState(), now);
     const idempotencyKey = randomBytes(16).toString("hex");
@@ -57,11 +124,29 @@ export class DemandSummaryEmitter {
       summaryId: snapshot.summaryId,
       sentAtUtc: now,
       snapshot,
+      sourceTaskId: context.sourceTaskId,
+      sourceRunId: context.sourceRunId,
       status: "pending",
       attempts: 0,
     };
 
-    this.getState().demandSummaryDeliveries.push(record);
+    const state = this.getState();
+    state.demandSummaryDeliveries.push(record);
+    appendProofWorkflowEvent({
+      state,
+      recordId: record.idempotencyKey,
+      runId: context.sourceRunId,
+      taskId: context.sourceTaskId,
+      actor: context.actor,
+      stateLabel: "queued",
+      detail: `Demand summary proof delivery queued for ${snapshot.summaryId}.`,
+      attempt: 0,
+      timestamp: now,
+      evidence: [
+        `summary:${snapshot.summaryId}`,
+        `target:${this.config.demandSummaryIngestUrl ?? "unconfigured"}`,
+      ],
+    });
     await this.persistState();
 
     getMilestoneEmitter()?.emit({
@@ -85,7 +170,7 @@ export class DemandSummaryEmitter {
           ? `Review the ${topSegment.label} lane and drain queued leads.`
           : "Keep the demand layer warm and watch for the next scored lead.",
       source: "orchestrator",
-    });
+    }, context);
 
     this.deliverPending().catch((err) => {
       console.warn(
@@ -118,6 +203,20 @@ export class DemandSummaryEmitter {
       };
       const timestamp = new Date().toISOString();
       const signature = signEnvelope(envelope, secret);
+      appendProofWorkflowEvent({
+        state,
+        recordId: record.idempotencyKey,
+        runId: record.sourceRunId,
+        taskId: record.sourceTaskId,
+        stateLabel: "attempted",
+        detail: `Demand summary delivery attempt ${record.attempts + 1} started for ${record.summaryId}.`,
+        attempt: record.attempts + 1,
+        timestamp,
+        evidence: [
+          `summary:${record.summaryId}`,
+          `target:${ingestUrl}`,
+        ],
+      });
 
       try {
         const response = await fetch(ingestUrl, {
@@ -139,11 +238,40 @@ export class DemandSummaryEmitter {
           record.status =
             body.status === "duplicate" ? "duplicate" : "delivered";
           state.lastDemandSummaryDeliveryAt = timestamp;
+          appendProofWorkflowEvent({
+            state,
+            recordId: record.idempotencyKey,
+            runId: record.sourceRunId,
+            taskId: record.sourceTaskId,
+            stateLabel: record.status,
+            detail: `Demand summary delivery ${record.status} for ${record.summaryId}.`,
+            attempt: record.attempts,
+            timestamp,
+            evidence: [
+              `summary:${record.summaryId}`,
+              `http:${response.status}`,
+            ],
+          });
           changed = true;
         } else if (response.status >= 400 && response.status < 500) {
           const body = await response.text().catch(() => "");
           record.status = "rejected";
           record.lastError = `HTTP ${response.status}: ${body.slice(0, 200)}`;
+          appendProofWorkflowEvent({
+            state,
+            recordId: record.idempotencyKey,
+            runId: record.sourceRunId,
+            taskId: record.sourceTaskId,
+            stateLabel: "rejected",
+            detail: `Demand summary delivery rejected for ${record.summaryId}.`,
+            attempt: record.attempts,
+            timestamp,
+            evidence: [
+              `summary:${record.summaryId}`,
+              `http:${response.status}`,
+              record.lastError,
+            ],
+          });
           changed = true;
         } else {
           record.lastError = `HTTP ${response.status}`;
@@ -151,6 +279,23 @@ export class DemandSummaryEmitter {
             record.attempts >= MAX_DELIVERY_ATTEMPTS
               ? "dead-letter"
               : "retrying";
+          appendProofWorkflowEvent({
+            state,
+            recordId: record.idempotencyKey,
+            runId: record.sourceRunId,
+            taskId: record.sourceTaskId,
+            stateLabel: record.status,
+            detail:
+              record.status === "dead-letter"
+                ? `Demand summary delivery exhausted retries for ${record.summaryId}.`
+                : `Demand summary delivery degraded for ${record.summaryId}; retry scheduled.`,
+            attempt: record.attempts,
+            timestamp,
+            evidence: [
+              `summary:${record.summaryId}`,
+              `http:${response.status}`,
+            ],
+          });
           changed = true;
         }
       } catch (error) {
@@ -159,6 +304,23 @@ export class DemandSummaryEmitter {
         record.lastError = (error as Error).message;
         record.status =
           record.attempts >= MAX_DELIVERY_ATTEMPTS ? "dead-letter" : "retrying";
+        appendProofWorkflowEvent({
+          state,
+          recordId: record.idempotencyKey,
+          runId: record.sourceRunId,
+          taskId: record.sourceTaskId,
+          stateLabel: record.status,
+          detail:
+            record.status === "dead-letter"
+              ? `Demand summary delivery exhausted retries for ${record.summaryId}.`
+              : `Demand summary delivery degraded for ${record.summaryId}; retry scheduled.`,
+          attempt: record.attempts,
+          timestamp,
+          evidence: [
+            `summary:${record.summaryId}`,
+            record.lastError,
+          ],
+        });
         changed = true;
       }
     }

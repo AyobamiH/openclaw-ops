@@ -3,9 +3,11 @@ import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { mkdir } from "node:fs/promises";
 import {
+  IncidentLedgerRecord,
   OrchestratorState,
   RepairRecord,
   TaskRetryRecoveryRecord,
+  WorkflowEventRecord,
 } from "./types.js";
 
 const DEFAULT_HISTORY_LIMIT = 50;
@@ -21,6 +23,8 @@ const TASK_RETRY_RECOVERY_LIMIT = 1000;
 const REPAIR_RECORD_LIMIT = 500;
 const MILESTONE_DELIVERY_LIMIT = 200;
 const DEMAND_SUMMARY_DELIVERY_LIMIT = 200;
+const INCIDENT_LEDGER_LIMIT = 1000;
+const WORKFLOW_EVENT_LIMIT = 20000;
 
 type StateRetentionOptions = {
   taskHistoryLimit?: number;
@@ -69,6 +73,10 @@ export async function loadState(
       demandSummaryDeliveries:
         parsed.demandSummaryDeliveries?.slice(-DEMAND_SUMMARY_DELIVERY_LIMIT) ??
         [],
+      incidentLedger:
+        parsed.incidentLedger?.slice(-INCIDENT_LEDGER_LIMIT) ?? [],
+      workflowEvents:
+        parsed.workflowEvents?.slice(-WORKFLOW_EVENT_LIMIT) ?? [],
     };
   } catch (error) {
     console.warn(
@@ -112,6 +120,8 @@ export async function saveStateWithOptions(
     demandSummaryDeliveries: state.demandSummaryDeliveries.slice(
       -DEMAND_SUMMARY_DELIVERY_LIMIT,
     ),
+    incidentLedger: state.incidentLedger.slice(-INCIDENT_LEDGER_LIMIT),
+    workflowEvents: state.workflowEvents.slice(-WORKFLOW_EVENT_LIMIT),
     updatedAt: new Date().toISOString(),
   };
 
@@ -139,6 +149,8 @@ export function createDefaultState(): OrchestratorState {
     governedSkillState: [],
     milestoneDeliveries: [],
     demandSummaryDeliveries: [],
+    incidentLedger: [],
+    workflowEvents: [],
     lastMilestoneDeliveryAt: null,
     lastDemandSummaryDeliveryAt: null,
     lastDriftRepairAt: null,
@@ -146,6 +158,26 @@ export function createDefaultState(): OrchestratorState {
     lastAgentDeployAt: null,
     lastRssSweepAt: null,
   };
+}
+
+export function appendWorkflowEventRecord(
+  state: OrchestratorState,
+  event: WorkflowEventRecord,
+) {
+  state.workflowEvents.push(event);
+  if (state.workflowEvents.length > WORKFLOW_EVENT_LIMIT) {
+    state.workflowEvents = state.workflowEvents.slice(-WORKFLOW_EVENT_LIMIT);
+  }
+}
+
+export function appendIncidentLedgerRecord(
+  state: OrchestratorState,
+  record: IncidentLedgerRecord,
+) {
+  state.incidentLedger.push(record);
+  if (state.incidentLedger.length > INCIDENT_LEDGER_LIMIT) {
+    state.incidentLedger = state.incidentLedger.slice(-INCIDENT_LEDGER_LIMIT);
+  }
 }
 
 export function reconcileTaskRetryRecoveryState(

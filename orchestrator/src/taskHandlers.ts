@@ -134,6 +134,12 @@ const CHILD_ENV_ALLOWLIST = [
   "ANTHROPIC_API_KEY",
 ] as const;
 
+type ProofEmissionContext = {
+  sourceTaskId?: string;
+  sourceRunId?: string;
+  actor?: string | null;
+};
+
 function ensureDocChangeStored(path: string, context: TaskHandlerContext) {
   const { state } = context;
   if (state.pendingDocChanges.includes(path)) return;
@@ -201,8 +207,22 @@ function isDocRepairCoolingDown(
   });
 }
 
-function emitMilestoneSafely(event: MilestoneEvent) {
-  getMilestoneEmitter()?.emit(event);
+function buildProofEmissionContext(
+  task: Task,
+  actor?: string | null,
+): ProofEmissionContext {
+  return {
+    sourceTaskId: task.id,
+    sourceRunId: task.idempotencyKey,
+    actor: actor ?? "orchestrator",
+  };
+}
+
+function emitMilestoneSafely(
+  event: MilestoneEvent,
+  emitContext?: ProofEmissionContext,
+) {
+  getMilestoneEmitter()?.emit(event, emitContext);
 }
 
 export function buildAllowlistedChildEnv(
@@ -247,6 +267,7 @@ function queueDepthNextAction(queueTotal: number) {
 async function emitDemandSummaryIfChanged(
   previousFingerprint: string,
   context: TaskHandlerContext,
+  emitContext?: ProofEmissionContext,
 ) {
   const emitter = getDemandSummaryEmitter();
   if (!emitter) return;
@@ -255,7 +276,7 @@ async function emitDemandSummaryIfChanged(
   if (previousFingerprint === nextFingerprint) return;
 
   try {
-    await emitter.emit();
+    await emitter.emit(emitContext);
   } catch (error) {
     context.logger.warn(
       `[demand-summary] emit failed: ${(error as Error).message}`,
@@ -1061,7 +1082,7 @@ async function appendDraft(path: string, record: RssDraftRecord) {
   await appendFile(path, `${JSON.stringify(record)}\n`, "utf-8");
 }
 
-const startupHandler: TaskHandler = async (_, context) => {
+const startupHandler: TaskHandler = async (task, context) => {
   context.state.lastStartedAt = new Date().toISOString();
   await context.saveState();
 
@@ -1080,7 +1101,7 @@ const startupHandler: TaskHandler = async (_, context) => {
     riskStatus: "on-track",
     nextAction: "Monitor task queue for first incoming tasks.",
     source: "orchestrator",
-  });
+  }, buildProofEmissionContext(task));
 
   return "orchestrator boot complete";
 };
@@ -1335,7 +1356,7 @@ const driftRepairHandler: TaskHandler = async (task, context) => {
       ? "Verify knowledge pack is consumed by reddit-helper."
       : "Investigate why doc-specialist did not produce a verified pack.",
     source: "orchestrator",
-  });
+  }, buildProofEmissionContext(task, requestedBy));
 
   if (!verified) {
     throwTaskFailure("drift-repair", verificationSummary);
@@ -1440,9 +1461,13 @@ const redditResponseHandler: TaskHandler = async (task, context) => {
     riskStatus: agentResult ? "on-track" : "at-risk",
     nextAction: queueDepthNextAction(context.state.redditQueue.length),
     source: "orchestrator",
-  });
+  }, buildProofEmissionContext(task, responder));
 
-  await emitDemandSummaryIfChanged(demandFingerprintBefore, context);
+  await emitDemandSummaryIfChanged(
+    demandFingerprintBefore,
+    context,
+    buildProofEmissionContext(task, responder),
+  );
   return `drafted reddit reply for ${queueItem.subreddit} (${queueItem.id})`;
 };
 
@@ -2012,10 +2037,14 @@ const rssSweepHandler: TaskHandler = async (task, context) => {
             ? `Route ${priorityCount} priority lead${priorityCount === 1 ? "" : "s"} into reddit-response.`
             : queueDepthNextAction(context.state.redditQueue.length),
       source: "orchestrator",
-    });
+    }, buildProofEmissionContext(task));
   }
 
-  await emitDemandSummaryIfChanged(demandFingerprintBefore, context);
+  await emitDemandSummaryIfChanged(
+    demandFingerprintBefore,
+    context,
+    buildProofEmissionContext(task),
+  );
   return drafted > 0
     ? `rss sweep drafted ${drafted} replies`
     : "rss sweep complete (no drafts)";
@@ -2094,7 +2123,7 @@ const agentDeployHandler: TaskHandler = async (task, context) => {
     riskStatus: "on-track",
     nextAction: `Run "npm install && npm run dev" in ${repoPath} to start the agent.`,
     source: "orchestrator",
-  });
+  }, buildProofEmissionContext(task));
 
   return `deployed ${agentName} via ${template} template to ${repoPath}`;
 };
@@ -2174,7 +2203,11 @@ const nightlyBatchHandler: TaskHandler = async (task, context) => {
 
   state.lastNightlyBatchAt = now;
   await context.saveState();
-  await emitDemandSummaryIfChanged(demandFingerprintBefore, context);
+  await emitDemandSummaryIfChanged(
+    demandFingerprintBefore,
+    context,
+    buildProofEmissionContext(task),
+  );
 
   emitMilestoneSafely({
     milestoneId: `nightly.batch.${digest.batchId}`,
@@ -2201,7 +2234,7 @@ const nightlyBatchHandler: TaskHandler = async (task, context) => {
           ? `Review ${draftApprovalsRequested} draft promotion approval${draftApprovalsRequested === 1 ? "" : "s"} before replaying reddit-response.`
           : queueDepthNextAction(state.redditQueue.length),
     source: "orchestrator",
-  });
+  }, buildProofEmissionContext(task));
 
   return manualReviewApprovalsRequested > 0
     ? `nightly batch: synced ${docsSynced} docs, selected ${itemsMarked} priority items for draft, requested ${manualReviewApprovalsRequested} manual-review approvals, requested ${draftApprovalsRequested} draft promotion approvals`

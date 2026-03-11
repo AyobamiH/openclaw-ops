@@ -1,11 +1,22 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { MilestoneEventSchema, type MilestoneEvent } from './schema.js';
 import { publishToFeed } from './feed-publisher.js';
-import type { MilestoneDeliveryRecord, OrchestratorConfig, OrchestratorState } from '../types.js';
+import { appendWorkflowEventRecord } from "../state.js";
+import type {
+  MilestoneDeliveryRecord,
+  OrchestratorConfig,
+  OrchestratorState,
+  WorkflowEventRecord,
+} from "../types.js";
 
 const MAX_DELIVERY_ATTEMPTS = 3;
+type ProofWorkflowContext = {
+  sourceTaskId?: string;
+  sourceRunId?: string;
+  actor?: string | null;
+};
 
 function sortObjectKeys(obj: unknown): unknown {
   if (Array.isArray(obj)) return obj.map(sortObjectKeys);
@@ -25,6 +36,69 @@ function signEnvelope(payload: unknown, secret: string): string {
     .digest('hex');
 }
 
+function buildProofWorkflowEventId(
+  transport: "milestone" | "demandSummary",
+  recordId: string,
+  state: string,
+  attempt: number,
+  timestamp: string,
+) {
+  const digest = createHash("sha1")
+    .update([transport, recordId, state, String(attempt), timestamp].join("|"))
+    .digest("hex")
+    .slice(0, 12);
+  return `workflow:proof:${transport}:${digest}`;
+}
+
+function appendProofWorkflowEvent(args: {
+  state: OrchestratorState;
+  transport: "milestone" | "demandSummary";
+  recordId: string;
+  runId?: string;
+  taskId?: string;
+  actor?: string | null;
+  stateLabel: string;
+  detail: string;
+  attempt: number;
+  timestamp: string;
+  evidence?: string[];
+}) {
+  if (!args.runId || !args.taskId) {
+    return;
+  }
+
+  const event: WorkflowEventRecord = {
+    eventId: buildProofWorkflowEventId(
+      args.transport,
+      args.recordId,
+      args.stateLabel,
+      args.attempt,
+      args.timestamp,
+    ),
+    runId: args.runId,
+    taskId: args.taskId,
+    type: `proof.${args.transport}`,
+    stage: "proof",
+    state: args.stateLabel,
+    timestamp: args.timestamp,
+    source: `${args.transport}-emitter`,
+    actor:
+      typeof args.actor === "string" && args.actor.trim().length > 0
+        ? args.actor.trim()
+        : "system",
+    nodeId: `proof:${args.transport}:${args.recordId}`,
+    detail: args.detail,
+    evidence: [...new Set((args.evidence ?? []).filter(Boolean))].slice(0, 8),
+  };
+
+  const existing = args.state.workflowEvents.find(
+    (record) => record.eventId === event.eventId,
+  );
+  if (!existing) {
+    appendWorkflowEventRecord(args.state, event);
+  }
+}
+
 export class MilestoneEmitter {
   constructor(
     private config: OrchestratorConfig,
@@ -33,7 +107,7 @@ export class MilestoneEmitter {
   ) {}
 
   /** Validate, log, and queue a milestone event for delivery. */
-  async emit(event: MilestoneEvent): Promise<void> {
+  async emit(event: MilestoneEvent, context: ProofWorkflowContext = {}): Promise<void> {
     const parsed = MilestoneEventSchema.safeParse(event);
     if (!parsed.success) {
       console.warn('[milestones] emit: invalid event schema:', parsed.error.message);
@@ -72,11 +146,31 @@ export class MilestoneEmitter {
       milestoneId: parsed.data.milestoneId,
       sentAtUtc: now,
       event: parsed.data,
+      sourceTaskId: context.sourceTaskId,
+      sourceRunId: context.sourceRunId,
       status: 'pending',
       attempts: 0,
     };
 
-    this.getState().milestoneDeliveries.push(record);
+    const state = this.getState();
+    state.milestoneDeliveries.push(record);
+    appendProofWorkflowEvent({
+      state,
+      transport: "milestone",
+      recordId: record.idempotencyKey,
+      runId: context.sourceRunId,
+      taskId: context.sourceTaskId,
+      actor: context.actor,
+      stateLabel: "queued",
+      detail: `Milestone proof delivery queued for ${parsed.data.milestoneId}.`,
+      attempt: 0,
+      timestamp: now,
+      evidence: [
+        `milestone:${parsed.data.milestoneId}`,
+        `scope:${parsed.data.scope}`,
+        `target:${this.config.milestoneIngestUrl ?? "unconfigured"}`,
+      ],
+    });
     await this.persistState();
 
     // Attempt immediate delivery; errors are non-fatal
@@ -109,6 +203,21 @@ export class MilestoneEmitter {
       };
       const timestamp = new Date().toISOString();
       const sig = signEnvelope(envelope, secret);
+      appendProofWorkflowEvent({
+        state,
+        transport: "milestone",
+        recordId: record.idempotencyKey,
+        runId: record.sourceRunId,
+        taskId: record.sourceTaskId,
+        stateLabel: "attempted",
+        detail: `Milestone delivery attempt ${record.attempts + 1} started for ${record.milestoneId}.`,
+        attempt: record.attempts + 1,
+        timestamp,
+        evidence: [
+          `milestone:${record.milestoneId}`,
+          `target:${ingestUrl}`,
+        ],
+      });
 
       try {
         console.log(
@@ -132,6 +241,21 @@ export class MilestoneEmitter {
           const body = (await res.json()) as { status?: string };
           record.status = body.status === 'duplicate' ? 'duplicate' : 'delivered';
           state.lastMilestoneDeliveryAt = timestamp;
+          appendProofWorkflowEvent({
+            state,
+            transport: "milestone",
+            recordId: record.idempotencyKey,
+            runId: record.sourceRunId,
+            taskId: record.sourceTaskId,
+            stateLabel: record.status,
+            detail: `Milestone delivery ${record.status} for ${record.milestoneId}.`,
+            attempt: record.attempts,
+            timestamp,
+            evidence: [
+              `milestone:${record.milestoneId}`,
+              `http:${res.status}`,
+            ],
+          });
           console.log(
             `[milestones] deliver success milestoneId=${record.milestoneId} status=${record.status} http=${res.status}`,
           );
@@ -140,6 +264,22 @@ export class MilestoneEmitter {
           const body = await res.text().catch(() => '');
           record.status = 'rejected';
           record.lastError = `HTTP ${res.status}: ${body.slice(0, 200)}`;
+          appendProofWorkflowEvent({
+            state,
+            transport: "milestone",
+            recordId: record.idempotencyKey,
+            runId: record.sourceRunId,
+            taskId: record.sourceTaskId,
+            stateLabel: "rejected",
+            detail: `Milestone delivery rejected for ${record.milestoneId}.`,
+            attempt: record.attempts,
+            timestamp,
+            evidence: [
+              `milestone:${record.milestoneId}`,
+              `http:${res.status}`,
+              record.lastError,
+            ],
+          });
           console.warn(
             `[milestones] deliver rejected milestoneId=${record.milestoneId} http=${res.status}`,
           );
@@ -147,6 +287,24 @@ export class MilestoneEmitter {
         } else {
           record.lastError = `HTTP ${res.status}`;
           record.status = record.attempts >= MAX_DELIVERY_ATTEMPTS ? 'dead-letter' : 'retrying';
+          appendProofWorkflowEvent({
+            state,
+            transport: "milestone",
+            recordId: record.idempotencyKey,
+            runId: record.sourceRunId,
+            taskId: record.sourceTaskId,
+            stateLabel: record.status,
+            detail:
+              record.status === "dead-letter"
+                ? `Milestone delivery exhausted retries for ${record.milestoneId}.`
+                : `Milestone delivery degraded for ${record.milestoneId}; retry scheduled.`,
+            attempt: record.attempts,
+            timestamp,
+            evidence: [
+              `milestone:${record.milestoneId}`,
+              `http:${res.status}`,
+            ],
+          });
           console.warn(
             `[milestones] deliver retry milestoneId=${record.milestoneId} http=${res.status} attempts=${record.attempts}`,
           );
@@ -157,6 +315,24 @@ export class MilestoneEmitter {
         record.attempts += 1;
         record.lastError = (err as Error).message;
         record.status = record.attempts >= MAX_DELIVERY_ATTEMPTS ? 'dead-letter' : 'retrying';
+        appendProofWorkflowEvent({
+          state,
+          transport: "milestone",
+          recordId: record.idempotencyKey,
+          runId: record.sourceRunId,
+          taskId: record.sourceTaskId,
+          stateLabel: record.status,
+          detail:
+            record.status === "dead-letter"
+              ? `Milestone delivery exhausted retries for ${record.milestoneId}.`
+              : `Milestone delivery degraded for ${record.milestoneId}; retry scheduled.`,
+          attempt: record.attempts,
+          timestamp,
+          evidence: [
+            `milestone:${record.milestoneId}`,
+            record.lastError,
+          ],
+        });
         console.warn(
           `[milestones] deliver error milestoneId=${record.milestoneId} attempts=${record.attempts} error=${(err as Error).message}`,
         );

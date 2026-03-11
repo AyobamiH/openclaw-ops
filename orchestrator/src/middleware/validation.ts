@@ -104,6 +104,15 @@ export const ApprovalDecisionSchema = z.object({
   note: z.string().max(1000).optional(),
 });
 
+export const IncidentAcknowledgeSchema = z.object({
+  actor: z.string().min(1).max(120).optional(),
+  note: z.string().max(1000).optional(),
+});
+
+export const IncidentOwnerSchema = z.object({
+  owner: z.string().min(1).max(120),
+});
+
 /**
  * Middleware Factory: Validate Request Body or Query
  * @param schema - Zod schema to validate against

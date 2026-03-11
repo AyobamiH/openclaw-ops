@@ -30,6 +30,8 @@ Protected operator routes (bearer token):
 - `GET /api/tasks/runs/:runId`
 - `GET /api/approvals/pending`
 - `POST /api/approvals/:id/decision`
+- `POST /api/incidents/:id/acknowledge`
+- `POST /api/incidents/:id/owner`
 - `GET /api/agents/overview`
 - `GET /api/skills/registry`
 - `GET /api/skills/policy`
@@ -51,6 +53,15 @@ Boundary reminder:
 
 - `openclawdbot` remains a separate Reddit/Devvit proof/community surface and
   should not be treated as the primary private operator UI.
+
+Mission Control implementation note:
+
+- the larger Mission Control blueprint remains future operator-console work
+  only
+- this phase adds persistent incidents, workflow graphs, and agent capability
+  readiness inside the existing console rails
+- it does **not** adopt a new global shell, Three.js background, or starfield
+  environment yet
 
 Operator Station contract truth:
 
@@ -194,8 +205,22 @@ Safe leaf fields to render:
   `incidents.incidents[].status`,
   `incidents.incidents[].truthLayer`,
   `incidents.incidents[].summary`,
+  `incidents.incidents[].firstSeenAt`,
+  `incidents.incidents[].lastSeenAt`,
+  `incidents.incidents[].acknowledgedAt`,
+  `incidents.incidents[].acknowledgedBy`,
+  `incidents.incidents[].owner`,
+  `incidents.incidents[].affectedSurfaces[]`,
+  `incidents.incidents[].linkedServiceIds[]`,
+  `incidents.incidents[].linkedTaskIds[]`,
+  `incidents.incidents[].linkedRunIds[]`,
+  `incidents.incidents[].linkedRepairIds[]`,
+  `incidents.incidents[].linkedProofDeliveries[]`,
+  `incidents.incidents[].recommendedSteps[]`,
   `incidents.incidents[].remediation.status`,
   `incidents.incidents[].remediation.owner`,
+  `incidents.incidents[].remediation.nextAction`,
+  `incidents.incidents[].remediation.blockers[]`,
   `recentTasks[].handledAt`, `recentTasks[].type`, `recentTasks[].result`,
   `recentTasks[].message`
   Approval payloads can now include review-gated Reddit lead promotions:
@@ -204,10 +229,14 @@ Safe leaf fields to render:
   replay surface.
 - `/api/tasks/runs` and `/api/tasks/runs/:runId`: `repair.repairId`,
   `repair.classification`, `repair.status`, `repair.verificationMode`,
-  `repair.verificationSummary`, `workflow.stage`, `workflow.awaitingApproval`,
-  `workflow.retryScheduled`, `workflow.nextRetryAt`, `workflow.repairStatus`,
-  `workflow.eventCount`, `approval.required`, `approval.status`,
-  `approval.requestedAt`, `approval.decidedAt`, and `events[]` when present
+  `repair.verificationSummary`, `workflow.stage`, `workflow.graphStatus`,
+  `workflow.currentStage`, `workflow.blockedStage`, `workflow.stopReason`,
+  `workflow.awaitingApproval`, `workflow.retryScheduled`,
+  `workflow.nextRetryAt`, `workflow.repairStatus`, `workflow.eventCount`,
+  `workflow.stageDurations`, `workflow.nodeCount`, `workflow.edgeCount`,
+  `approval.required`, `approval.status`, `approval.requestedAt`,
+  `approval.decidedAt`, `events[]`, `proofLinks[]`, and
+  `workflowGraph.{nodes,edges,events,proofLinks}` when present
 - `/api/approvals/pending`: `impact.riskLevel`, `impact.approvalReason`,
   `impact.dependencyClass`, `impact.affectedSurfaces`,
   `impact.dependencyRequirements`, `impact.caveats`,
@@ -221,6 +250,10 @@ Safe leaf fields to render:
 - `/api/knowledge/query`: top-level `meta` (query-scoped freshness,
   provenance, contradiction signals) and `runtime` (repo/runtime knowledge
   signals)
+- `/api/agents/overview`: `modelTier`, `allowedSkills[]`,
+  `capability.role`, `capability.spine`, `capability.currentReadiness`,
+  `capability.evidence[]`, `capability.presentCapabilities[]`,
+  `capability.missingCapabilities[]`, `capability.ultraGapSummary`
 - `/health`: `status`, `timestamp`
 
 Auth persistence requirement:
@@ -248,6 +281,10 @@ Interpretation note from the `2026-03-07` repair follow-up:
   `workflow`, `approval`, and ordered `events[]` so frontends can render run
   replay state from real queue/approval/retry/repair evidence instead of
   inventing it client-side.
+- `GET /api/tasks/runs` and `GET /api/tasks/runs/:runId` now also expose
+  `proofLinks[]` and canonical `workflowGraph` payloads so the operator console
+  can show where execution stopped across ingress, queue, approval, agent,
+  result, and proof delivery.
 - `GET /api/approvals/pending` now includes `impact` and `payloadPreview`
   metadata so approval review UIs can surface risk, affected surfaces, and
   replay semantics without reconstructing those fields on the client.
@@ -258,6 +295,16 @@ Interpretation note from the `2026-03-07` repair follow-up:
   fields. `serviceRunning=false` is valid host truth when the unit is absent or
   inactive; `null` is reserved for probe-unavailable cases. Per-agent host
   hints now also include `serviceUnitState`, `serviceUnitSubState`, and
+  `serviceUnitFileState`.
+- `POST /api/incidents/:id/acknowledge` and `POST /api/incidents/:id/owner`
+  now mutate the persistent incident ledger. Incident payloads returned by
+  overview and extended health retain stable IDs, first/last seen timestamps,
+  acknowledgement state, owner, linked service/task/run/proof references, and
+  remediation steps.
+- `GET /api/agents/overview` now also exposes capability readiness derived from
+  real runtime evidence. It distinguishes declared/foundation/operational/
+  advanced readiness and reports remaining capability gaps instead of labeling
+  agents “ultra” prematurely.
   `serviceUnitFileState`.
 - `GET /api/agents/overview` now also exposes `topology`, a derived graph of
   `orchestrator -> task -> agent -> skill` relationships plus the separate

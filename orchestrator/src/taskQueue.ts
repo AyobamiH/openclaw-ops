@@ -6,6 +6,7 @@ import { validateTaskType, ALLOWED_TASK_TYPES } from "./taskHandlers.js";
 export class TaskQueue {
   private queue = new PQueue({ concurrency: 2 });
   private listeners: Array<(task: Task) => void> = [];
+  private enqueueListeners: Array<(task: Task) => void> = [];
 
   private deriveIdempotencyKey(type: string, payload: Record<string, unknown>): string {
     const provided = payload.idempotencyKey;
@@ -39,6 +40,10 @@ export class TaskQueue {
       maxRetries: Number.isFinite(retryValue) && retryValue >= 0 ? Math.floor(retryValue) : 2,
     };
 
+    for (const listener of this.enqueueListeners) {
+      listener(task);
+    }
+
     const queuedExecution = this.queue.add(async () => {
       for (const listener of this.listeners) {
         await listener(task);
@@ -56,6 +61,10 @@ export class TaskQueue {
 
   onProcess(listener: (task: Task) => Promise<void> | void) {
     this.listeners.push(listener);
+  }
+
+  onEnqueue(listener: (task: Task) => void) {
+    this.enqueueListeners.push(listener);
   }
 
   getPendingCount() {
