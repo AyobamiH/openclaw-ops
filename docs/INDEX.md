@@ -16,6 +16,17 @@ Anti-drift rule:
   canonical `.md` file in the same change set and reference the relevant paths
   where useful
 
+## Authority Order
+
+Use this order when determining documentation truth:
+
+1. active runtime code and live config
+2. canonical anchors (`../OPENCLAW_CONTEXT_ANCHOR.md`, `../README.md`, this index, current KB truth docs)
+3. supporting docs and runbooks
+4. historical or snapshot docs
+
+If a supporting or historical document conflicts with runtime code, it is not canonical.
+
 ## Canonical Navigation
 
 | File | Purpose |
@@ -31,7 +42,7 @@ Anti-drift rule:
 |---|---|
 | [OPERATOR_GUIDE.md](./OPERATOR_GUIDE.md) | operator-facing runtime behavior |
 | [GOVERNANCE_REPO_HYGIENE.md](./GOVERNANCE_REPO_HYGIENE.md) | cleanup and protection policy |
-| [operations/SPRINT_TO_COMPLETION.md](./operations/SPRINT_TO_COMPLETION.md) | active closure plan |
+| [operations/SPRINT_TO_COMPLETION.md](./operations/SPRINT_TO_COMPLETION.md) | Sprint To Completion subordinate execution tracker for the root anchor |
 | [operations/deployment.md](./operations/deployment.md) | production operations checklist |
 | [operations/backup-recovery.md](./operations/backup-recovery.md) | recovery guidance |
 
@@ -77,12 +88,14 @@ Anti-drift rule:
 
 These are not canonical, but they are still useful as historical evidence:
 
+- [../SPRINT_HARDENING_BASELINE.md](../SPRINT_HARDENING_BASELINE.md)
 - [operations/DOCUMENTATION_COMPLETE.md](./operations/DOCUMENTATION_COMPLETE.md)
 - [operations/IMPLEMENTATION_COMPLETE.md](./operations/IMPLEMENTATION_COMPLETE.md)
 - [operations/orchestrator_documentation.md](./operations/orchestrator_documentation.md)
 - [operations/orchestrator-status.md](./operations/orchestrator-status.md)
 - [operations/orchestrator_workflow_plan.md](./operations/orchestrator_workflow_plan.md)
 - [operations/PRD_GOVERNANCE_REMEDIATION.md](./operations/PRD_GOVERNANCE_REMEDIATION.md)
+- `../orchestrator/docs/hostile-audit/*` should also be treated as historical audit evidence, not current runtime truth.
 
 ## Root Workspace Companions
 

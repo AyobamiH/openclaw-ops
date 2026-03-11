@@ -43,6 +43,8 @@ where it helps prevent drift.
 
 ## I Need To Close Remaining Gaps
 
+Sprint To Completion is the primary execution tracker for unfinished repository work.
+
 1. [operations/SPRINT_TO_COMPLETION.md](./operations/SPRINT_TO_COMPLETION.md)
 2. [operations/DOCUMENT_AUDIT.md](./operations/DOCUMENT_AUDIT.md)
 3. [GOVERNANCE_REPO_HYGIENE.md](./GOVERNANCE_REPO_HYGIENE.md)
