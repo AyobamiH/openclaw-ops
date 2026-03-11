@@ -146,6 +146,7 @@ export class DocIndexer {
 
         return this.shouldIgnoreRelativePath(relativePath);
       },
+      ignoreInitial: true,
       persistent: true,
     });
 
