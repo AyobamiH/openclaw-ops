@@ -59,7 +59,7 @@ shared milestone schema and the signed ingest path.
 7. The client reads the current feed and receives live updates through the
    realtime channel.
 
-## Execution Checklist
+## Execution Checklist (Sprint B/C)
 
 Status key: `[ ] not started`, `[-] partial`, `[x] complete`
 
