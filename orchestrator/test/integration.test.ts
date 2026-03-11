@@ -466,6 +466,65 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expect(owned.incident?.owner).toBe('integration-test-operator');
   });
 
+  it('exposes incident history views and linked remediation task creation', async () => {
+    const overview = await fetchProtected<{
+      incidents?: { incidents?: Array<{ id?: string }> };
+    }>('/api/dashboard/overview');
+    const incidentId = overview.incidents?.incidents?.[0]?.id;
+    expect(incidentId).toBeTruthy();
+
+    const listPayload = await fetchProtected<{
+      incidents?: Array<{ id?: string }>;
+    }>('/api/incidents?includeResolved=true&limit=20');
+    expect((listPayload.incidents ?? []).some((incident) => incident.id === incidentId)).toBe(
+      true,
+    );
+
+    const remediationResponse = await fetch(
+      `${baseUrl}/api/incidents/${encodeURIComponent(String(incidentId))}/remediate`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${TEST_API_KEY}`,
+        },
+        body: JSON.stringify({
+          actor: 'integration-test-operator',
+          note: 'Create remediation task from integration test',
+          taskType: 'system-monitor',
+        }),
+      },
+    );
+    expect(remediationResponse.status).toBe(200);
+    const remediationPayload = await remediationResponse.json() as {
+      remediationTask?: { taskId?: string | null };
+      incident?: {
+        remediationTasks?: Array<{ taskId?: string | null }>;
+        history?: Array<{ type?: string }>;
+      };
+    };
+    expect(remediationPayload.remediationTask?.taskId).toBeTruthy();
+    expect((remediationPayload.incident?.remediationTasks ?? []).length).toBeGreaterThan(0);
+    expect(
+      (remediationPayload.incident?.history ?? []).some(
+        (event) => event.type === 'remediation-task-created',
+      ),
+    ).toBe(true);
+
+    const detailPayload = await fetchProtected<{
+      incident?: {
+        acknowledgements?: unknown[];
+        ownershipHistory?: unknown[];
+        remediationTasks?: Array<{ taskId?: string | null }>;
+        history?: Array<{ type?: string }>;
+      };
+    }>(`/api/incidents/${encodeURIComponent(String(incidentId))}`);
+    expect(Array.isArray(detailPayload.incident?.acknowledgements)).toBe(true);
+    expect(Array.isArray(detailPayload.incident?.ownershipHistory)).toBe(true);
+    expect((detailPayload.incident?.remediationTasks ?? []).length).toBeGreaterThan(0);
+    expect((detailPayload.incident?.history ?? []).length).toBeGreaterThan(0);
+  });
+
   it('returns workflow summaries, workflow graph detail, and agent capability surfaces', async () => {
     const taskId = await triggerTask('heartbeat', {
       reason: 'workflow-graph-validation',
@@ -479,37 +538,52 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         taskId?: string;
         workflow?: {
           graphStatus?: string;
+          stopClassification?: string | null;
           nodeCount?: number;
           edgeCount?: number;
           stageDurations?: Record<string, number>;
+          timingBreakdown?: Record<string, { eventCount?: number }>;
         };
       }>;
     }>('/api/tasks/runs?limit=100');
 
     const runSummary = runsPayload.runs.find((item) => item.taskId === taskId);
     expect(runSummary?.workflow?.graphStatus).toBeTruthy();
+    expect(runSummary?.workflow?.stopClassification).toBeTruthy();
     expect(runSummary?.workflow?.nodeCount ?? 0).toBeGreaterThan(0);
     expect(runSummary?.workflow?.edgeCount ?? 0).toBeGreaterThan(0);
     expect(runSummary?.workflow?.stageDurations).toBeTruthy();
+    expect(runSummary?.workflow?.timingBreakdown).toBeTruthy();
 
     const detailPayload = await fetchProtected<{
       run?: {
         workflowGraph?: {
+          stopClassification?: string | null;
+          timingBreakdown?: Record<string, { eventCount?: number }>;
           nodes?: unknown[];
           edges?: unknown[];
           events?: unknown[];
         };
       };
     }>(`/api/tasks/runs/${encodeURIComponent(String(run.runId))}`);
+    expect(detailPayload.run?.workflowGraph?.stopClassification).toBeTruthy();
+    expect(detailPayload.run?.workflowGraph?.timingBreakdown).toBeTruthy();
     expect((detailPayload.run?.workflowGraph?.nodes ?? []).length).toBeGreaterThan(0);
     expect((detailPayload.run?.workflowGraph?.edges ?? []).length).toBeGreaterThan(0);
     expect((detailPayload.run?.workflowGraph?.events ?? []).length).toBeGreaterThan(0);
 
     const agentsPayload = await fetchProtected<{
+      topology?: {
+        counts?: { relationshipEdges?: number };
+        edges?: Array<{ relationship?: string }>;
+      };
       agents?: Array<{
+        id?: string;
         capability?: {
           currentReadiness?: string;
           evidence?: string[];
+          targetCapabilities?: string[];
+          evidenceProfiles?: Array<{ area?: string; status?: string }>;
           ultraGapSummary?: string;
         };
       }>;
@@ -519,8 +593,46 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     for (const agent of agentsPayload.agents ?? []) {
       expect(agent.capability?.currentReadiness).toBeTruthy();
       expect(Array.isArray(agent.capability?.evidence)).toBe(true);
+      expect(Array.isArray(agent.capability?.targetCapabilities)).toBe(true);
+      expect(Array.isArray(agent.capability?.evidenceProfiles)).toBe(true);
       expect(agent.capability?.ultraGapSummary).toBeTruthy();
     }
+    expect(agentsPayload.topology?.counts?.relationshipEdges ?? 0).toBeGreaterThan(0);
+    expect(
+      (agentsPayload.topology?.edges ?? []).some(
+        (edge) => edge.relationship === 'feeds-agent' || edge.relationship === 'coordinates-agent',
+      ),
+    ).toBe(true);
+  });
+
+  it('exposes knowledge provenance, contradiction, and freshness graphs', async () => {
+    const response = await fetch(`${baseUrl}/api/knowledge/summary`);
+    expect(response.status).toBe(200);
+    const payload = await response.json() as {
+      diagnostics?: {
+        graphs?: {
+          provenance?: { nodes?: unknown[]; edges?: unknown[] };
+          contradictions?: { nodes?: unknown[]; edges?: unknown[] };
+          freshness?: { nodes?: unknown[]; edges?: unknown[]; score?: number | null };
+        };
+      };
+      runtime?: {
+        graphs?: {
+          provenance?: unknown;
+          contradictions?: unknown;
+          freshness?: { score?: number | null } | null;
+        };
+      };
+    };
+
+    expect(payload.diagnostics?.graphs?.provenance).toBeTruthy();
+    expect(Array.isArray(payload.diagnostics?.graphs?.provenance?.nodes)).toBe(true);
+    expect(Array.isArray(payload.diagnostics?.graphs?.provenance?.edges)).toBe(true);
+    expect(payload.diagnostics?.graphs?.contradictions).toBeTruthy();
+    expect(Array.isArray(payload.diagnostics?.graphs?.contradictions?.nodes)).toBe(true);
+    expect(Array.isArray(payload.diagnostics?.graphs?.freshness?.nodes)).toBe(true);
+    expect(Array.isArray(payload.diagnostics?.graphs?.freshness?.edges)).toBe(true);
+    expect(payload.runtime?.graphs?.freshness).toBeTruthy();
   });
 
   it('keeps process alive during middleware assertions', () => {

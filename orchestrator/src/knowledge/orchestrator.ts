@@ -261,6 +261,11 @@ export class KnowledgeOrchestrator {
         message: string;
         entryIds: string[];
       }>;
+      graphs: {
+        provenance: ReturnType<typeof buildProvenanceGraph>;
+        contradictions: ReturnType<typeof buildContradictionGraph>;
+        freshness: ReturnType<typeof buildFreshnessGraph>;
+      };
     };
   } {
     // Search KB entries
@@ -286,6 +291,11 @@ export class KnowledgeOrchestrator {
         freshness: buildFreshnessSummary(entries),
         provenance: buildProvenanceSummary(entries),
         contradictionSignals: detectContradictions(entries),
+        graphs: {
+          provenance: buildProvenanceGraph(entries),
+          contradictions: buildContradictionGraph(entries),
+          freshness: buildFreshnessGraph(entries),
+        },
       },
     };
   }
@@ -324,6 +334,11 @@ export class KnowledgeOrchestrator {
         message: string;
         entryIds: string[];
       }>;
+      graphs: {
+        provenance: ReturnType<typeof buildProvenanceGraph>;
+        contradictions: ReturnType<typeof buildContradictionGraph>;
+        freshness: ReturnType<typeof buildFreshnessGraph>;
+      };
     };
   } {
     const stats = this.knowledgeBase.getStats();
@@ -340,6 +355,11 @@ export class KnowledgeOrchestrator {
         freshness: buildFreshnessSummary(entries),
         provenance: buildProvenanceSummary(entries),
         contradictionSignals: detectContradictions(entries),
+        graphs: {
+          provenance: buildProvenanceGraph(entries),
+          contradictions: buildContradictionGraph(entries),
+          freshness: buildFreshnessGraph(entries),
+        },
       },
     };
   }
@@ -455,6 +475,82 @@ function buildProvenanceSummary(entries: KBEntry[]) {
   );
 }
 
+function buildProvenanceGraph(entries: KBEntry[]) {
+  const nodes = new Map<string, {
+    id: string;
+    label: string;
+    kind: 'source-type' | 'source-model' | 'derivation' | 'entry';
+    count?: number;
+    status?: 'known' | 'unknown';
+  }>();
+  const edges = new Map<string, { id: string; from: string; to: string; weight: number; label: string }>();
+
+  const ensureNode = (
+    id: string,
+    label: string,
+    kind: 'source-type' | 'source-model' | 'derivation' | 'entry',
+    status?: 'known' | 'unknown'
+  ) => {
+    if (!nodes.has(id)) {
+      nodes.set(id, { id, label, kind, count: 0, status });
+    }
+    const node = nodes.get(id)!;
+    node.count = Number(node.count ?? 0) + 1;
+  };
+
+  const incrementEdge = (from: string, to: string, label: string) => {
+    const id = `edge:${from}:${to}`;
+    if (!edges.has(id)) {
+      edges.set(id, { id, from, to, label, weight: 0 });
+    }
+    edges.get(id)!.weight += 1;
+  };
+
+  for (const entry of entries) {
+    const provenance = normalizeEntryProvenance(entry.provenance);
+    const entryNodeId = `entry:${entry.id}`;
+    const sourceTypeNodeId = `source-type:${provenance.sourceType}`;
+    const sourceModelNodeId = `source-model:${provenance.sourceModel}`;
+
+    ensureNode(entryNodeId, entry.title, 'entry');
+    ensureNode(
+      sourceTypeNodeId,
+      provenance.sourceType,
+      'source-type',
+      provenance.sourceType === 'unknown' ? 'unknown' : 'known'
+    );
+    ensureNode(
+      sourceModelNodeId,
+      provenance.sourceModel,
+      'source-model',
+      provenance.sourceModel === 'unknown' ? 'unknown' : 'known'
+    );
+
+    incrementEdge(sourceTypeNodeId, entryNodeId, 'sourced-entry');
+    incrementEdge(sourceModelNodeId, entryNodeId, 'modeled-entry');
+
+    for (const derived of provenance.derivedFrom) {
+      const derivedNodeId = `derived:${derived}`;
+      ensureNode(derivedNodeId, derived, 'derivation');
+      incrementEdge(derivedNodeId, entryNodeId, 'derived-entry');
+    }
+  }
+
+  const unknownNodes = Array.from(nodes.values()).filter(node => node.status === 'unknown').length;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    totalNodes: nodes.size,
+    totalEdges: edges.size,
+    hotspots:
+      unknownNodes > 0
+        ? [`${unknownNodes} provenance node(s) still have unknown source identity.`]
+        : [],
+    nodes: Array.from(nodes.values()),
+    edges: Array.from(edges.values()),
+  };
+}
+
 function detectContradictions(entries: KBEntry[]) {
   const groups = new Map<string, KBEntry[]>();
 
@@ -499,6 +595,145 @@ function detectContradictions(entries: KBEntry[]) {
   }
 
   return signals.slice(0, 10);
+}
+
+function buildContradictionGraph(entries: KBEntry[]) {
+  const contradictions = detectContradictions(entries);
+  const entryById = new Map(entries.map(entry => [entry.id, entry]));
+  const nodes: Array<{
+    id: string;
+    label: string;
+    kind: 'contradiction' | 'entry';
+    severity?: 'info' | 'warning';
+  }> = [];
+  const edges: Array<{
+    id: string;
+    from: string;
+    to: string;
+    kind: 'flags-entry';
+  }> = [];
+
+  for (const signal of contradictions) {
+    const contradictionNodeId = `contradiction:${signal.id}`;
+    nodes.push({
+      id: contradictionNodeId,
+      label: signal.title,
+      kind: 'contradiction',
+      severity: signal.severity,
+    });
+    for (const entryId of signal.entryIds) {
+      const entry = entryById.get(entryId);
+      if (!entry) continue;
+      const entryNodeId = `entry:${entry.id}`;
+      nodes.push({
+        id: entryNodeId,
+        label: entry.title,
+        kind: 'entry',
+      });
+      edges.push({
+        id: `edge:${contradictionNodeId}:${entryNodeId}`,
+        from: contradictionNodeId,
+        to: entryNodeId,
+        kind: 'flags-entry',
+      });
+    }
+  }
+
+  const uniqueNodes = Array.from(
+    new Map(nodes.map(node => [node.id, node])).values()
+  );
+
+  return {
+    generatedAt: new Date().toISOString(),
+    contradictionCount: contradictions.length,
+    nodes: uniqueNodes,
+    edges,
+    hotspots: contradictions.map(signal => signal.message).slice(0, 10),
+  };
+}
+
+function buildFreshnessGraph(entries: KBEntry[], staleAfterHours = 72) {
+  const freshness = buildFreshnessSummary(entries, staleAfterHours);
+  const now = Date.now();
+  const agingCutoff = now - (staleAfterHours / 2) * 60 * 60 * 1000;
+  const staleCutoff = now - staleAfterHours * 60 * 60 * 1000;
+
+  const bands = {
+    fresh: 0,
+    aging: 0,
+    stale: 0,
+    unknown: 0,
+  };
+  const entryNodes: Array<{
+    id: string;
+    label: string;
+    kind: 'entry';
+    band: keyof typeof bands;
+    ageHours: number | null;
+  }> = [];
+
+  for (const entry of entries) {
+    const lastUpdated = Number(entry.lastUpdated);
+    let band: keyof typeof bands = 'unknown';
+    let ageHours: number | null = null;
+    if (Number.isFinite(lastUpdated)) {
+      ageHours = Number(((now - lastUpdated) / (60 * 60 * 1000)).toFixed(2));
+      if (lastUpdated < staleCutoff) {
+        band = 'stale';
+      } else if (lastUpdated < agingCutoff) {
+        band = 'aging';
+      } else {
+        band = 'fresh';
+      }
+    }
+    bands[band] += 1;
+    entryNodes.push({
+      id: `entry:${entry.id}`,
+      label: entry.title,
+      kind: 'entry',
+      band,
+      ageHours,
+    });
+  }
+
+  const bandNodes = (Object.keys(bands) as Array<keyof typeof bands>).map(band => ({
+    id: `freshness-band:${band}`,
+    label: band,
+    kind: 'band' as const,
+    count: bands[band],
+  }));
+  const bandEdges = entryNodes.map(node => ({
+    id: `edge:freshness-band:${node.band}:${node.id}`,
+    from: `freshness-band:${node.band}`,
+    to: node.id,
+    kind: 'contains-entry' as const,
+  }));
+
+  const weightedScore =
+    entries.length === 0
+      ? 0
+      : Number(
+          (
+            ((bands.fresh * 1 + bands.aging * 0.5 + bands.stale * 0.1) /
+              entries.length) *
+            100
+          ).toFixed(2)
+        );
+
+  return {
+    generatedAt: new Date().toISOString(),
+    score: weightedScore,
+    status: freshness.status,
+    bands,
+    nodes: [...bandNodes, ...entryNodes],
+    edges: bandEdges,
+    hotspots:
+      bands.stale > 0
+        ? [`${bands.stale} knowledge entr${bands.stale === 1 ? 'y is' : 'ies are'} stale.`]
+        : bands.aging > 0
+          ? [`${bands.aging} knowledge entr${bands.aging === 1 ? 'y is' : 'ies are'} aging.`]
+          : [],
+  };
 }
 
 function normalizeEntryProvenance(

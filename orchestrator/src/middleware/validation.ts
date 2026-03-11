@@ -111,6 +111,39 @@ export const IncidentAcknowledgeSchema = z.object({
 
 export const IncidentOwnerSchema = z.object({
   owner: z.string().min(1).max(120),
+  actor: z.string().min(1).max(120).optional(),
+  note: z.string().max(1000).optional(),
+});
+
+export const IncidentListQuerySchema = z.object({
+  status: z.enum(['active', 'watching', 'resolved']).optional(),
+  classification: z.enum([
+    'runtime-mode',
+    'persistence',
+    'proof-delivery',
+    'repair',
+    'retry-recovery',
+    'knowledge',
+    'service-runtime',
+    'approval-backlog',
+  ]).optional(),
+  includeResolved: z.coerce.boolean().optional().default(false),
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+  offset: z.coerce.number().int().min(0).max(100000).optional().default(0),
+});
+
+export const IncidentDetailParamsSchema = z.object({
+  id: z.string().min(1).max(255),
+});
+
+export const IncidentRemediationSchema = z.object({
+  actor: z.string().min(1).max(120).optional(),
+  note: z.string().max(1000).optional(),
+  taskType: z.enum([
+    'drift-repair',
+    'qa-verification',
+    'system-monitor',
+  ]).optional(),
 });
 
 /**

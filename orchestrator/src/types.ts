@@ -101,6 +101,60 @@ export type IncidentRemediationStatus =
   | "watching"
   | "resolved";
 
+export type IncidentHistoryEventType =
+  | "detected"
+  | "status-changed"
+  | "severity-changed"
+  | "summary-updated"
+  | "acknowledged"
+  | "owner-changed"
+  | "remediation-task-created"
+  | "remediation-status-changed"
+  | "resolved";
+
+export interface IncidentHistoryEvent {
+  id: string;
+  timestamp: string;
+  type: IncidentHistoryEventType;
+  actor?: string | null;
+  summary: string;
+  detail?: string | null;
+  evidence: string[];
+}
+
+export interface IncidentAcknowledgementRecord {
+  acknowledgedAt: string;
+  acknowledgedBy: string;
+  note?: string | null;
+}
+
+export interface IncidentOwnershipRecord {
+  changedAt: string;
+  changedBy: string;
+  previousOwner?: string | null;
+  nextOwner?: string | null;
+  note?: string | null;
+}
+
+export type IncidentRemediationTaskStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "unknown";
+
+export interface IncidentRemediationTaskRecord {
+  remediationId: string;
+  createdAt: string;
+  createdBy: string;
+  taskType: string;
+  taskId: string;
+  runId?: string | null;
+  status: IncidentRemediationTaskStatus;
+  reason: string;
+  note?: string | null;
+}
+
 export interface IncidentLedgerRecord {
   incidentId: string;
   fingerprint: string;
@@ -132,6 +186,10 @@ export interface IncidentLedgerRecord {
     nextAction: string;
     blockers: string[];
   };
+  history: IncidentHistoryEvent[];
+  acknowledgements: IncidentAcknowledgementRecord[];
+  ownershipHistory: IncidentOwnershipRecord[];
+  remediationTasks: IncidentRemediationTaskRecord[];
 }
 
 export interface TaskExecutionRecord {
@@ -167,6 +225,9 @@ export interface WorkflowEventRecord {
   nodeId: string;
   detail: string;
   evidence: string[];
+  attempt?: number;
+  relatedNodeIds?: string[];
+  stopCode?: string | null;
 }
 
 export interface TaskRetryRecoveryRecord {

@@ -84,6 +84,8 @@ function appendProofWorkflowEvent(args: {
     nodeId: `proof:demandSummary:${args.recordId}`,
     detail: args.detail,
     evidence: [...new Set((args.evidence ?? []).filter(Boolean))].slice(0, 8),
+    attempt: args.attempt,
+    stopCode: null,
   };
 
   const existing = args.state.workflowEvents.find(

@@ -24,13 +24,18 @@ import {
 } from "./alerter.js";
 import {
   ApprovalRecord,
+  IncidentAcknowledgementRecord,
+  IncidentHistoryEvent,
   IncidentLedgerRecord,
   IncidentLedgerStatus,
   IncidentLedgerClassification,
   IncidentLedgerSeverity,
   IncidentLedgerTruthLayer,
+  IncidentOwnershipRecord,
   IncidentRemediationOwner,
   IncidentRemediationStatus,
+  IncidentRemediationTaskRecord,
+  IncidentRemediationTaskStatus,
   OrchestratorState,
   Task,
   TaskRetryRecoveryRecord,
@@ -79,9 +84,12 @@ import {
   validateContentLength,
   AlertManagerWebhookSchema,
   ApprovalDecisionSchema,
+  IncidentDetailParamsSchema,
   KBQuerySchema,
   IncidentAcknowledgeSchema,
+  IncidentListQuerySchema,
   IncidentOwnerSchema,
+  IncidentRemediationSchema,
   PersistenceHistoricalSchema,
   SkillsAuditQuerySchema,
   TaskRunsQuerySchema,
@@ -330,7 +338,12 @@ type TopologyEdgeRelationship =
   | "dispatches-task"
   | "routes-to-agent"
   | "uses-skill"
-  | "publishes-proof";
+  | "publishes-proof"
+  | "feeds-agent"
+  | "verifies-agent"
+  | "monitors-agent"
+  | "audits-agent"
+  | "coordinates-agent";
 type TopologyEdgeStatus = "declared" | "live" | "warning" | "degraded";
 
 type AgentTopologyNode = {
@@ -366,6 +379,7 @@ type AgentTopology = {
     routeEdges: number;
     skillEdges: number;
     proofEdges: number;
+    relationshipEdges: number;
     totalEdges: number;
   };
   hotspots: string[];
@@ -405,6 +419,10 @@ type RuntimeIncident = {
     nextAction: string;
     blockers: string[];
   };
+  history: IncidentHistoryEvent[];
+  acknowledgements: IncidentAcknowledgementRecord[];
+  ownershipHistory: IncidentOwnershipRecord[];
+  remediationTasks: IncidentRemediationTaskRecord[];
 };
 
 type RuntimeIncidentModel = {
@@ -455,7 +473,7 @@ type WorkflowGraphNodeStatus =
 
 type WorkflowGraphNode = {
   id: string;
-  kind: "stage" | "agent" | "proof";
+  kind: "stage" | "agent" | "proof" | "event";
   stage: WorkflowEventStage;
   label: string;
   status: WorkflowGraphNodeStatus;
@@ -477,7 +495,29 @@ type WorkflowGraph = {
   currentStage: WorkflowEventStage | null;
   blockedStage: WorkflowEventStage | null;
   stopReason: string | null;
+  stopClassification:
+    | "completed"
+    | "awaiting-approval"
+    | "approval-rejected"
+    | "retry-scheduled"
+    | "repair-failed"
+    | "execution-failed"
+    | "proof-degraded"
+    | "proof-misconfigured"
+    | "in-flight"
+    | "unknown";
   stageDurations: Partial<Record<WorkflowEventStage, number>>;
+  timingBreakdown: Partial<
+    Record<
+      WorkflowEventStage,
+      {
+        startedAt: string | null;
+        completedAt: string | null;
+        durationMs: number | null;
+        eventCount: number;
+      }
+    >
+  >;
   nodeCount: number;
   edgeCount: number;
   nodes: WorkflowGraphNode[];
@@ -506,6 +546,14 @@ type AgentCapabilityReadiness =
   | "foundation"
   | "operational"
   | "advanced";
+
+type AgentCapabilityEvidenceProfile = {
+  area: string;
+  status: "missing" | "partial" | "strong";
+  summary: string;
+  evidence: string[];
+  missing: string[];
+};
 
 type ApprovalImpactMetadata = {
   riskLevel: "low" | "medium" | "high";
@@ -938,6 +986,79 @@ const AGENT_CAPABILITY_TARGETS: Record<
     ],
   },
 };
+
+const AGENT_RELATIONSHIP_DECLARATIONS: Array<{
+  from: string;
+  to: string;
+  relationship: TopologyEdgeRelationship;
+  detail: string;
+  evidence: string[];
+}> = [
+  {
+    from: "doc-specialist",
+    to: "reddit-helper",
+    relationship: "feeds-agent",
+    detail:
+      "doc-specialist refreshes repository knowledge that reddit-helper consumes for grounded drafting.",
+    evidence: ["knowledge-pack generation", "reddit-helper knowledge-grounded drafting"],
+  },
+  {
+    from: "doc-specialist",
+    to: "content-agent",
+    relationship: "feeds-agent",
+    detail:
+      "doc-specialist supplies repository-grounded knowledge that content-agent can publish outward.",
+    evidence: ["knowledge-pack generation", "evidence-based publisher role"],
+  },
+  {
+    from: "integration-agent",
+    to: "build-refactor-agent",
+    relationship: "coordinates-agent",
+    detail:
+      "integration-agent is the declared workflow conductor and build-refactor-agent is a delegated code execution surface.",
+    evidence: ["workflow conductor role", "governed code surgeon role"],
+  },
+  {
+    from: "integration-agent",
+    to: "qa-verification-agent",
+    relationship: "coordinates-agent",
+    detail:
+      "integration-agent should hand completed workflows to qa-verification-agent for acceptance checks.",
+    evidence: ["workflow conductor role", "final verifier role"],
+  },
+  {
+    from: "system-monitor-agent",
+    to: "security-agent",
+    relationship: "monitors-agent",
+    detail:
+      "system-monitor-agent provides trust-spine operational visibility that security-agent audits for boundary regressions.",
+    evidence: ["operational fusion monitor role", "trust-boundary auditor role"],
+  },
+  {
+    from: "security-agent",
+    to: "build-refactor-agent",
+    relationship: "audits-agent",
+    detail:
+      "security-agent reviews the safety posture of build-refactor-agent code and permission changes.",
+    evidence: ["trust-boundary auditor role", "governed code surgeon role"],
+  },
+  {
+    from: "qa-verification-agent",
+    to: "build-refactor-agent",
+    relationship: "verifies-agent",
+    detail:
+      "qa-verification-agent validates build-refactor-agent outputs before they should be trusted as complete.",
+    evidence: ["final verifier role", "bounded patching role"],
+  },
+  {
+    from: "qa-verification-agent",
+    to: "content-agent",
+    relationship: "verifies-agent",
+    detail:
+      "qa-verification-agent is the acceptance gate for outward-facing generated content and docs.",
+    evidence: ["final verifier role", "evidence-based publisher role"],
+  },
+];
 const DEFAULT_CORS_METHODS = ["GET", "POST"];
 const DEFAULT_CORS_HEADERS = ["Authorization", "Content-Type"];
 const DEFAULT_CORS_EXPOSED_HEADERS = [
@@ -1428,6 +1549,21 @@ function buildAgentCapabilityReadiness(args: {
   const evidence: string[] = [];
   const presentCapabilities: string[] = [];
   const missingCapabilities: string[] = [];
+  const evidenceProfiles: AgentCapabilityEvidenceProfile[] = [];
+
+  const countSuccessfulExecutionsForTypes = (taskTypes: string[]) =>
+    state.taskExecutions.filter(
+      (record) =>
+        taskTypes.includes(record.type) && record.status === "success",
+    ).length;
+
+  const pushEvidenceProfile = (profile: AgentCapabilityEvidenceProfile) => {
+    evidenceProfiles.push({
+      ...profile,
+      evidence: [...new Set(profile.evidence.filter(Boolean))],
+      missing: [...new Set(profile.missing.filter(Boolean))],
+    });
+  };
 
   if (modelTier) {
     evidence.push(`model tier declared: ${modelTier}`);
@@ -1514,13 +1650,150 @@ function buildAgentCapabilityReadiness(args: {
 
   const uniqueMissing = [...new Set(missingCapabilities)];
 
+  if (agent.id === "doc-specialist") {
+    const docRepairCount = state.repairRecords.filter(
+      (record) =>
+        record.classification === "doc-drift" && record.status === "verified",
+    ).length;
+    const docSpecialistRuns = countSuccessfulExecutionsForTypes([
+      "drift-repair",
+      "doc-sync",
+    ]);
+    pushEvidenceProfile({
+      area: "truth-spine-depth",
+      status:
+        docRepairCount > 0 && docSpecialistRuns > 0 && memoryHasRun
+          ? "strong"
+          : docSpecialistRuns > 0 || memoryHasRun
+            ? "partial"
+            : "missing",
+      summary:
+        docRepairCount > 0
+          ? `${docRepairCount} verified doc-drift repair(s) and ${docSpecialistRuns} successful doc-specialist aligned run(s) are recorded.`
+          : "doc-specialist has limited verified truth-spine evidence so far.",
+      evidence: [
+        `verified doc-drift repairs: ${docRepairCount}`,
+        `successful doc-specialist aligned runs: ${docSpecialistRuns}`,
+        memoryHasRun ? "memory-backed doc-specialist runs present" : "",
+      ],
+      missing: docRepairCount > 0 ? [] : ["verified doc-drift repairs"],
+    });
+  }
+
+  if (agent.id === "system-monitor-agent") {
+    const systemMonitorRuns = countSuccessfulExecutionsForTypes([
+      "system-monitor",
+      "heartbeat",
+    ]);
+    const proofSignals =
+      state.milestoneDeliveries.length + state.demandSummaryDeliveries.length;
+    const retrySignals = state.taskRetryRecoveries.length;
+    pushEvidenceProfile({
+      area: "trust-spine-depth",
+      status:
+        systemMonitorRuns > 0 && proofSignals > 0
+          ? "strong"
+          : systemMonitorRuns > 0 || retrySignals > 0
+            ? "partial"
+            : "missing",
+      summary:
+        proofSignals > 0
+          ? `system-monitor sees ${proofSignals} proof transport record(s) and ${retrySignals} retry recovery record(s).`
+          : "system-monitor has only shallow trust-spine evidence right now.",
+      evidence: [
+        `successful monitoring runs: ${systemMonitorRuns}`,
+        `proof transport records: ${proofSignals}`,
+        `retry recovery records: ${retrySignals}`,
+      ],
+      missing: proofSignals > 0 ? [] : ["proof transport visibility"],
+    });
+  }
+
+  if (agent.id === "security-agent") {
+    const securityRuns = countSuccessfulExecutionsForTypes(["security-audit"]);
+    pushEvidenceProfile({
+      area: "operational-maturity",
+      status:
+        securityRuns > 0 && workerEvidence.lastToolGateMode === "execute"
+          ? "strong"
+          : securityRuns > 0 || allowedSkills.length > 0
+            ? "partial"
+            : "missing",
+      summary:
+        securityRuns > 0
+          ? `${securityRuns} successful security audit run(s) and governed skill evidence are present.`
+          : "security-agent has declared policy posture but limited successful audit evidence.",
+      evidence: [
+        `successful security runs: ${securityRuns}`,
+        workerEvidence.lastToolGateMode
+          ? `latest tool gate mode: ${workerEvidence.lastToolGateMode}`
+          : "",
+      ],
+      missing:
+        securityRuns > 0 ? [] : ["successful security-audit execution evidence"],
+    });
+  }
+
+  if (agent.id === "qa-verification-agent") {
+    const qaRuns = countSuccessfulExecutionsForTypes(["qa-verification"]);
+    pushEvidenceProfile({
+      area: "operational-maturity",
+      status:
+        qaRuns > 0 && verifiedRepairCount > 0
+          ? "strong"
+          : qaRuns > 0 || verifiedRepairCount > 0
+            ? "partial"
+            : "missing",
+      summary:
+        verifiedRepairCount > 0
+          ? `${verifiedRepairCount} repair-linked verification event(s) support qa-verification maturity.`
+          : "qa-verification has limited repair-linked evidence so far.",
+      evidence: [
+        `successful qa-verification runs: ${qaRuns}`,
+        `verified repair-linked runs: ${verifiedRepairCount}`,
+      ],
+      missing:
+        verifiedRepairCount > 0 ? [] : ["repair-linked verification evidence"],
+    });
+  }
+
+  if (agent.id === "integration-agent") {
+    const integrationRuns = countSuccessfulExecutionsForTypes([
+      "integration-workflow",
+    ]);
+    const coordinationSignals = state.workflowEvents.filter(
+      (record) => record.stage === "agent" && record.type === "integration-workflow",
+    ).length;
+    pushEvidenceProfile({
+      area: "operational-maturity",
+      status:
+        integrationRuns > 0 && coordinationSignals > 0
+          ? "strong"
+          : integrationRuns > 0 || coordinationSignals > 0
+            ? "partial"
+            : "missing",
+      summary:
+        coordinationSignals > 0
+          ? `${coordinationSignals} workflow coordination signal(s) were emitted for integration-workflow runs.`
+          : "integration-agent is still light on observed workflow-conductor evidence.",
+      evidence: [
+        `successful integration-workflow runs: ${integrationRuns}`,
+        `workflow coordination signals: ${coordinationSignals}`,
+      ],
+      missing:
+        coordinationSignals > 0 ? [] : ["observed workflow coordination signals"],
+    });
+  }
+
   return {
     role: target.role,
     spine: target.spine,
     currentReadiness: readiness,
+    targetCapabilities: target.targetCapabilities,
     evidence,
     presentCapabilities: [...new Set(presentCapabilities)],
     missingCapabilities: uniqueMissing,
+    evidenceProfiles,
     ultraGapSummary:
       uniqueMissing.length > 0
         ? `${uniqueMissing.length} capability gap${uniqueMissing.length === 1 ? "" : "s"} remain before this agent can be treated as ultra-capable in-role.`
@@ -1929,6 +2202,9 @@ function appendWorkflowEvent(args: {
   detail: string;
   evidence?: string[];
   timestamp?: string;
+  attempt?: number;
+  relatedNodeIds?: string[];
+  stopCode?: string | null;
 }) {
   const timestamp = normalizeIsoTimestamp(args.timestamp) ?? new Date().toISOString();
   const detail = args.detail.trim();
@@ -1955,6 +2231,12 @@ function appendWorkflowEvent(args: {
     nodeId: args.nodeId,
     detail,
     evidence: summarizeEvidence(args.evidence ?? []),
+    attempt: Number.isFinite(args.attempt) ? Number(args.attempt) : undefined,
+    relatedNodeIds: args.relatedNodeIds?.filter(Boolean),
+    stopCode:
+      typeof args.stopCode === "string" && args.stopCode.length > 0
+        ? args.stopCode
+        : null,
   };
 
   const existing = args.state.workflowEvents.find(
@@ -2013,21 +2295,149 @@ function deriveWorkflowStageTimestamps(events: WorkflowEventRecord[]) {
 }
 
 function buildWorkflowStageDurations(events: WorkflowEventRecord[]) {
-  const timestamps = deriveWorkflowStageTimestamps(events);
+  const breakdown = buildWorkflowTimingBreakdown(events);
   const durations: Partial<Record<WorkflowEventStage, number>> = {};
+  for (const stage of WORKFLOW_STAGE_ORDER) {
+    const duration = breakdown[stage]?.durationMs;
+    if (typeof duration === "number" && Number.isFinite(duration)) {
+      durations[stage] = duration;
+    }
+  }
+  return durations;
+}
+
+function buildWorkflowTimingBreakdown(events: WorkflowEventRecord[]) {
+  const breakdown: WorkflowGraph["timingBreakdown"] = {};
 
   for (let index = 0; index < WORKFLOW_STAGE_ORDER.length; index += 1) {
     const stage = WORKFLOW_STAGE_ORDER[index];
-    const nextStage = WORKFLOW_STAGE_ORDER[index + 1];
-    const start = timestamps[stage];
-    const next = nextStage ? timestamps[nextStage] : undefined;
-    if (typeof start !== "number" || typeof next !== "number" || next < start) {
+    const stageEvents = sortWorkflowEventRecords(
+      events.filter((event) => event.stage === stage),
+    );
+    if (stageEvents.length === 0) {
       continue;
     }
-    durations[stage] = next - start;
+
+    const startedAt = normalizeIsoTimestamp(stageEvents[0]?.timestamp) ?? null;
+    const completedAt =
+      normalizeIsoTimestamp(stageEvents.at(-1)?.timestamp) ?? startedAt;
+    const nextStage = WORKFLOW_STAGE_ORDER[index + 1];
+    const nextStageStartedAt = nextStage
+      ? normalizeIsoTimestamp(
+          sortWorkflowEventRecords(
+            events.filter((event) => event.stage === nextStage),
+          )[0]?.timestamp,
+        ) ?? null
+      : null;
+
+    let durationMs: number | null = null;
+    if (startedAt && nextStageStartedAt) {
+      const startMs = Date.parse(startedAt);
+      const nextMs = Date.parse(nextStageStartedAt);
+      if (Number.isFinite(startMs) && Number.isFinite(nextMs) && nextMs >= startMs) {
+        durationMs = nextMs - startMs;
+      }
+    } else if (startedAt && completedAt) {
+      const startMs = Date.parse(startedAt);
+      const endMs = Date.parse(completedAt);
+      if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs >= startMs) {
+        durationMs = endMs - startMs;
+      }
+    }
+
+    breakdown[stage] = {
+      startedAt,
+      completedAt,
+      durationMs,
+      eventCount: stageEvents.length,
+    };
   }
 
-  return durations;
+  return breakdown;
+}
+
+function classifyWorkflowStopCause(args: {
+  execution: OrchestratorState["taskExecutions"][number];
+  approval: ApprovalRecord | null;
+  repair: OrchestratorState["repairRecords"][number] | null;
+  proofLinks: WorkflowGraph["proofLinks"];
+}) {
+  const { execution, approval, repair, proofLinks } = args;
+
+  if (approval?.status === "pending") {
+    return {
+      blockedStage: "approval" as WorkflowEventStage,
+      stopClassification: "awaiting-approval" as WorkflowGraph["stopClassification"],
+      stopReason: "Awaiting operator approval.",
+    };
+  }
+  if (approval?.status === "rejected") {
+    return {
+      blockedStage: "approval" as WorkflowEventStage,
+      stopClassification: "approval-rejected" as WorkflowGraph["stopClassification"],
+      stopReason: approval.note ?? "Approval was rejected by an operator.",
+    };
+  }
+  if (repair?.status === "failed") {
+    return {
+      blockedStage: "repair" as WorkflowEventStage,
+      stopClassification: "repair-failed" as WorkflowGraph["stopClassification"],
+      stopReason: repair.lastError ?? repair.verificationSummary ?? "Repair flow failed.",
+    };
+  }
+  if (execution.status === "retrying") {
+    return {
+      blockedStage: "result" as WorkflowEventStage,
+      stopClassification: "retry-scheduled" as WorkflowGraph["stopClassification"],
+      stopReason: execution.lastError ?? "Execution failed and a retry is scheduled.",
+    };
+  }
+  if (execution.status === "failed") {
+    return {
+      blockedStage: "result" as WorkflowEventStage,
+      stopClassification: "execution-failed" as WorkflowGraph["stopClassification"],
+      stopReason: execution.lastError ?? "Execution failed.",
+    };
+  }
+  if (
+    proofLinks.some((link) => ["dead-letter", "rejected"].includes(link.status))
+  ) {
+    return {
+      blockedStage: "proof" as WorkflowEventStage,
+      stopClassification: "proof-degraded" as WorkflowGraph["stopClassification"],
+      stopReason: "Proof delivery reached dead-letter or rejected state.",
+    };
+  }
+  if (proofLinks.some((link) => link.status === "retrying")) {
+    return {
+      blockedStage: "proof" as WorkflowEventStage,
+      stopClassification: "proof-degraded" as WorkflowGraph["stopClassification"],
+      stopReason: "Proof delivery is retrying.",
+    };
+  }
+  if (
+    proofLinks.length === 0 &&
+    (execution.status === "running" || execution.status === "pending")
+  ) {
+    return {
+      blockedStage: null,
+      stopClassification: "in-flight" as WorkflowGraph["stopClassification"],
+      stopReason: null,
+    };
+  }
+  if (execution.status === "success") {
+    return {
+      blockedStage: null,
+      stopClassification: "completed" as WorkflowGraph["stopClassification"],
+      stopReason: null,
+    };
+  }
+
+  return {
+    blockedStage: null,
+    stopClassification: "unknown" as WorkflowGraph["stopClassification"],
+    stopReason: execution.lastError ?? null,
+  };
 }
 
 function sortWorkflowEventRecords(events: WorkflowEventRecord[]) {
@@ -2100,6 +2510,7 @@ function buildWorkflowGraph(args: {
   proofLinks: WorkflowGraph["proofLinks"];
 }) {
   const { execution, approval, repair, workflowEvents, proofLinks } = args;
+  const timingBreakdown = buildWorkflowTimingBreakdown(workflowEvents);
   const stageDurations = buildWorkflowStageDurations(workflowEvents);
   const requirement = TASK_AGENT_SKILL_REQUIREMENTS[execution.type];
   const hasApprovalStage =
@@ -2127,27 +2538,16 @@ function buildWorkflowGraph(args: {
                 ? "result"
                 : workflowEvents.at(-1)?.stage ?? null;
 
-  const blockedStage: WorkflowEventStage | null =
-    approval?.status === "pending" || approval?.status === "rejected"
-      ? "approval"
-      : repair?.status === "failed"
-        ? "repair"
-        : execution.status === "failed" || execution.status === "retrying"
-          ? "result"
-          : proofLinks.some((link) =>
-                ["dead-letter", "rejected", "retrying"].includes(link.status),
-              )
-            ? "proof"
-            : null;
-
-  const stopReason =
-    approval?.status === "pending"
-      ? "Awaiting operator approval."
-      : approval?.status === "rejected"
-        ? approval.note ?? "Approval was rejected by an operator."
-        : repair?.status === "failed"
-          ? repair.lastError ?? repair.verificationSummary ?? "Repair flow failed."
-          : execution.lastError ?? null;
+  const {
+    blockedStage,
+    stopClassification,
+    stopReason,
+  } = classifyWorkflowStopCause({
+    execution,
+    approval,
+    repair,
+    proofLinks,
+  });
 
   const graphStatus: WorkflowGraph["graphStatus"] =
     blockedStage === "approval" || blockedStage === "repair" || blockedStage === "result"
@@ -2210,7 +2610,25 @@ function buildWorkflowGraph(args: {
     };
   });
 
-  const edges = stageNodes.slice(0, -1).map<WorkflowGraphEdge>((node, index) => {
+  const eventNodes = workflowEvents.map<WorkflowGraphNode>((event) => ({
+    id: `workflow-event:${event.eventId}`,
+    kind: "event",
+    stage: event.stage,
+    label: event.state,
+    status:
+      stopClassification === "completed"
+        ? "completed"
+        : event === workflowEvents.at(-1) && blockedStage === event.stage
+          ? "blocked"
+          : event === workflowEvents.at(-1)
+            ? "active"
+            : "completed",
+    timestamp: event.timestamp,
+    detail: event.detail,
+    evidence: summarizeEvidence(event.evidence),
+  }));
+
+  const stageEdges = stageNodes.slice(0, -1).map<WorkflowGraphEdge>((node, index) => {
     const next = stageNodes[index + 1];
     const blocked = blockedStage === node.stage || blockedStage === next.stage;
     return {
@@ -2228,16 +2646,50 @@ function buildWorkflowGraph(args: {
     };
   });
 
+  const eventEdges = eventNodes.slice(0, -1).map<WorkflowGraphEdge>((node, index) => {
+    const next = eventNodes[index + 1];
+    return {
+      id: `workflow-edge:${node.id}:${next.id}`,
+      from: node.id,
+      to: next.id,
+      status:
+        next.status === "blocked"
+          ? "blocked"
+          : next.status === "active"
+            ? "active"
+            : "completed",
+      detail: `${node.label} -> ${next.label}`,
+    };
+  });
+
+  const stageToEventEdges = workflowEvents.map<WorkflowGraphEdge>((event) => ({
+    id: `workflow-edge:stage:${event.stage}:${event.eventId}`,
+    from: `workflow-node:${event.stage}`,
+    to: `workflow-event:${event.eventId}`,
+    status:
+      blockedStage === event.stage
+        ? "blocked"
+        : currentStage === event.stage
+          ? "active"
+          : "completed",
+    detail: `${event.stage} emitted ${event.state}.`,
+  }));
+
+  const allNodes = [...stageNodes, ...eventNodes];
+  const allEdges = [...stageEdges, ...eventEdges, ...stageToEventEdges];
+
   return {
     graphStatus,
     currentStage,
     blockedStage,
     stopReason,
+    stopClassification,
     stageDurations,
-    nodeCount: stageNodes.length,
-    edgeCount: edges.length,
-    nodes: stageNodes,
-    edges,
+    timingBreakdown,
+    nodeCount: allNodes.length,
+    edgeCount: allEdges.length,
+    nodes: allNodes,
+    edges: allEdges,
     events: workflowEvents,
     proofLinks,
   };
@@ -2517,6 +2969,7 @@ function buildRunRecord(
       currentStage: workflowGraph.currentStage,
       blockedStage: workflowGraph.blockedStage,
       stopReason: workflowGraph.stopReason,
+      stopClassification: workflowGraph.stopClassification,
       awaitingApproval:
         relatedApproval?.status === "pending" && execution.status === "pending",
       retryScheduled: execution.status === "retrying",
@@ -2525,6 +2978,7 @@ function buildRunRecord(
       eventCount: workflowEvents.length,
       latestEventAt,
       stageDurations: workflowGraph.stageDurations,
+      timingBreakdown: workflowGraph.timingBreakdown,
       nodeCount: workflowGraph.nodeCount,
       edgeCount: workflowGraph.edgeCount,
     },
@@ -2626,6 +3080,7 @@ function buildKnowledgeRuntimeSignals({
   const contradictionSignals = Array.isArray(summary?.diagnostics?.contradictionSignals)
     ? summary.diagnostics.contradictionSignals
     : [];
+  const knowledgeGraphs = summary?.diagnostics?.graphs ?? null;
   const coverageSignals: Array<{
     id: string;
     severity: "info" | "warning";
@@ -2711,6 +3166,11 @@ function buildKnowledgeRuntimeSignals({
       coverage: coverageSignals,
       staleness: stalenessSignals,
       contradictions: contradictionSignals,
+    },
+    graphs: {
+      provenance: knowledgeGraphs?.provenance ?? null,
+      contradictions: knowledgeGraphs?.contradictions ?? null,
+      freshness: knowledgeGraphs?.freshness ?? null,
     },
   };
 }
@@ -3506,6 +3966,35 @@ async function buildAgentTopology({
     });
   }
 
+  for (const declaration of AGENT_RELATIONSHIP_DECLARATIONS) {
+    const sourceAgent = agents.find((agent) => agent.id === declaration.from) ?? null;
+    const targetAgent = agents.find((agent) => agent.id === declaration.to) ?? null;
+    if (!sourceAgent || !targetAgent) continue;
+
+    const relationshipStatus: TopologyEdgeStatus =
+      sourceAgent.capability.currentReadiness === "advanced" &&
+      ["operational", "advanced"].includes(targetAgent.capability.currentReadiness)
+        ? "live"
+        : sourceAgent.capability.currentReadiness === "declared" ||
+            targetAgent.capability.currentReadiness === "declared"
+          ? "warning"
+          : "declared";
+
+    addEdge({
+      id: `edge:agent:${declaration.from}:agent:${declaration.to}:${declaration.relationship}`,
+      from: `agent:${declaration.from}`,
+      to: `agent:${declaration.to}`,
+      relationship: declaration.relationship,
+      status: relationshipStatus,
+      detail: declaration.detail,
+      evidence: [
+        ...declaration.evidence,
+        `source readiness: ${sourceAgent.capability.currentReadiness}`,
+        `target readiness: ${targetAgent.capability.currentReadiness}`,
+      ],
+    });
+  }
+
   const nodeList = Array.from(nodes.values());
   const edgeList = Array.from(edges.values());
   const hotspots: string[] = [];
@@ -3554,6 +4043,15 @@ async function buildAgentTopology({
       routeEdges: edgeList.filter((edge) => edge.relationship === "routes-to-agent").length,
       skillEdges: edgeList.filter((edge) => edge.relationship === "uses-skill").length,
       proofEdges: edgeList.filter((edge) => edge.relationship === "publishes-proof").length,
+      relationshipEdges: edgeList.filter((edge) =>
+        [
+          "feeds-agent",
+          "verifies-agent",
+          "monitors-agent",
+          "audits-agent",
+          "coordinates-agent",
+        ].includes(edge.relationship),
+      ).length,
       totalEdges: edgeList.length,
     },
     hotspots,
@@ -3604,6 +4102,121 @@ function recordsEqual(left: IncidentLedgerRecord, right: IncidentLedgerRecord) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function buildIncidentHistoryEventId(
+  incidentId: string,
+  type: IncidentHistoryEvent["type"],
+  timestamp: string,
+  summary: string,
+) {
+  const digest = createHash("sha1")
+    .update([incidentId, type, timestamp, summary].join("|"))
+    .digest("hex")
+    .slice(0, 12);
+  return `incident-history:${digest}`;
+}
+
+function appendIncidentHistoryEvent(
+  record: IncidentLedgerRecord,
+  event: Omit<IncidentHistoryEvent, "id" | "evidence"> & {
+    evidence?: string[];
+  },
+) {
+  const normalized: IncidentHistoryEvent = {
+    id: buildIncidentHistoryEventId(
+      record.incidentId,
+      event.type,
+      event.timestamp,
+      event.summary,
+    ),
+    timestamp: event.timestamp,
+    type: event.type,
+    actor:
+      typeof event.actor === "string" && event.actor.trim().length > 0
+        ? event.actor.trim()
+        : null,
+    summary: event.summary,
+    detail:
+      typeof event.detail === "string" && event.detail.trim().length > 0
+        ? event.detail.trim()
+        : null,
+    evidence: dedupeStrings(event.evidence ?? [], 25),
+  };
+  if (record.history.some((item) => item.id === normalized.id)) {
+    return normalized;
+  }
+  record.history.push(normalized);
+  record.history = record.history
+    .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
+    .slice(-100);
+  return normalized;
+}
+
+function deriveIncidentRemediationTaskStatus(
+  state: OrchestratorState,
+  remediationTask: IncidentRemediationTaskRecord,
+): IncidentRemediationTaskStatus {
+  const execution =
+    state.taskExecutions.find(
+      (record) =>
+        record.taskId === remediationTask.taskId ||
+        (remediationTask.runId ? record.idempotencyKey === remediationTask.runId : false),
+    ) ?? null;
+  if (!execution) {
+    return remediationTask.status ?? "unknown";
+  }
+  if (execution.status === "pending" || execution.status === "retrying") return "queued";
+  if (execution.status === "running") return "running";
+  if (execution.status === "success") return "completed";
+  if (execution.status === "failed") return "failed";
+  return "unknown";
+}
+
+function materializeIncident(
+  record: IncidentLedgerRecord,
+  state: OrchestratorState,
+): RuntimeIncident {
+  return {
+    id: record.incidentId,
+    fingerprint: record.fingerprint,
+    title: record.title,
+    classification: record.classification,
+    severity: record.severity,
+    status: record.status,
+    truthLayer: record.truthLayer,
+    summary: record.summary,
+    firstSeenAt: record.firstSeenAt,
+    lastSeenAt: record.lastSeenAt,
+    resolvedAt: record.resolvedAt ?? null,
+    detectedAt: record.lastSeenAt,
+    acknowledgedAt: record.acknowledgedAt ?? null,
+    acknowledgedBy: record.acknowledgedBy ?? null,
+    acknowledgementNote: record.acknowledgementNote ?? null,
+    owner: record.owner ?? null,
+    affectedSurfaces: record.affectedSurfaces,
+    linkedServiceIds: record.linkedServiceIds,
+    linkedTaskIds: record.linkedTaskIds,
+    linkedRunIds: record.linkedRunIds,
+    linkedRepairIds: record.linkedRepairIds,
+    linkedProofDeliveries: record.linkedProofDeliveries,
+    evidence: record.evidence,
+    recommendedSteps: record.recommendedSteps,
+    remediation: {
+      owner: record.remediation.owner,
+      status: record.remediation.status,
+      summary: record.remediation.summary,
+      nextAction: record.remediation.nextAction,
+      blockers: record.remediation.blockers,
+    },
+    history: record.history ?? [],
+    acknowledgements: record.acknowledgements ?? [],
+    ownershipHistory: record.ownershipHistory ?? [],
+    remediationTasks: (record.remediationTasks ?? []).map((item) => ({
+      ...item,
+      status: deriveIncidentRemediationTaskStatus(state, item),
+    })),
+  };
+}
+
 function acknowledgeIncidentRecord(
   state: OrchestratorState,
   incidentId: string,
@@ -3615,9 +4228,26 @@ function acknowledgeIncidentRecord(
     throw new Error(`Incident not found: ${incidentId}`);
   }
 
-  target.acknowledgedAt = new Date().toISOString();
+  const acknowledgedAt = new Date().toISOString();
+  target.acknowledgedAt = acknowledgedAt;
   target.acknowledgedBy = actor;
   target.acknowledgementNote = note ?? null;
+  target.acknowledgements = [
+    ...(target.acknowledgements ?? []),
+    {
+      acknowledgedAt,
+      acknowledgedBy: actor,
+      note: note ?? null,
+    },
+  ].slice(-50);
+  appendIncidentHistoryEvent(target, {
+    timestamp: acknowledgedAt,
+    type: "acknowledged",
+    actor,
+    summary: "Incident acknowledged.",
+    detail: note ?? "Acknowledgement recorded without operator note.",
+    evidence: [target.title, note ?? "no-operator-note"],
+  });
   return target;
 }
 
@@ -3625,14 +4255,94 @@ function assignIncidentOwner(
   state: OrchestratorState,
   incidentId: string,
   owner: string,
+  actor: string,
+  note?: string,
 ) {
   const target = state.incidentLedger.find((record) => record.incidentId === incidentId);
   if (!target) {
     throw new Error(`Incident not found: ${incidentId}`);
   }
 
+  const changedAt = new Date().toISOString();
+  const previousOwner = target.owner ?? null;
   target.owner = owner;
+  target.ownershipHistory = [
+    ...(target.ownershipHistory ?? []),
+    {
+      changedAt,
+      changedBy: actor,
+      previousOwner,
+      nextOwner: owner,
+      note: note ?? null,
+    },
+  ].slice(-50);
+  appendIncidentHistoryEvent(target, {
+    timestamp: changedAt,
+    type: "owner-changed",
+    actor,
+    summary:
+      previousOwner && previousOwner !== owner
+        ? `Incident ownership moved from ${previousOwner} to ${owner}.`
+        : `Incident owner set to ${owner}.`,
+    detail: note ?? "Ownership change recorded without operator note.",
+    evidence: [previousOwner ?? "unowned", owner],
+  });
   return target;
+}
+
+function resolveIncidentRemediationTaskSpec(
+  incident: IncidentLedgerRecord,
+  actor: string,
+  note?: string,
+  overrideTaskType?: "drift-repair" | "qa-verification" | "system-monitor",
+) {
+  const taskType =
+    overrideTaskType ??
+    ({
+      knowledge: "drift-repair",
+      repair: "qa-verification",
+      "retry-recovery": "qa-verification",
+      "runtime-mode": "system-monitor",
+      persistence: "system-monitor",
+      "proof-delivery": "system-monitor",
+      "service-runtime": "system-monitor",
+      "approval-backlog": "system-monitor",
+    } satisfies Record<IncidentLedgerClassification, "drift-repair" | "qa-verification" | "system-monitor">)[incident.classification];
+
+  const payload: Record<string, unknown> = {
+    incidentId: incident.incidentId,
+    incidentFingerprint: incident.fingerprint,
+    incidentClassification: incident.classification,
+    incidentSeverity: incident.severity,
+    reason: "incident-remediation",
+    __actor: actor,
+    __incidentId: incident.incidentId,
+  };
+
+  if (note) {
+    payload.note = note;
+  }
+  if (incident.linkedRepairIds.length > 0) {
+    payload.repairIds = incident.linkedRepairIds;
+  }
+  if (incident.linkedRunIds.length > 0) {
+    payload.runIds = incident.linkedRunIds;
+  }
+  if (incident.linkedServiceIds.length > 0) {
+    payload.serviceIds = incident.linkedServiceIds;
+  }
+  if (incident.linkedProofDeliveries.length > 0) {
+    payload.proofDeliveries = incident.linkedProofDeliveries;
+  }
+  if (incident.affectedSurfaces.length > 0) {
+    payload.affectedSurfaces = incident.affectedSurfaces;
+  }
+
+  return {
+    taskType,
+    payload,
+    reason: `Remediation task ${taskType} created for ${incident.classification}.`,
+  };
 }
 
 function reconcileRuntimeIncidentLedger(
@@ -3652,7 +4362,7 @@ function reconcileRuntimeIncidentLedger(
     const existing = ledgerByFingerprint.get(candidate.fingerprint);
 
     if (!existing) {
-      state.incidentLedger.push({
+      const created: IncidentLedgerRecord = {
         incidentId: randomUUID(),
         fingerprint: candidate.fingerprint,
         title: candidate.title,
@@ -3683,10 +4393,37 @@ function reconcileRuntimeIncidentLedger(
           nextAction: candidate.remediation.nextAction,
           blockers: dedupeStrings(candidate.remediation.blockers),
         },
+        history: [],
+        acknowledgements: [],
+        ownershipHistory: [],
+        remediationTasks: [],
+      };
+      appendIncidentHistoryEvent(created, {
+        timestamp: detectedAt,
+        type: "detected",
+        summary: `${candidate.title} detected.`,
+        detail: candidate.summary,
+        evidence: [
+          candidate.classification,
+          candidate.severity,
+          candidate.truthLayer,
+        ],
       });
+      state.incidentLedger.push(created);
       changed = true;
       continue;
     }
+
+    existing.history = existing.history ?? [];
+    existing.acknowledgements = existing.acknowledgements ?? [];
+    existing.ownershipHistory = existing.ownershipHistory ?? [];
+    existing.remediationTasks = existing.remediationTasks ?? [];
+
+    const previousStatus = existing.status;
+    const previousSeverity = existing.severity;
+    const previousSummary = existing.summary;
+    const previousRemediationStatus = existing.remediation.status;
+    const wasResolved = existing.status === "resolved";
 
     const updated: IncidentLedgerRecord = {
       ...existing,
@@ -3713,10 +4450,61 @@ function reconcileRuntimeIncidentLedger(
         nextAction: candidate.remediation.nextAction,
         blockers: dedupeStrings(candidate.remediation.blockers),
       },
+      history: existing.history,
+      acknowledgements: existing.acknowledgements,
+      ownershipHistory: existing.ownershipHistory,
+      remediationTasks: existing.remediationTasks,
     };
 
     if (!recordsEqual(existing, updated)) {
       Object.assign(existing, updated);
+      if (wasResolved) {
+        appendIncidentHistoryEvent(existing, {
+          timestamp: detectedAt,
+          type: "status-changed",
+          summary: `${candidate.title} reopened.`,
+          detail: candidate.summary,
+          evidence: [previousStatus, candidate.status],
+        });
+      } else if (previousStatus !== candidate.status) {
+        appendIncidentHistoryEvent(existing, {
+          timestamp: detectedAt,
+          type: "status-changed",
+          summary: `${candidate.title} moved to ${candidate.status}.`,
+          detail: candidate.summary,
+          evidence: [previousStatus, candidate.status],
+        });
+      }
+
+      if (previousSeverity !== candidate.severity) {
+        appendIncidentHistoryEvent(existing, {
+          timestamp: detectedAt,
+          type: "severity-changed",
+          summary: `${candidate.title} severity changed from ${previousSeverity} to ${candidate.severity}.`,
+          detail: candidate.summary,
+          evidence: [previousSeverity, candidate.severity],
+        });
+      }
+
+      if (previousSummary !== candidate.summary) {
+        appendIncidentHistoryEvent(existing, {
+          timestamp: detectedAt,
+          type: "summary-updated",
+          summary: `${candidate.title} summary refreshed.`,
+          detail: candidate.summary,
+          evidence: dedupeStrings(candidate.evidence, 6),
+        });
+      }
+
+      if (previousRemediationStatus !== candidate.remediation.status) {
+        appendIncidentHistoryEvent(existing, {
+          timestamp: detectedAt,
+          type: "remediation-status-changed",
+          summary: `${candidate.title} remediation moved to ${candidate.remediation.status}.`,
+          detail: candidate.remediation.summary,
+          evidence: [previousRemediationStatus, candidate.remediation.status],
+        });
+      }
       changed = true;
     }
   }
@@ -3727,6 +4515,13 @@ function reconcileRuntimeIncidentLedger(
     record.status = "resolved";
     record.resolvedAt = now;
     record.remediation.status = "resolved";
+    appendIncidentHistoryEvent(record, {
+      timestamp: now,
+      type: "resolved",
+      summary: `${record.title} resolved.`,
+      detail: "The runtime candidate no longer appears in the latest reconciliation pass.",
+      evidence: [record.classification, record.truthLayer],
+    });
     changed = true;
   }
 
@@ -3746,8 +4541,8 @@ function reconcileRuntimeIncidentLedger(
   const bySeverity = {
     critical: openIncidents.filter((record) => record.severity === "critical").length,
     warning: openIncidents.filter((record) => record.severity === "warning").length,
-    info: openIncidents.filter((record) => record.severity === "info").length,
-  };
+      info: openIncidents.filter((record) => record.severity === "info").length,
+    };
 
   return {
     changed,
@@ -3763,39 +4558,7 @@ function reconcileRuntimeIncidentLedger(
       activeCount: openIncidents.filter((record) => record.status === "active").length,
       watchingCount: openIncidents.filter((record) => record.status === "watching").length,
       bySeverity,
-      incidents: openIncidents.map((record) => ({
-        id: record.incidentId,
-        fingerprint: record.fingerprint,
-        title: record.title,
-        classification: record.classification,
-        severity: record.severity,
-        status: record.status,
-        truthLayer: record.truthLayer,
-        summary: record.summary,
-        firstSeenAt: record.firstSeenAt,
-        lastSeenAt: record.lastSeenAt,
-        resolvedAt: record.resolvedAt ?? null,
-        detectedAt: record.lastSeenAt,
-        acknowledgedAt: record.acknowledgedAt ?? null,
-        acknowledgedBy: record.acknowledgedBy ?? null,
-        acknowledgementNote: record.acknowledgementNote ?? null,
-        owner: record.owner ?? null,
-        affectedSurfaces: record.affectedSurfaces,
-        linkedServiceIds: record.linkedServiceIds,
-        linkedTaskIds: record.linkedTaskIds,
-        linkedRunIds: record.linkedRunIds,
-        linkedRepairIds: record.linkedRepairIds,
-        linkedProofDeliveries: record.linkedProofDeliveries,
-        evidence: record.evidence,
-        recommendedSteps: record.recommendedSteps,
-        remediation: {
-          owner: record.remediation.owner,
-          status: record.remediation.status,
-          summary: record.remediation.summary,
-          nextAction: record.remediation.nextAction,
-          blockers: record.remediation.blockers,
-        },
-      })),
+      incidents: openIncidents.map((record) => materializeIncident(record, state)),
     },
   };
 }
@@ -4524,6 +5287,9 @@ async function bootstrap() {
       nodeId?: string;
       evidence?: string[];
       timestamp?: string;
+      attempt?: number;
+      relatedNodeIds?: string[];
+      stopCode?: string | null;
     },
   ) => {
     const { idempotencyKey } = ensureExecutionRecord(task);
@@ -4540,6 +5306,9 @@ async function bootstrap() {
       detail,
       evidence: options?.evidence ?? [],
       timestamp: options?.timestamp,
+      attempt: options?.attempt,
+      relatedNodeIds: options?.relatedNodeIds,
+      stopCode: options?.stopCode,
     });
   };
 
@@ -4957,6 +5726,7 @@ async function bootstrap() {
           source: "approval",
           nodeId: `approval:${task.id}`,
           evidence: [task.id, task.type],
+          stopCode: "awaiting-approval",
         },
       );
       recordTaskResult(task, "ok", approval.reason ?? "awaiting approval");
@@ -5062,6 +5832,8 @@ async function bootstrap() {
             nodeId: `retry:${idempotencyKey}`,
             evidence: [retryRecord.retryAt, String(maxRetries)],
             timestamp: retryRecord.scheduledAt,
+            attempt: nextAttempt,
+            stopCode: "retry-scheduled",
           },
         );
       } else {
@@ -5081,6 +5853,11 @@ async function bootstrap() {
           nodeId: `result:${task.type}`,
           evidence: [idempotencyKey],
           timestamp: execution.lastHandledAt,
+          attempt,
+          stopCode:
+            execution.status === "retrying"
+              ? "retry-scheduled"
+              : "execution-failed",
         },
       );
 
@@ -5583,6 +6360,7 @@ async function bootstrap() {
               approval.note ?? "no-operator-note",
               replayTaskId ?? "no-replay-task",
             ],
+            stopCode: decision === "approved" ? null : "approval-rejected",
           });
         }
 
@@ -5643,6 +6421,7 @@ async function bootstrap() {
     createValidationMiddleware(IncidentAcknowledgeSchema, "body"),
     async (req: AuthenticatedRequest, res) => {
       try {
+        IncidentDetailParamsSchema.parse(req.params);
         const incident = acknowledgeIncidentRecord(
           state,
           String(req.params.id),
@@ -5659,6 +6438,85 @@ async function bootstrap() {
     },
   );
 
+  app.get(
+    "/api/incidents",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("viewer"),
+    auditProtectedAction("incidents.read"),
+    createValidationMiddleware(IncidentListQuerySchema, "query"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const status =
+          typeof req.query.status === "string" ? req.query.status : undefined;
+        const classification =
+          typeof req.query.classification === "string"
+            ? req.query.classification
+            : undefined;
+        const includeResolved = parseBoolean(req.query.includeResolved, false);
+        const limit = Number(req.query.limit ?? 50);
+        const offset = Number(req.query.offset ?? 0);
+
+        const filtered = state.incidentLedger
+          .filter((record) => (includeResolved ? true : record.status !== "resolved"))
+          .filter((record) => (status ? record.status === status : true))
+          .filter((record) =>
+            classification ? record.classification === classification : true,
+          )
+          .sort((left, right) => Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt));
+
+        const page = filtered.slice(offset, offset + limit);
+
+        res.json({
+          generatedAt: new Date().toISOString(),
+          query: {
+            status: status ?? null,
+            classification: classification ?? null,
+            includeResolved,
+            limit,
+            offset,
+          },
+          total: filtered.length,
+          page: {
+            returned: page.length,
+            offset,
+            limit,
+            hasMore: offset + page.length < filtered.length,
+          },
+          incidents: page.map((record) => materializeIncident(record, state)),
+        });
+      } catch (error: any) {
+        res.status(400).json({ error: error.message });
+      }
+    },
+  );
+
+  app.get(
+    "/api/incidents/:id",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("viewer"),
+    auditProtectedAction("incident.read"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { id } = IncidentDetailParamsSchema.parse(req.params);
+        const incident = state.incidentLedger.find((record) => record.incidentId === id);
+        if (!incident) {
+          return res.status(404).json({ error: `Incident not found: ${id}` });
+        }
+
+        return res.json({
+          generatedAt: new Date().toISOString(),
+          incident: materializeIncident(incident, state),
+        });
+      } catch (error: any) {
+        return res.status(400).json({ error: error.message });
+      }
+    },
+  );
+
   app.post(
     "/api/incidents/:id/owner",
     authLimiter,
@@ -5669,15 +6527,113 @@ async function bootstrap() {
     createValidationMiddleware(IncidentOwnerSchema, "body"),
     async (req: AuthenticatedRequest, res) => {
       try {
+        IncidentDetailParamsSchema.parse(req.params);
         const incident = assignIncidentOwner(
           state,
           String(req.params.id),
           String(req.body.owner),
+          typeof req.body.actor === "string"
+            ? req.body.actor
+            : req.auth?.actor ?? "api-user",
+          typeof req.body.note === "string" ? req.body.note : undefined,
         );
         await flushState();
         res.json({ status: "ok", incident });
       } catch (error: any) {
         res.status(400).json({ error: error.message });
+      }
+    },
+  );
+
+  app.post(
+    "/api/incidents/:id/remediate",
+    authLimiter,
+    requireBearerToken,
+    operatorWriteLimiter,
+    requireRole("operator"),
+    auditProtectedAction("incidents.remediate.write"),
+    createValidationMiddleware(IncidentRemediationSchema, "body"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { id } = IncidentDetailParamsSchema.parse(req.params);
+        const incident = state.incidentLedger.find((record) => record.incidentId === id);
+        if (!incident) {
+          return res.status(404).json({ error: `Incident not found: ${id}` });
+        }
+
+        const actor =
+          typeof req.body.actor === "string"
+            ? req.body.actor
+            : req.auth?.actor ?? "api-user";
+        const note =
+          typeof req.body.note === "string" ? req.body.note : undefined;
+        const overrideTaskType =
+          typeof req.body.taskType === "string"
+            ? (req.body.taskType as "drift-repair" | "qa-verification" | "system-monitor")
+            : undefined;
+
+        const remediationSpec = resolveIncidentRemediationTaskSpec(
+          incident,
+          actor,
+          note,
+          overrideTaskType,
+        );
+        const queuedTask = queue.enqueue(remediationSpec.taskType, {
+          ...remediationSpec.payload,
+          __role: req.auth?.role ?? "operator",
+          __requestId: req.auth?.requestId ?? null,
+        });
+        const createdAt = new Date().toISOString();
+        const remediationTask: IncidentRemediationTaskRecord = {
+          remediationId: randomUUID(),
+          createdAt,
+          createdBy: actor,
+          taskType: remediationSpec.taskType,
+          taskId: queuedTask.id,
+          runId: queuedTask.idempotencyKey ?? queuedTask.id,
+          status: "queued",
+          reason: remediationSpec.reason,
+          note: note ?? null,
+        };
+
+        incident.remediationTasks = [
+          ...(incident.remediationTasks ?? []),
+          remediationTask,
+        ].slice(-50);
+        incident.linkedTaskIds = dedupeStrings(
+          [...incident.linkedTaskIds, queuedTask.id],
+          50,
+        );
+        incident.linkedRunIds = dedupeStrings(
+          [...incident.linkedRunIds, queuedTask.idempotencyKey ?? queuedTask.id],
+          50,
+        );
+        incident.remediation.status = "in-progress";
+        incident.remediation.summary = remediationSpec.reason;
+        incident.remediation.nextAction = `Monitor remediation task ${queuedTask.id} (${remediationSpec.taskType}).`;
+        appendIncidentHistoryEvent(incident, {
+          timestamp: createdAt,
+          type: "remediation-task-created",
+          actor,
+          summary: remediationSpec.reason,
+          detail:
+            note ??
+            `Queued remediation task ${queuedTask.id} using ${remediationSpec.taskType}.`,
+          evidence: [
+            queuedTask.id,
+            queuedTask.idempotencyKey ?? queuedTask.id,
+            remediationSpec.taskType,
+          ],
+        });
+
+        await flushState();
+        return res.json({
+          status: "ok",
+          remediationTask,
+          incident: materializeIncident(incident, state),
+        });
+      } catch (error: any) {
+        return res.status(400).json({ error: error.message });
       }
     },
   );

@@ -30,8 +30,11 @@ Protected operator routes (bearer token):
 - `GET /api/tasks/runs/:runId`
 - `GET /api/approvals/pending`
 - `POST /api/approvals/:id/decision`
+- `GET /api/incidents`
+- `GET /api/incidents/:id`
 - `POST /api/incidents/:id/acknowledge`
 - `POST /api/incidents/:id/owner`
+- `POST /api/incidents/:id/remediate`
 - `GET /api/agents/overview`
 - `GET /api/skills/registry`
 - `GET /api/skills/policy`
@@ -58,8 +61,9 @@ Mission Control implementation note:
 
 - the larger Mission Control blueprint remains future operator-console work
   only
-- this phase adds persistent incidents, workflow graphs, and agent capability
-  readiness inside the existing console rails
+- this phase adds persistent incidents, incident history/remediation routes,
+  deeper workflow graphs, knowledge graphs, topology relationship edges, and
+  agent capability readiness inside the existing console rails
 - it does **not** adopt a new global shell, Three.js background, or starfield
   environment yet
 
@@ -131,6 +135,7 @@ Safe leaf fields to render:
   `topology.status`,
   `topology.counts.totalNodes`,
   `topology.counts.totalEdges`,
+  `topology.counts.relationshipEdges`,
   `topology.hotspots[]`,
   `incidents.overallStatus`,
   `incidents.openCount`,
@@ -231,12 +236,20 @@ Safe leaf fields to render:
   `repair.classification`, `repair.status`, `repair.verificationMode`,
   `repair.verificationSummary`, `workflow.stage`, `workflow.graphStatus`,
   `workflow.currentStage`, `workflow.blockedStage`, `workflow.stopReason`,
+  `workflow.stopClassification`,
   `workflow.awaitingApproval`, `workflow.retryScheduled`,
   `workflow.nextRetryAt`, `workflow.repairStatus`, `workflow.eventCount`,
-  `workflow.stageDurations`, `workflow.nodeCount`, `workflow.edgeCount`,
+  `workflow.stageDurations`, `workflow.timingBreakdown`,
+  `workflow.nodeCount`, `workflow.edgeCount`,
   `approval.required`, `approval.status`, `approval.requestedAt`,
   `approval.decidedAt`, `events[]`, `proofLinks[]`, and
-  `workflowGraph.{nodes,edges,events,proofLinks}` when present
+  `workflowGraph.{nodes,edges,events,proofLinks,stopClassification,timingBreakdown}`
+  when present
+- `/api/incidents` and `/api/incidents/:id`: stable incident IDs,
+  first/last-seen timestamps, acknowledgement state, owner,
+  `history[]`, `acknowledgements[]`, `ownershipHistory[]`,
+  `remediationTasks[]`, linked service/task/run/proof references, and
+  current remediation guidance
 - `/api/approvals/pending`: `impact.riskLevel`, `impact.approvalReason`,
   `impact.dependencyClass`, `impact.affectedSurfaces`,
   `impact.dependencyRequirements`, `impact.caveats`,
@@ -244,16 +257,20 @@ Safe leaf fields to render:
   `payloadPreview.internalKeyCount`
 - `/api/knowledge/summary`: `diagnostics.freshness`,
   `diagnostics.provenance`, `diagnostics.contradictionSignals`,
+  `diagnostics.graphs.{provenance,contradictions,freshness}`,
   `runtime.index`, `runtime.coverage`, `runtime.freshness`,
   `runtime.signals.coverage`, `runtime.signals.staleness`,
-  `runtime.signals.contradictions`
+  `runtime.signals.contradictions`,
+  `runtime.graphs.{provenance,contradictions,freshness}`
 - `/api/knowledge/query`: top-level `meta` (query-scoped freshness,
-  provenance, contradiction signals) and `runtime` (repo/runtime knowledge
-  signals)
+  provenance, contradiction signals, and knowledge graphs) and `runtime`
+  (repo/runtime knowledge signals and knowledge graphs)
 - `/api/agents/overview`: `modelTier`, `allowedSkills[]`,
   `capability.role`, `capability.spine`, `capability.currentReadiness`,
-  `capability.evidence[]`, `capability.presentCapabilities[]`,
-  `capability.missingCapabilities[]`, `capability.ultraGapSummary`
+  `capability.targetCapabilities[]`, `capability.evidence[]`,
+  `capability.presentCapabilities[]`, `capability.missingCapabilities[]`,
+  `capability.evidenceProfiles[]`, `capability.ultraGapSummary`,
+  `topology.edges[].relationship`
 - `/health`: `status`, `timestamp`
 
 Auth persistence requirement:
@@ -301,6 +318,13 @@ Interpretation note from the `2026-03-07` repair follow-up:
   overview and extended health retain stable IDs, first/last seen timestamps,
   acknowledgement state, owner, linked service/task/run/proof references, and
   remediation steps.
+- `GET /api/incidents` and `GET /api/incidents/:id` now expose incident list and
+  detail/history views from the persistent ledger, including acknowledgement
+  history, explicit ownership lifecycle history, and linked remediation task
+  records.
+- `POST /api/incidents/:id/remediate` now creates a linked remediation task
+  using an allowlisted remediation mapping (`drift-repair`, `qa-verification`,
+  or `system-monitor`) and persists that linkage back into the incident ledger.
 - `GET /api/agents/overview` now also exposes capability readiness derived from
   real runtime evidence. It distinguishes declared/foundation/operational/
   advanced readiness and reports remaining capability gaps instead of labeling
@@ -308,9 +332,11 @@ Interpretation note from the `2026-03-07` repair follow-up:
   `serviceUnitFileState`.
 - `GET /api/agents/overview` now also exposes `topology`, a derived graph of
   `orchestrator -> task -> agent -> skill` relationships plus the separate
-  `orchestrator -> openclawdbot` proof edge. This is derived from manifests,
-  task/skill contracts, and current runtime evidence. It is not a speculative
-  agent-to-agent graph.
+  `orchestrator -> openclawdbot` proof edge and bounded
+  `agent -> agent` relationship edges (`feeds-agent`, `verifies-agent`,
+  `monitors-agent`, `audits-agent`, `coordinates-agent`). This is derived from
+  manifests, task/skill contracts, declared ultra-agent roles, and current
+  runtime evidence.
 - `GET /api/dashboard/overview` and `GET /api/health/extended` now expose
   `truthLayers` and `proofDelivery` so frontends can distinguish declared
   control-plane intent, current runtime configuration, observed operator state,
@@ -323,9 +349,11 @@ Interpretation note from the `2026-03-07` repair follow-up:
   summaries, not ticket-system records.
 - `GET /api/knowledge/summary` and `POST /api/knowledge/query` now expose
   knowledge freshness, provenance, contradiction signals, and runtime
-  coverage/staleness signals. These are deterministic diagnostics based on the
-  current knowledge base and indexed doc/runtime state; they are not speculative
-  AI summaries.
+  coverage/staleness signals. They now also expose first-class provenance,
+  contradiction, and freshness graphs so consumers can reason over topology and
+  drift rather than just scalar signals. These are deterministic diagnostics
+  based on the current knowledge base and indexed doc/runtime state; they are
+  not speculative AI summaries.
 
 The route contract above is authoritative for Operator Station integration.
 Generic handler/type sketches lower in this file are legacy orientation only;

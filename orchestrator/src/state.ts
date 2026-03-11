@@ -3,7 +3,11 @@ import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { mkdir } from "node:fs/promises";
 import {
+  IncidentAcknowledgementRecord,
+  IncidentHistoryEvent,
   IncidentLedgerRecord,
+  IncidentOwnershipRecord,
+  IncidentRemediationTaskRecord,
   OrchestratorState,
   RepairRecord,
   TaskRetryRecoveryRecord,
@@ -36,6 +40,135 @@ function normalizeTaskHistoryLimit(limit?: number): number {
   if (clamped < 1) return 1;
   if (clamped > 10000) return 10000;
   return clamped;
+}
+
+function normalizeStringArray(values: unknown, limit: number = 100) {
+  if (!Array.isArray(values)) return [] as string[];
+  return [...new Set(values.filter((value): value is string => typeof value === "string" && value.length > 0))].slice(-limit);
+}
+
+function normalizeIncidentHistoryEvent(value: unknown): IncidentHistoryEvent | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<IncidentHistoryEvent>;
+  if (typeof raw.id !== "string" || typeof raw.timestamp !== "string" || typeof raw.type !== "string" || typeof raw.summary !== "string") {
+    return null;
+  }
+  return {
+    id: raw.id,
+    timestamp: raw.timestamp,
+    type: raw.type as IncidentHistoryEvent["type"],
+    actor: typeof raw.actor === "string" ? raw.actor : null,
+    summary: raw.summary,
+    detail: typeof raw.detail === "string" ? raw.detail : null,
+    evidence: normalizeStringArray(raw.evidence, 25),
+  };
+}
+
+function normalizeIncidentAcknowledgement(
+  value: unknown,
+): IncidentAcknowledgementRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<IncidentAcknowledgementRecord>;
+  if (
+    typeof raw.acknowledgedAt !== "string" ||
+    typeof raw.acknowledgedBy !== "string"
+  ) {
+    return null;
+  }
+  return {
+    acknowledgedAt: raw.acknowledgedAt,
+    acknowledgedBy: raw.acknowledgedBy,
+    note: typeof raw.note === "string" ? raw.note : null,
+  };
+}
+
+function normalizeIncidentOwnership(
+  value: unknown,
+): IncidentOwnershipRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<IncidentOwnershipRecord>;
+  if (typeof raw.changedAt !== "string" || typeof raw.changedBy !== "string") {
+    return null;
+  }
+  return {
+    changedAt: raw.changedAt,
+    changedBy: raw.changedBy,
+    previousOwner:
+      typeof raw.previousOwner === "string" ? raw.previousOwner : null,
+    nextOwner: typeof raw.nextOwner === "string" ? raw.nextOwner : null,
+    note: typeof raw.note === "string" ? raw.note : null,
+  };
+}
+
+function normalizeIncidentRemediationTask(
+  value: unknown,
+): IncidentRemediationTaskRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<IncidentRemediationTaskRecord>;
+  if (
+    typeof raw.remediationId !== "string" ||
+    typeof raw.createdAt !== "string" ||
+    typeof raw.createdBy !== "string" ||
+    typeof raw.taskType !== "string" ||
+    typeof raw.taskId !== "string" ||
+    typeof raw.status !== "string" ||
+    typeof raw.reason !== "string"
+  ) {
+    return null;
+  }
+  return {
+    remediationId: raw.remediationId,
+    createdAt: raw.createdAt,
+    createdBy: raw.createdBy,
+    taskType: raw.taskType,
+    taskId: raw.taskId,
+    runId: typeof raw.runId === "string" ? raw.runId : null,
+    status: raw.status as IncidentRemediationTaskRecord["status"],
+    reason: raw.reason,
+    note: typeof raw.note === "string" ? raw.note : null,
+  };
+}
+
+function normalizeIncidentLedgerRecord(record: IncidentLedgerRecord) {
+  return {
+    ...record,
+    affectedSurfaces: normalizeStringArray(record.affectedSurfaces, 25),
+    linkedServiceIds: normalizeStringArray(record.linkedServiceIds, 25),
+    linkedTaskIds: normalizeStringArray(record.linkedTaskIds, 50),
+    linkedRunIds: normalizeStringArray(record.linkedRunIds, 50),
+    linkedRepairIds: normalizeStringArray(record.linkedRepairIds, 50),
+    linkedProofDeliveries: normalizeStringArray(record.linkedProofDeliveries, 25),
+    evidence: normalizeStringArray(record.evidence, 25),
+    recommendedSteps: normalizeStringArray(record.recommendedSteps, 25),
+    remediation: {
+      ...record.remediation,
+      blockers: normalizeStringArray(record.remediation?.blockers, 25),
+    },
+    history: Array.isArray(record.history)
+      ? record.history
+          .map(normalizeIncidentHistoryEvent)
+          .filter((item): item is IncidentHistoryEvent => item !== null)
+          .slice(-100)
+      : [],
+    acknowledgements: Array.isArray(record.acknowledgements)
+      ? record.acknowledgements
+          .map(normalizeIncidentAcknowledgement)
+          .filter((item): item is IncidentAcknowledgementRecord => item !== null)
+          .slice(-50)
+      : [],
+    ownershipHistory: Array.isArray(record.ownershipHistory)
+      ? record.ownershipHistory
+          .map(normalizeIncidentOwnership)
+          .filter((item): item is IncidentOwnershipRecord => item !== null)
+          .slice(-50)
+      : [],
+    remediationTasks: Array.isArray(record.remediationTasks)
+      ? record.remediationTasks
+          .map(normalizeIncidentRemediationTask)
+          .filter((item): item is IncidentRemediationTaskRecord => item !== null)
+          .slice(-50)
+      : [],
+  };
 }
 
 export async function loadState(
@@ -74,7 +207,9 @@ export async function loadState(
         parsed.demandSummaryDeliveries?.slice(-DEMAND_SUMMARY_DELIVERY_LIMIT) ??
         [],
       incidentLedger:
-        parsed.incidentLedger?.slice(-INCIDENT_LEDGER_LIMIT) ?? [],
+        parsed.incidentLedger
+          ?.slice(-INCIDENT_LEDGER_LIMIT)
+          .map(normalizeIncidentLedgerRecord) ?? [],
       workflowEvents:
         parsed.workflowEvents?.slice(-WORKFLOW_EVENT_LIMIT) ?? [],
     };
