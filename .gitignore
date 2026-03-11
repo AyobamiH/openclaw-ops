@@ -49,6 +49,9 @@ npm-debug.log*
 # runtime state (root + packages)
 logs/
 memory/
+!orchestrator/src/memory/
+orchestrator/src/memory/*
+!orchestrator/src/memory/snapshot-service.ts
 /data/
 !orchestrator/data/milestones-feed.json
 *.sqlite
