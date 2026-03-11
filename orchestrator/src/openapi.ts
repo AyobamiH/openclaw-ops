@@ -52,6 +52,37 @@ export function buildOpenApiSpec(port: string | number = 3000) {
         },
       },
     },
+    '/api/tasks/catalog': {
+      get: {
+        summary: 'Operator task catalog with runtime-safe exposure labels',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Task catalog payload' },
+          '401': { description: 'Unauthorized' },
+        },
+      },
+    },
+    '/api/tasks/runs': {
+      get: {
+        summary: 'Paginated task run records with operational metadata',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Task run list payload' },
+          '401': { description: 'Unauthorized' },
+        },
+      },
+    },
+    '/api/tasks/runs/{runId}': {
+      get: {
+        summary: 'Task run detail by run identity (idempotency key)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Task run detail payload' },
+          '401': { description: 'Unauthorized' },
+          '404': { description: 'Run not found' },
+        },
+      },
+    },
     '/api/approvals/pending': {
       get: {
         summary: 'List pending approvals',
@@ -73,12 +104,82 @@ export function buildOpenApiSpec(port: string | number = 3000) {
         },
       },
     },
+    '/api/auth/me': {
+      get: {
+        summary: 'Resolved auth actor and role context',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Auth context payload' },
+          '401': { description: 'Unauthorized' },
+        },
+      },
+    },
     '/api/dashboard/overview': {
       get: {
         summary: 'Dashboard overview',
         security: [{ bearerAuth: [] }],
         responses: {
           '200': { description: 'Dashboard payload' },
+          '401': { description: 'Unauthorized' },
+        },
+      },
+    },
+    '/api/health/extended': {
+      get: {
+        summary: 'Extended operator health with control-plane and dependency split',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Extended health payload' },
+          '401': { description: 'Unauthorized' },
+        },
+      },
+    },
+    '/api/agents/overview': {
+      get: {
+        summary: 'Agent declaration/worker/service operational overview for operators',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Agent overview payload' },
+          '401': { description: 'Unauthorized' },
+        },
+      },
+    },
+    '/api/skills/registry': {
+      get: {
+        summary: 'Governed skill registry and metadata (read-only)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Governed skill registry payload' },
+          '401': { description: 'Unauthorized' },
+        },
+      },
+    },
+    '/api/skills/policy': {
+      get: {
+        summary: 'Governed skill policy posture summary (read-only)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Governed skill policy payload' },
+          '401': { description: 'Unauthorized' },
+        },
+      },
+    },
+    '/api/skills/telemetry': {
+      get: {
+        summary: 'Governed skill telemetry summary from ToolGate (read-only)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Governed skill telemetry payload' },
+          '401': { description: 'Unauthorized' },
+        },
+      },
+    },
+    '/api/skills/audit': {
+      get: {
+        summary: 'Governed skill and ToolGate audit trail snapshot (read-only)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Governed skill audit payload' },
           '401': { description: 'Unauthorized' },
         },
       },
@@ -119,6 +220,16 @@ export function buildOpenApiSpec(port: string | number = 3000) {
         security: [{ bearerAuth: [] }],
         responses: {
           '200': { description: 'Historical data payload' },
+          '401': { description: 'Unauthorized' },
+        },
+      },
+    },
+    '/api/persistence/summary': {
+      get: {
+        summary: 'Operator persistence summary with retention and storage utilization',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Persistence summary payload' },
           '401': { description: 'Unauthorized' },
         },
       },

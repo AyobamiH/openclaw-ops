@@ -23,6 +23,19 @@ export interface KBEntry {
   lastUpdated: number;
   occurrences: number;
   successRate?: number; // 0-1
+  provenance?: KBEntryProvenance;
+}
+
+export interface KBEntryProvenance {
+  sourceType: 'alert-pattern' | 'metric-pattern' | 'manual' | 'unknown';
+  sourceModel:
+    | 'pattern-analyzer'
+    | 'knowledge-orchestrator'
+    | 'manual'
+    | 'persistence-hydrate'
+    | 'unknown';
+  derivedFrom: string[];
+  evidenceDate?: string;
 }
 
 export interface KBIndex {
@@ -60,8 +73,12 @@ export class KnowledgeBaseEngine {
     };
 
     for (const entry of entries) {
-      this.entries.set(entry.id, entry);
-      this.updateIndex(entry);
+      const hydrated = {
+        ...entry,
+        provenance: normalizeProvenance(entry.provenance, 'persistence-hydrate'),
+      };
+      this.entries.set(hydrated.id, hydrated);
+      this.updateIndex(hydrated);
     }
 
     this.saveIndex();
@@ -111,6 +128,7 @@ export class KnowledgeBaseEngine {
       lastUpdated: now,
       occurrences: data.occurrences || 1,
       successRate: data.successRate,
+      provenance: normalizeProvenance(data.provenance),
     };
 
     this.entries.set(id, entry);
@@ -132,6 +150,7 @@ export class KnowledgeBaseEngine {
       ...updates,
       lastUpdated: Date.now(),
       occurrences: (entry.occurrences || 0) + 1,
+      provenance: normalizeProvenance(updates.provenance ?? entry.provenance),
     });
 
     this.updateIndex(entry);
@@ -168,6 +187,13 @@ export class KnowledgeBaseEngine {
         entry.description.toLowerCase().includes(lowerQuery) ||
         entry.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
     );
+  }
+
+  /**
+   * List all entries for diagnostics and summaries
+   */
+  listEntries(): KBEntry[] {
+    return Array.from(this.entries.values());
   }
 
   /**
@@ -366,3 +392,15 @@ export class KnowledgeBaseEngine {
 }
 
 export const knowledgeBase = new KnowledgeBaseEngine();
+
+function normalizeProvenance(
+  provenance?: KBEntryProvenance,
+  fallbackSourceModel?: KBEntryProvenance['sourceModel']
+): KBEntryProvenance {
+  return {
+    sourceType: provenance?.sourceType || 'unknown',
+    sourceModel: provenance?.sourceModel || fallbackSourceModel || 'unknown',
+    derivedFrom: Array.isArray(provenance?.derivedFrom) ? provenance!.derivedFrom : [],
+    evidenceDate: provenance?.evidenceDate,
+  };
+}

@@ -5,7 +5,11 @@
  */
 
 import { PatternAnalyzer, AlertPattern, MetricPattern } from './pattern-analyzer.js';
-import { KnowledgeBaseEngine, KBEntry } from './knowledge-base.js';
+import {
+  KnowledgeBaseEngine,
+  KBEntry,
+  KBEntryProvenance,
+} from './knowledge-base.js';
 import { ConceptMapper } from './concept-mapper.js';
 import { PersistenceIntegration } from '../persistence/persistence-integration.js';
 
@@ -136,6 +140,12 @@ export class KnowledgeOrchestrator {
         expectedOutcome: `${pattern.name} should stop firing`,
         tags: pattern.tags,
         occurrences: pattern.occurrences,
+        provenance: {
+          sourceType: 'alert-pattern',
+          sourceModel: 'pattern-analyzer',
+          derivedFrom: ['daily-consolidation', 'pattern-analyzer'],
+          evidenceDate: date,
+        },
       });
       await PersistenceIntegration.onKBEntryCreated(created);
       return created;
@@ -183,6 +193,12 @@ export class KnowledgeOrchestrator {
         expectedOutcome: `${pattern.metric} returns to normal levels`,
         tags: [pattern.name.toLowerCase(), 'metric', 'anomaly'],
         occurrences: pattern.occurrences,
+        provenance: {
+          sourceType: 'metric-pattern',
+          sourceModel: 'pattern-analyzer',
+          derivedFrom: ['daily-consolidation', 'pattern-analyzer'],
+          evidenceDate: date,
+        },
       });
       await PersistenceIntegration.onKBEntryCreated(created);
       return created;
@@ -219,6 +235,33 @@ export class KnowledgeOrchestrator {
     entries: KBEntry[];
     concepts: any[];
     solutions: string[];
+    meta: {
+      matchedEntries: number;
+      freshness: {
+        status: 'empty' | 'fresh' | 'aging' | 'stale';
+        staleAfterHours: number;
+        latestEntryUpdatedAt: string | null;
+        oldestEntryUpdatedAt: string | null;
+        staleEntries: number;
+        freshEntries: number;
+        ageHours: number | null;
+      };
+      provenance: {
+        totalEntries: number;
+        unknownProvenanceCount: number;
+        bySourceType: Record<string, number>;
+        bySourceModel: Record<string, number>;
+        derivedFrom: Record<string, number>;
+      };
+      contradictionSignals: Array<{
+        id: string;
+        title: string;
+        severity: 'info' | 'warning';
+        kinds: string[];
+        message: string;
+        entryIds: string[];
+      }>;
+    };
   } {
     // Search KB entries
     const entries = this.knowledgeBase.search(query);
@@ -234,7 +277,17 @@ export class KnowledgeOrchestrator {
       .map(e => e.solution)
       .filter((s): s is string => s !== undefined && s.length > 0);
 
-    return { entries, concepts: relatedConcepts, solutions };
+    return {
+      entries,
+      concepts: relatedConcepts,
+      solutions,
+      meta: {
+        matchedEntries: entries.length,
+        freshness: buildFreshnessSummary(entries),
+        provenance: buildProvenanceSummary(entries),
+        contradictionSignals: detectContradictions(entries),
+      },
+    };
   }
 
   /**
@@ -246,9 +299,36 @@ export class KnowledgeOrchestrator {
     networkStats: any;
     topIssues: KBEntry[];
     recentLearnings: KBEntry[];
+    diagnostics: {
+      freshness: {
+        status: 'empty' | 'fresh' | 'aging' | 'stale';
+        staleAfterHours: number;
+        latestEntryUpdatedAt: string | null;
+        oldestEntryUpdatedAt: string | null;
+        staleEntries: number;
+        freshEntries: number;
+        ageHours: number | null;
+      };
+      provenance: {
+        totalEntries: number;
+        unknownProvenanceCount: number;
+        bySourceType: Record<string, number>;
+        bySourceModel: Record<string, number>;
+        derivedFrom: Record<string, number>;
+      };
+      contradictionSignals: Array<{
+        id: string;
+        title: string;
+        severity: 'info' | 'warning';
+        kinds: string[];
+        message: string;
+        entryIds: string[];
+      }>;
+    };
   } {
     const stats = this.knowledgeBase.getStats();
     const networkStats = this.conceptMapper.getNetworkStats();
+    const entries = this.knowledgeBase.listEntries();
 
     return {
       lastUpdated: new Date().toISOString(),
@@ -256,6 +336,11 @@ export class KnowledgeOrchestrator {
       networkStats,
       topIssues: stats.criticalEntries,
       recentLearnings: stats.recentUpdates,
+      diagnostics: {
+        freshness: buildFreshnessSummary(entries),
+        provenance: buildProvenanceSummary(entries),
+        contradictionSignals: detectContradictions(entries),
+      },
     };
   }
 
@@ -295,3 +380,143 @@ export class KnowledgeOrchestrator {
 }
 
 export const knowledgeOrchestrator = new KnowledgeOrchestrator();
+
+function buildFreshnessSummary(
+  entries: KBEntry[],
+  staleAfterHours = 72,
+  referenceTime = Date.now()
+) {
+  if (entries.length === 0) {
+    return {
+      status: 'empty' as const,
+      staleAfterHours,
+      latestEntryUpdatedAt: null,
+      oldestEntryUpdatedAt: null,
+      staleEntries: 0,
+      freshEntries: 0,
+      ageHours: null,
+    };
+  }
+
+  const timestamps = entries
+    .map(entry => entry.lastUpdated)
+    .filter(value => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  const latest = timestamps.at(-1) ?? null;
+  const oldest = timestamps[0] ?? null;
+  const staleCutoff = referenceTime - staleAfterHours * 60 * 60 * 1000;
+  const staleEntries = entries.filter(entry => entry.lastUpdated < staleCutoff).length;
+  const ageHours =
+    latest !== null ? Number(((referenceTime - latest) / (60 * 60 * 1000)).toFixed(2)) : null;
+
+  return {
+    status:
+      staleEntries === entries.length
+        ? ('stale' as const)
+        : staleEntries > 0
+          ? ('aging' as const)
+          : ('fresh' as const),
+    staleAfterHours,
+    latestEntryUpdatedAt: latest ? new Date(latest).toISOString() : null,
+    oldestEntryUpdatedAt: oldest ? new Date(oldest).toISOString() : null,
+    staleEntries,
+    freshEntries: entries.length - staleEntries,
+    ageHours,
+  };
+}
+
+function buildProvenanceSummary(entries: KBEntry[]) {
+  return entries.reduce(
+    (summary, entry) => {
+      const provenance = normalizeEntryProvenance(entry.provenance);
+      summary.totalEntries += 1;
+      summary.bySourceType[provenance.sourceType] =
+        (summary.bySourceType[provenance.sourceType] || 0) + 1;
+      summary.bySourceModel[provenance.sourceModel] =
+        (summary.bySourceModel[provenance.sourceModel] || 0) + 1;
+
+      if (provenance.sourceType === 'unknown' || provenance.sourceModel === 'unknown') {
+        summary.unknownProvenanceCount += 1;
+      }
+
+      provenance.derivedFrom.forEach(item => {
+        summary.derivedFrom[item] = (summary.derivedFrom[item] || 0) + 1;
+      });
+
+      return summary;
+    },
+    {
+      totalEntries: 0,
+      unknownProvenanceCount: 0,
+      bySourceType: {} as Record<string, number>,
+      bySourceModel: {} as Record<string, number>,
+      derivedFrom: {} as Record<string, number>,
+    }
+  );
+}
+
+function detectContradictions(entries: KBEntry[]) {
+  const groups = new Map<string, KBEntry[]>();
+
+  for (const entry of entries) {
+    const key = normalizeKnowledgeText(entry.title);
+    if (!key) continue;
+    groups.set(key, [...(groups.get(key) ?? []), entry]);
+  }
+
+  const signals: Array<{
+    id: string;
+    title: string;
+    severity: 'info' | 'warning';
+    kinds: string[];
+    message: string;
+    entryIds: string[];
+  }> = [];
+
+  for (const [key, group] of groups.entries()) {
+    if (group.length < 2) continue;
+
+    const uniqueSolutions = uniqueKnowledgeValues(group.map(entry => entry.solution));
+    const uniqueRootCauses = uniqueKnowledgeValues(group.map(entry => entry.rootCause));
+    const uniqueSeverities = new Set(group.map(entry => entry.severity));
+    const kinds: string[] = [];
+
+    if (uniqueSolutions.size > 1) kinds.push('solution');
+    if (uniqueRootCauses.size > 1) kinds.push('root-cause');
+    if (uniqueSeverities.size > 1) kinds.push('severity');
+    if (kinds.length === 0) continue;
+
+    const title = group[0]?.title || key;
+    signals.push({
+      id: `contradiction:${key}`,
+      title,
+      severity:
+        uniqueSolutions.size > 1 || uniqueRootCauses.size > 1 ? 'warning' : 'info',
+      kinds,
+      message: `${group.length} knowledge entries for "${title}" disagree on ${kinds.join(', ')}.`,
+      entryIds: group.map(entry => entry.id),
+    });
+  }
+
+  return signals.slice(0, 10);
+}
+
+function normalizeEntryProvenance(
+  provenance?: KBEntryProvenance
+): KBEntryProvenance {
+  return {
+    sourceType: provenance?.sourceType || 'unknown',
+    sourceModel: provenance?.sourceModel || 'unknown',
+    derivedFrom: Array.isArray(provenance?.derivedFrom) ? provenance.derivedFrom : [],
+    evidenceDate: provenance?.evidenceDate,
+  };
+}
+
+function normalizeKnowledgeText(value?: string) {
+  if (typeof value !== 'string') return '';
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function uniqueKnowledgeValues(values: Array<string | undefined>) {
+  return new Set(values.map(value => normalizeKnowledgeText(value)).filter(Boolean));
+}

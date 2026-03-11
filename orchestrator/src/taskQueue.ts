@@ -39,10 +39,16 @@ export class TaskQueue {
       maxRetries: Number.isFinite(retryValue) && retryValue >= 0 ? Math.floor(retryValue) : 2,
     };
 
-    this.queue.add(async () => {
+    const queuedExecution = this.queue.add(async () => {
       for (const listener of this.listeners) {
         await listener(task);
       }
+    });
+    queuedExecution.catch((error) => {
+      console.error(
+        `[task-queue] Unhandled listener failure for ${task.type}:`,
+        error,
+      );
     });
 
     return task;

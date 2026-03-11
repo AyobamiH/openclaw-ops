@@ -45,7 +45,7 @@ describe('Gap 7: API Key Rotation', () => {
   });
 
   it('accepts current key during rotation while warning on expired old key', () => {
-    process.env.API_KEY = 'current-key-2026';
+    delete process.env.API_KEY;
     const now = new Date();
     process.env.API_KEY_ROTATION = JSON.stringify([
       {
@@ -54,6 +54,13 @@ describe('Gap 7: API Key Rotation', () => {
         createdAt: '2026-01-01T00:00:00Z',
         expiresAt: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString(),
         active: false,
+      },
+      {
+        key: 'current-key-v2',
+        version: 2,
+        createdAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        active: true,
       },
     ]);
 

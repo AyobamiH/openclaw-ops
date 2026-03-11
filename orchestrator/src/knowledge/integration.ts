@@ -64,6 +64,7 @@ export class KnowledgeIntegration {
     success: boolean;
     results: any;
     sources: string[];
+    meta: any;
   }> {
     try {
       const results = knowledgeOrchestrator.queryKnowledge(query);
@@ -72,6 +73,7 @@ export class KnowledgeIntegration {
         success: true,
         results,
         sources: results.entries.map(e => e.id),
+        meta: results.meta,
       };
     } catch (error) {
       console.error('[KnowledgeBase] Query error:', error);
@@ -79,6 +81,7 @@ export class KnowledgeIntegration {
         success: false,
         results: null,
         sources: [],
+        meta: null,
       };
     }
   }

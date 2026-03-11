@@ -1,3 +1,5 @@
+import type { SkillDefinition as RuntimeSkillDefinition } from "./skills/types.js";
+
 export interface OrchestratorConfig {
   docsPath: string;
   cookbookPath?: string;
@@ -34,6 +36,13 @@ export interface OrchestratorConfig {
   // Scheduling
   nightlyBatchSchedule?: string;
   morningNotificationSchedule?: string;
+  // CORS (frontend integration)
+  corsAllowedOrigins?: string[];
+  corsAllowedMethods?: string[];
+  corsAllowedHeaders?: string[];
+  corsExposedHeaders?: string[];
+  corsAllowCredentials?: boolean;
+  corsMaxAgeSeconds?: number;
 }
 
 export interface DocRecord {
@@ -82,6 +91,51 @@ export interface TaskExecutionRecord {
   lastError?: string;
 }
 
+export interface TaskRetryRecoveryRecord {
+  sourceTaskId: string;
+  idempotencyKey: string;
+  type: string;
+  payload: Record<string, unknown>;
+  attempt: number;
+  maxRetries: number;
+  retryAt: string;
+  scheduledAt: string;
+}
+
+export type RepairClassification = "doc-drift" | "task-retry-recovery";
+
+export type RepairStatus =
+  | "detected"
+  | "queued"
+  | "running"
+  | "verified"
+  | "failed";
+
+export type RepairVerificationMode = "knowledge-pack" | "task-success";
+
+export interface RepairRecord {
+  repairId: string;
+  classification: RepairClassification;
+  trigger: string;
+  sourceTaskId?: string;
+  sourceTaskType?: string;
+  sourceRunId?: string;
+  repairTaskType: string;
+  repairTaskId?: string;
+  repairRunId?: string;
+  verificationMode: RepairVerificationMode;
+  status: RepairStatus;
+  detectedAt: string;
+  queuedAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+  verifiedAt?: string;
+  affectedPaths?: string[];
+  verificationSummary?: string;
+  evidence?: string[];
+  lastError?: string;
+}
+
 export interface DriftRepairRecord {
   runId: string;
   requestedBy: string;
@@ -101,6 +155,7 @@ export interface RedditQueueItem {
   question: string;
   link?: string;
   queuedAt: string;
+  selectedForDraft?: boolean;
   tag?: string;
   pillar?: string;
   feedId?: string;
@@ -232,6 +287,34 @@ export interface DemandSummaryDeliveryRecord {
   lastError?: string;
 }
 
+export type GovernedSkillPersistenceMode = "restart-safe" | "metadata-only";
+
+export interface GovernedSkillProvenanceSnapshot {
+  author: string;
+  source: string;
+  version: string;
+}
+
+export interface PersistedGovernedSkillExecutorBinding {
+  type: "builtin-skill";
+  skillId: string;
+}
+
+export interface PersistedGovernedSkillRecord {
+  skillId: string;
+  definition: RuntimeSkillDefinition;
+  auditedAt: string;
+  intakeSource: "generated" | "imported" | "manual";
+  registeredBy?: string;
+  trustStatus: "pending-review" | "review-approved";
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+  provenanceSnapshot: GovernedSkillProvenanceSnapshot;
+  persistenceMode: GovernedSkillPersistenceMode;
+  executorBinding?: PersistedGovernedSkillExecutorBinding;
+}
+
 export interface OrchestratorState {
   lastStartedAt: string | null;
   updatedAt: string | null;
@@ -242,11 +325,14 @@ export interface OrchestratorState {
   taskExecutions: TaskExecutionRecord[];
   approvals: ApprovalRecord[];
   driftRepairs: DriftRepairRecord[];
+  repairRecords: RepairRecord[];
+  taskRetryRecoveries: TaskRetryRecoveryRecord[];
   redditQueue: RedditQueueItem[];
   redditResponses: RedditReplyRecord[];
   agentDeployments: AgentDeploymentRecord[];
   rssDrafts: RssDraftRecord[];
   rssSeenIds: string[];
+  governedSkillState: PersistedGovernedSkillRecord[];
   milestoneDeliveries: MilestoneDeliveryRecord[];
   demandSummaryDeliveries: DemandSummaryDeliveryRecord[];
   lastDriftRepairAt: string | null;
@@ -263,6 +349,7 @@ export interface TaskHandlerContext {
   config: OrchestratorConfig;
   state: OrchestratorState;
   saveState: () => Promise<void>;
+  enqueueTask: (type: string, payload: Record<string, unknown>) => Task;
   logger: Console;
 }
 
@@ -325,6 +412,8 @@ export interface ToolInvocation {
   skillId: string;
   args: Record<string, any>;
   timestamp: string;
+  mode?: string;
+  taskType?: string;
   allowed: boolean;
   reason?: string;
 }
