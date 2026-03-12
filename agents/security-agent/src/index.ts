@@ -27,14 +27,44 @@ interface SecurityFinding {
   severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
   cwe?: string;
   cvss?: number;
+  exploitability?: "high" | "medium" | "low";
+  blastRadius?: "fleet" | "service" | "surface" | "repo";
   description: string;
   location: string;
   remediation: string;
+  rollbackConcern?: string;
+}
+
+interface SecurityRelationshipOutput {
+  from: string;
+  to: string;
+  relationship: "audits-agent" | "feeds-agent";
+  detail: string;
+  evidence: string[];
+  classification?: "audit" | "remediation-guidance";
+}
+
+interface SecurityToolInvocationOutput {
+  toolId: string;
+  detail: string;
+  evidence: string[];
+  classification: "required" | "optional";
 }
 
 interface SecurityResult {
   success: boolean;
   findings: SecurityFinding[];
+  boundedFixes: Array<{
+    title: string;
+    target: string;
+    risk: "low" | "medium" | "high";
+    rollbackConcern: string;
+  }>;
+  riskMatrix: {
+    exploitableCount: number;
+    fleetWideCount: number;
+    serviceScopedCount: number;
+  };
   summary: {
     total: number;
     critical: number;
@@ -42,6 +72,15 @@ interface SecurityResult {
     compliance: string;
   };
   auditedAgents: string[];
+  relationships: SecurityRelationshipOutput[];
+  toolInvocations: SecurityToolInvocationOutput[];
+  operationalMaturity: {
+    trustBoundaryCoverage: "minimal" | "partial" | "strong";
+    auditedAgentCount: number;
+    openIncidentCount: number;
+    blockerCount: number;
+    summary: string;
+  };
   evidence: string[];
   executionTime: number;
 }
@@ -143,9 +182,12 @@ async function scanTrackedFilesForSecrets(): Promise<SecurityFinding[]> {
           findings.push({
             id: redactFindingId("tracked-secret"),
             severity: "CRITICAL",
+            exploitability: "high",
+            blastRadius: "fleet",
             description: `Tracked ${description} detected in repository content.`,
             location: relativePath,
             remediation: "Remove the literal from tracked content and rotate the secret.",
+            rollbackConcern: "Rotation and rollout must be coordinated so dependent services do not lose access.",
           });
           break;
         }
@@ -162,9 +204,12 @@ async function scanTrackedFilesForSecrets(): Promise<SecurityFinding[]> {
           findings.push({
             id: redactFindingId("tracked-secret"),
             severity: "CRITICAL",
+            exploitability: "high",
+            blastRadius: "fleet",
             description: `Tracked ${description} detected in repository content.`,
             location: root,
             remediation: "Remove the literal from tracked content and rotate the secret.",
+            rollbackConcern: "Rotation and rollout must be coordinated so dependent services do not lose access.",
           });
           break;
         }
@@ -200,10 +245,13 @@ async function buildFindings(task: SecurityTask, state: RuntimeState): Promise<{
       findings.push({
         id: redactFindingId("env-example"),
         severity: "HIGH",
+        exploitability: "medium",
+        blastRadius: "fleet",
         description: `${key} in orchestrator/.env.example is not a placeholder value.`,
         location: "orchestrator/.env.example",
         remediation:
           "Replace the committed example value with a placeholder and rotate the real credential if it was ever used.",
+        rollbackConcern: "Example/env consumers may depend on the current placeholder contract.",
       });
     }
     evidence.push(`env-example-lines:${envLines.length}`);
@@ -224,18 +272,24 @@ async function buildFindings(task: SecurityTask, state: RuntimeState): Promise<{
         findings.push({
           id: redactFindingId("cors"),
           severity: "HIGH",
+          exploitability: "medium",
+          blastRadius: "surface",
           description: "Wildcard CORS origin detected in orchestrator_config.json.",
           location: "orchestrator_config.json",
           remediation: "Replace wildcard origins with an explicit allowlist.",
+          rollbackConcern: "A hard cutover to explicit origins can break previously tolerated browser clients.",
         });
       }
     } catch {
       findings.push({
         id: redactFindingId("config-parse"),
         severity: "LOW",
+        exploitability: "low",
+        blastRadius: "repo",
         description: "Unable to parse orchestrator_config.json during security audit.",
         location: "orchestrator_config.json",
         remediation: "Repair JSON syntax so runtime policy can be audited deterministically.",
+        rollbackConcern: "None; this is a deterministic repo repair.",
       });
     }
   }
@@ -254,9 +308,12 @@ async function buildFindings(task: SecurityTask, state: RuntimeState): Promise<{
       findings.push({
         id: redactFindingId("default-secret"),
         severity: "CRITICAL",
+        exploitability: "high",
+        blastRadius: "surface",
         description: "Code-known signing secret fallback detected in proof boundary code.",
         location: file,
         remediation: "Remove the fallback and require explicit secret configuration.",
+        rollbackConcern: "A hard cutover requires all environments to provide explicit signing configuration.",
       });
     }
   }
@@ -281,9 +338,12 @@ async function buildFindings(task: SecurityTask, state: RuntimeState): Promise<{
       findings.push({
         id: redactFindingId("service-runtime"),
         severity: "MEDIUM",
+        exploitability: "low",
+        blastRadius: "service",
         description: "Open service-runtime incident(s) indicate degraded trust boundaries or missing host service coverage.",
         location: "orchestrator_state.json",
         remediation: "Restore the affected service runtime and verify the related incident resolves.",
+        rollbackConcern: "Restarting or replacing service units can interrupt in-flight work.",
       });
     }
     evidence.push(`open-incidents:${openIncidents.length}`);
@@ -308,8 +368,23 @@ async function handleTask(task: SecurityTask): Promise<SecurityResult> {
       return {
         success: false,
         findings: [],
+        boundedFixes: [],
+        riskMatrix: {
+          exploitableCount: 0,
+          fleetWideCount: 0,
+          serviceScopedCount: 0,
+        },
         summary: { total: 0, critical: 0, exploitable: false, compliance: "UNKNOWN" },
         auditedAgents: [],
+        relationships: [],
+        toolInvocations: [],
+        operationalMaturity: {
+          trustBoundaryCoverage: "minimal",
+          auditedAgentCount: 0,
+          openIncidentCount: 0,
+          blockerCount: 1,
+          summary: "Security agent cannot audit runtime trust boundaries without documentParser skill access.",
+        },
         evidence: [],
         executionTime: Date.now() - startTime,
       };
@@ -321,10 +396,75 @@ async function handleTask(task: SecurityTask): Promise<SecurityResult> {
       config.orchestratorStatePath,
     );
     const { findings, auditedAgents, evidence } = await buildFindings(task, state);
+    const boundedFixes = findings.slice(0, 8).map((finding) => ({
+      title: finding.description,
+      target: finding.location,
+      risk:
+        finding.severity === "CRITICAL" || finding.severity === "HIGH"
+          ? "high"
+          : finding.severity === "MEDIUM"
+            ? "medium"
+            : "low",
+      rollbackConcern:
+        finding.rollbackConcern ??
+        "Review the affected service or config boundary before cutover.",
+    }));
+    const relationships: SecurityRelationshipOutput[] = Array.from(
+      new Set(auditedAgents),
+    ).map((agentId) => ({
+      from: "agent:security-agent",
+      to: `agent:${agentId}`,
+      relationship: "audits-agent",
+      detail: `security-agent audited ${agentId} against repo policy, credential, and runtime trust-boundary evidence.`,
+      evidence: [
+        `audit-scope:${task.scope}`,
+        `findings:${findings.length}`,
+        ...evidence.slice(0, 3),
+      ],
+      classification: "audit",
+    }));
+    const toolInvocations: SecurityToolInvocationOutput[] = [
+      {
+        toolId: "documentParser",
+        detail: "security-agent parsed tracked contracts, env examples, and proof-boundary code to derive findings.",
+        evidence: [
+          `scope:${task.scope}`,
+          `tracked-roots:README.md,docs,orchestrator/src,openclawdbot/src,systemd`,
+        ],
+        classification: "required",
+      },
+    ];
+    const openIncidentCount = (state.incidentLedger ?? []).filter(
+      (incident) => incident.status !== "resolved",
+    ).length;
+    const criticalOrHighCount = findings.filter(
+      (finding) => finding.severity === "CRITICAL" || finding.severity === "HIGH",
+    ).length;
+    const operationalMaturity: SecurityResult["operationalMaturity"] = {
+      trustBoundaryCoverage:
+        criticalOrHighCount === 0 && auditedAgents.length > 0
+          ? "strong"
+          : auditedAgents.length > 0 || findings.length > 0
+            ? "partial"
+            : "minimal",
+      auditedAgentCount: auditedAgents.length,
+      openIncidentCount,
+      blockerCount: criticalOrHighCount,
+      summary:
+        auditedAgents.length > 0
+          ? `Security audit covered ${auditedAgents.length} observed agent surface(s) with ${criticalOrHighCount} critical/high blocker(s).`
+          : `Security audit produced ${findings.length} finding(s) but no agent-specific audit relationships were observed yet.`,
+    };
 
     return {
       success: true,
       findings,
+      boundedFixes,
+      riskMatrix: {
+        exploitableCount: findings.filter((finding) => finding.exploitability === "high").length,
+        fleetWideCount: findings.filter((finding) => finding.blastRadius === "fleet").length,
+        serviceScopedCount: findings.filter((finding) => finding.blastRadius === "service").length,
+      },
       summary: {
         total: findings.length,
         critical: findings.filter((finding) => finding.severity === "CRITICAL").length,
@@ -334,6 +474,9 @@ async function handleTask(task: SecurityTask): Promise<SecurityResult> {
         compliance: findings.length === 0 ? "PASS" : "REVIEW_REQUIRED",
       },
       auditedAgents,
+      relationships,
+      toolInvocations,
+      operationalMaturity,
       evidence,
       executionTime: Date.now() - startTime,
     };
@@ -341,8 +484,23 @@ async function handleTask(task: SecurityTask): Promise<SecurityResult> {
     return {
       success: false,
       findings: [],
+      boundedFixes: [],
+      riskMatrix: {
+        exploitableCount: 0,
+        fleetWideCount: 0,
+        serviceScopedCount: 0,
+      },
       summary: { total: 0, critical: 0, exploitable: false, compliance: "ERROR" },
       auditedAgents: [],
+      relationships: [],
+      toolInvocations: [],
+      operationalMaturity: {
+        trustBoundaryCoverage: "minimal",
+        auditedAgentCount: 0,
+        openIncidentCount: 0,
+        blockerCount: 1,
+        summary: "Security audit execution failed before trust-boundary coverage could be established.",
+      },
       evidence: [],
       executionTime: Date.now() - startTime,
     };

@@ -50,9 +50,51 @@ interface StepResult {
 interface RelationshipOutput {
   from: string;
   to: string;
-  relationship: "coordinates-agent" | "feeds-agent";
+  relationship:
+    | "coordinates-agent"
+    | "feeds-agent"
+    | "delegates-task"
+    | "depends-on-run"
+    | "cross-run-handoff";
   detail: string;
   evidence: string[];
+  targetTaskId?: string;
+  targetRunId?: string;
+}
+
+interface ToolInvocationOutput {
+  toolId: string;
+  detail: string;
+  evidence: string[];
+  classification: "required" | "optional";
+}
+
+interface WorkflowGraphOutput {
+  nodes: Array<{
+    id: string;
+    kind: "step" | "agent" | "dependency" | "tool";
+    label: string;
+    status: "ready" | "rerouted" | "blocked" | "skipped";
+    detail: string;
+  }>;
+  edges: Array<{
+    id: string;
+    from: string;
+    to: string;
+    relationship: string;
+    status: "ready" | "blocked" | "rerouted";
+    detail: string;
+  }>;
+}
+
+interface WorkflowPlan {
+  objective: string;
+  totalSteps: number;
+  readySteps: number;
+  blockedSteps: number;
+  reroutedSteps: number;
+  fallbackDecisions: string[];
+  resumePath: string[];
 }
 
 interface Result {
@@ -61,6 +103,11 @@ interface Result {
   totalTime: number;
   executionTime: number;
   relationships: RelationshipOutput[];
+  toolInvocations: ToolInvocationOutput[];
+  workflowGraph: WorkflowGraphOutput;
+  plan: WorkflowPlan;
+  reroutes: Array<{ step: string; from: string; to: string; reason: string }>;
+  stopClassification: "dependency-blocked" | "agent-missing" | "skill-mismatch" | "simulated-failure" | "complete";
   stopReason: string | null;
 }
 
@@ -108,13 +155,34 @@ function resolveDependencyIds(step: WorkflowStep) {
     : [];
 }
 
+function findFallbackAgent(step: WorkflowStep, agentConfigs: Map<string, AgentConfigRecord>) {
+  if (!step.taskType) return null;
+  for (const [agentId, configRecord] of agentConfigs.entries()) {
+    if (agentId === step.agent) continue;
+    if (configRecord.orchestratorTask !== step.taskType) continue;
+    if (
+      typeof step.skillId === "string" &&
+      configRecord.permissions?.skills?.[step.skillId]?.allowed !== true
+    ) {
+      continue;
+    }
+    return { agentId, configRecord };
+  }
+  return null;
+}
+
 async function handleTask(task: Task): Promise<Result> {
   const startTime = Date.now();
   const executedSteps: StepResult[] = [];
   const relationships: RelationshipOutput[] = [];
+  const toolInvocations: ToolInvocationOutput[] = [];
+  const workflowNodes: WorkflowGraphOutput["nodes"] = [];
+  const workflowEdges: WorkflowGraphOutput["edges"] = [];
+  const reroutes: Result["reroutes"] = [];
   const completedSteps = new Set<string>();
   const taskDurations: number[] = [];
   let stopReason: string | null = null;
+  let stopClassification: Result["stopClassification"] = "complete";
 
   const config = loadConfig();
   const state = await loadRuntimeState<RuntimeState>(
@@ -132,8 +200,8 @@ async function handleTask(task: Task): Promise<Result> {
     const stepStartedAt = Date.now();
     const name = step.name ?? `step-${index + 1}`;
     const blockers: string[] = [];
-    const agentId = typeof step.agent === "string" ? step.agent : null;
-    const configRecord = agentId ? agentConfigs.get(agentId) ?? null : null;
+    let agentId = typeof step.agent === "string" ? step.agent : null;
+    let configRecord = agentId ? agentConfigs.get(agentId) ?? null : null;
 
     if (!agentId) {
       blockers.push("missing agent");
@@ -166,9 +234,60 @@ async function handleTask(task: Task): Promise<Result> {
       blockers.push(`${agentId} manifest does not allow skill ${step.skillId}`);
     }
 
+    let rerouted = false;
+    if (blockers.length > 0 && step.optional !== true) {
+      const recoverable =
+        blockers.some((blocker) => blocker.startsWith("unknown agent")) ||
+        blockers.some((blocker) => blocker.includes("routes")) ||
+        blockers.some((blocker) => blocker.includes("manifest does not allow skill"));
+      if (recoverable) {
+        const fallback = findFallbackAgent(step, agentConfigs);
+        if (fallback) {
+          const previousAgent = agentId ?? "unknown-agent";
+          agentId = fallback.agentId;
+          configRecord = fallback.configRecord;
+          blockers.length = 0;
+          rerouted = true;
+          reroutes.push({
+            step: name,
+            from: previousAgent,
+            to: fallback.agentId,
+            reason: `${previousAgent} could not satisfy ${step.taskType ?? "workflow work"}; rerouted to ${fallback.agentId}.`,
+          });
+          relationships.push({
+            from: "agent:integration-agent",
+            to: `agent:${fallback.agentId}`,
+            relationship: "delegates-task",
+            detail: `integration-agent rerouted ${name} from ${previousAgent} to ${fallback.agentId}.`,
+            evidence: [
+              `taskType:${step.taskType ?? "unknown"}`,
+              `fallback-from:${previousAgent}`,
+            ],
+          });
+        }
+      }
+    }
+
+    if (typeof step.skillId === "string") {
+      toolInvocations.push({
+        toolId: step.skillId,
+        detail: `${name} requires ${step.skillId}${rerouted ? ` after reroute to ${agentId}` : ""}.`,
+        evidence: [
+          `step:${name}`,
+          `taskType:${step.taskType ?? configRecord?.orchestratorTask ?? "unknown"}`,
+          `agent:${agentId ?? "unknown"}`,
+        ],
+        classification: step.optional === true ? "optional" : "required",
+      });
+    }
+
     const success = blockers.length === 0;
     const status =
-      success ? "ready" : step.optional === true ? "skipped" : "blocked";
+      success
+        ? "ready"
+        : step.optional === true
+          ? "skipped"
+          : "blocked";
     const output = success
       ? `${agentId ?? "unknown-agent"} is ready for ${
           step.taskType ?? configRecord?.orchestratorTask ?? "workflow work"
@@ -186,6 +305,31 @@ async function handleTask(task: Task): Promise<Result> {
       status,
       blockers,
     });
+
+    workflowNodes.push({
+      id: `step:${name}`,
+      kind: "step",
+      label: name,
+      status: success ? (rerouted ? "rerouted" : "ready") : status,
+      detail: output,
+    });
+    if (agentId) {
+      workflowNodes.push({
+        id: `agent:${agentId}`,
+        kind: "agent",
+        label: agentId,
+        status: success ? (rerouted ? "rerouted" : "ready") : status,
+        detail: step.taskType ?? configRecord?.orchestratorTask ?? "workflow work",
+      });
+      workflowEdges.push({
+        id: `edge:step:${name}:agent:${agentId}`,
+        from: `step:${name}`,
+        to: `agent:${agentId}`,
+        relationship: rerouted ? "rerouted-to" : "assigned-to",
+        status: success ? (rerouted ? "rerouted" : "ready") : "blocked",
+        detail: `${name} ${rerouted ? "rerouted to" : "assigned to"} ${agentId}.`,
+      });
+    }
 
     if (success) {
       completedSteps.add(name);
@@ -211,17 +355,63 @@ async function handleTask(task: Task): Promise<Result> {
       relationships.push({
         from: `agent:${previousSuccessfulAgent.agent}`,
         to: `agent:${agentId}`,
-        relationship: "feeds-agent",
+        relationship: "cross-run-handoff",
         detail: `${previousSuccessfulAgent.agent} hands workflow context to ${agentId}.`,
         evidence: [`from-step:${previousSuccessfulAgent.name}`, `to-step:${name}`],
+      });
+      workflowEdges.push({
+        id: `edge:handoff:${previousSuccessfulAgent.name}:${name}`,
+        from: `agent:${previousSuccessfulAgent.agent}`,
+        to: `agent:${agentId}`,
+        relationship: "context-handoff",
+        status: "ready",
+        detail: `${previousSuccessfulAgent.agent} hands context to ${agentId}.`,
+      });
+    }
+
+    for (const dependencyId of dependencyIds) {
+      workflowNodes.push({
+        id: `dependency:${name}:${dependencyId}`,
+        kind: "dependency",
+        label: dependencyId,
+        status: completedSteps.has(dependencyId) ? "ready" : "blocked",
+        detail: `${name} depends on ${dependencyId}.`,
+      });
+      workflowEdges.push({
+        id: `edge:dependency:${dependencyId}:${name}`,
+        from: `step:${dependencyId}`,
+        to: `step:${name}`,
+        relationship: "depends-on",
+        status: completedSteps.has(dependencyId) ? "ready" : "blocked",
+        detail: `${name} depends on ${dependencyId}.`,
+      });
+      relationships.push({
+        from: `step:${name}`,
+        to: `step:${dependencyId}`,
+        relationship: "depends-on-run",
+        detail: `${name} depends on ${dependencyId} before execution can continue.`,
+        evidence: [`step:${name}`, `dependsOn:${dependencyId}`],
       });
     }
 
     if (!success && step.optional !== true) {
       stopReason = `workflow blocked at ${name}: ${output}`;
+      stopClassification = blockers.some((blocker) => blocker.includes("dependency"))
+        ? "dependency-blocked"
+        : blockers.some((blocker) => blocker.includes("unknown agent"))
+          ? "agent-missing"
+          : blockers.some((blocker) => blocker.includes("skill"))
+            ? "skill-mismatch"
+            : blockers.some((blocker) => blocker.includes("simulated failure"))
+              ? "simulated-failure"
+              : "dependency-blocked";
       break;
     }
   }
+
+  const readySteps = executedSteps.filter((step) => step.status === "ready").length;
+  const blockedSteps = executedSteps.filter((step) => step.status === "blocked").length;
+  const reroutedSteps = reroutes.length;
 
   return {
     success: stopReason === null,
@@ -229,6 +419,28 @@ async function handleTask(task: Task): Promise<Result> {
     totalTime: taskDurations.reduce((sum, value) => sum + value, 0),
     executionTime: Date.now() - startTime,
     relationships,
+    toolInvocations,
+    workflowGraph: {
+      nodes: workflowNodes,
+      edges: workflowEdges,
+    },
+    plan: {
+      objective: `Coordinate ${task.steps.length} workflow step(s) for ${task.type}.`,
+      totalSteps: task.steps.length,
+      readySteps,
+      blockedSteps,
+      reroutedSteps,
+      fallbackDecisions: reroutes.map((reroute) => reroute.reason),
+      resumePath: task.steps
+        .map((step, index) => ({ step, index }))
+        .filter(({ step, index }) => {
+          const stepName = step.name ?? `step-${index + 1}`;
+          return !completedSteps.has(stepName);
+        })
+        .map(({ step, index }) => step.name ?? `step-${index + 1}`),
+    },
+    reroutes,
+    stopClassification,
     stopReason,
   };
 }

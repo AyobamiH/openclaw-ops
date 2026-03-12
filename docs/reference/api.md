@@ -65,6 +65,8 @@ Mission Control implementation note:
 - this phase adds persistent incidents, incident history/remediation routes,
   deeper workflow graphs, knowledge graphs, topology relationship edges, and
   agent capability readiness inside the existing console rails
+- the canonical agent maturity target for these surfaces now lives in
+  `docs/architecture/AGENT_CAPABILITY_MODEL.md`
 - it does **not** adopt a new global shell, Three.js background, or starfield
   environment yet
 
@@ -139,6 +141,10 @@ Safe leaf fields to render:
   `topology.counts.relationshipEdges`,
   `topology.relationshipHistory.totalObservations`,
   `topology.relationshipHistory.lastObservedAt`,
+  `topology.relationshipHistory.windows.short.totalObservations`,
+  `topology.relationshipHistory.windows.long.totalObservations`,
+  `topology.relationshipHistory.graph.totalNodes`,
+  `topology.relationshipHistory.graph.totalEdges`,
   `topology.hotspots[]`,
   `incidents.overallStatus`,
   `incidents.openCount`,
@@ -202,6 +208,10 @@ Safe leaf fields to render:
   `topology.counts.proofEdges`,
   `topology.relationshipHistory.totalObservations`,
   `topology.relationshipHistory.lastObservedAt`,
+  `topology.relationshipHistory.windows.short.totalObservations`,
+  `topology.relationshipHistory.windows.long.totalObservations`,
+  `topology.relationshipHistory.graph.totalNodes`,
+  `topology.relationshipHistory.graph.totalEdges`,
   `topology.hotspots[]`,
   `incidents.overallStatus`,
   `incidents.openCount`,
@@ -227,10 +237,21 @@ Safe leaf fields to render:
   `incidents.incidents[].linkedRepairIds[]`,
   `incidents.incidents[].linkedProofDeliveries[]`,
   `incidents.incidents[].recommendedSteps[]`,
+  `incidents.incidents[].policy.policyId`,
+  `incidents.incidents[].policy.remediationTaskType`,
+  `incidents.incidents[].policy.verifierTaskType`,
+  `incidents.incidents[].policy.targetSlaMinutes`,
+  `incidents.incidents[].escalation.level`,
+  `incidents.incidents[].escalation.summary`,
+  `incidents.incidents[].escalation.dueAt`,
+  `incidents.incidents[].verification.required`,
+  `incidents.incidents[].verification.status`,
+  `incidents.incidents[].verification.summary`,
   `incidents.incidents[].remediation.status`,
   `incidents.incidents[].remediation.owner`,
   `incidents.incidents[].remediation.nextAction`,
   `incidents.incidents[].remediation.blockers[]`,
+  `incidents.incidents[].remediationPlan[]`,
   `recentTasks[].handledAt`, `recentTasks[].type`, `recentTasks[].result`,
   `recentTasks[].message`
   Approval payloads can now include review-gated Reddit lead promotions:
@@ -246,6 +267,7 @@ Safe leaf fields to render:
   `workflow.nextRetryAt`, `workflow.repairStatus`, `workflow.eventCount`,
   `workflow.stageDurations`, `workflow.timingBreakdown`,
   `workflow.nodeCount`, `workflow.edgeCount`,
+  `workflowGraph.causalLinks[]`,
   `approval.required`, `approval.status`, `approval.requestedAt`,
   `approval.decidedAt`, `events[]`, `proofLinks[]`, and
   `workflowGraph.{nodes,edges,events,proofLinks,stopClassification,timingBreakdown}`
@@ -254,10 +276,17 @@ Safe leaf fields to render:
   first/last-seen timestamps, acknowledgement state, owner,
   `history[]`, `acknowledgements[]`, `ownershipHistory[]`,
   `remediationTasks[]`, linked service/task/run/proof references, and
-  current remediation guidance
+  current remediation guidance, policy, escalation, verification, and
+  remediation plan state
 - `/api/incidents/:id/history`: isolated incident history stream with
   `history[]`, `acknowledgements[]`, `ownershipHistory[]`, and remediation
   task lifecycle records including assignment/execution/verification/resolution
+- `/api/knowledge/summary` and `/api/knowledge/query`: provenance,
+  contradiction, and freshness graphs plus `runtime.repairLoop` /
+  `meta.repairLoop` for knowledge-repair posture
+- `/api/agents/overview`: relationship history windows, observed relationship
+  graph, target capability set, and evidence profiles showing how close an
+  agent is to the capability target
   timestamps
 - `/api/approvals/pending`: `impact.riskLevel`, `impact.approvalReason`,
   `impact.dependencyClass`, `impact.affectedSurfaces`,

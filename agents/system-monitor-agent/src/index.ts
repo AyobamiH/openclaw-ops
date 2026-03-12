@@ -65,6 +65,40 @@ interface Result {
     systemMetrics: Record<string, unknown>;
     alerts: string[];
   };
+  relationships: Array<{
+    from: string;
+    to: string;
+    relationship: "monitors-agent" | "feeds-agent";
+    detail: string;
+    evidence: string[];
+    classification: string;
+  }>;
+  toolInvocations: Array<{
+    toolId: string;
+    detail: string;
+    evidence: string[];
+    classification: "required" | "optional";
+  }>;
+  diagnoses: Array<{
+    id: string;
+    severity: "info" | "warning" | "critical";
+    summary: string;
+    recommendedOwner: string;
+    nextAction: string;
+    evidence: string[];
+  }>;
+  proofTransitions: Array<{
+    transport: "milestone" | "demandSummary";
+    detail: string;
+    evidence: string[];
+    classification: string;
+  }>;
+  escalationWatch: Array<{
+    incidentId: string;
+    severity: string;
+    owner: string | null;
+    summary: string;
+  }>;
   executionTime: number;
 }
 
@@ -214,6 +248,8 @@ async function handleTask(task: Task): Promise<Result> {
         systemMetrics: {},
         alerts: ["documentParser skill access is required"],
       },
+      relationships: [],
+      toolInvocations: [],
       executionTime: Date.now() - startTime,
     };
   }
@@ -281,6 +317,108 @@ async function handleTask(task: Task): Promise<Result> {
       }
     }
 
+    const diagnoses: Result["diagnoses"] = [];
+    if (incidentSummary.criticalCount > 0) {
+      diagnoses.push({
+        id: "critical-incidents-open",
+        severity: "critical",
+        summary: `${incidentSummary.criticalCount} critical incident(s) remain unresolved.`,
+        recommendedOwner: "operator",
+        nextAction: "Prioritize critical incident remediation and verifier closure.",
+        evidence: [
+          `open-incidents:${incidentSummary.openCount}`,
+          `critical-incidents:${incidentSummary.criticalCount}`,
+        ],
+      });
+    }
+    if ((proofMetrics.milestone.deadLetter ?? 0) > 0 || (proofMetrics.demandSummary.deadLetter ?? 0) > 0) {
+      diagnoses.push({
+        id: "proof-transport-dead-letter",
+        severity: "warning",
+        summary: "Proof delivery dead-letter records are present.",
+        recommendedOwner: "system-monitor-agent",
+        nextAction: "Inspect proof delivery ledgers and drive replay or escalation.",
+        evidence: [
+          `milestone-dead-letter:${proofMetrics.milestone.deadLetter ?? 0}`,
+          `demand-dead-letter:${proofMetrics.demandSummary.deadLetter ?? 0}`,
+        ],
+      });
+    }
+    if ((state.taskRetryRecoveries ?? []).length > 0 || (taskExecutionSummary.failed ?? 0) > 0) {
+      diagnoses.push({
+        id: "queue-pressure",
+        severity: "warning",
+        summary: "Queue pressure or retry debt is visible in runtime state.",
+        recommendedOwner: "integration-agent",
+        nextAction: "Reconcile retries, review blocked workflows, and confirm recovery paths.",
+        evidence: [
+          `retry-recoveries:${state.taskRetryRecoveries?.length ?? 0}`,
+          `failed-executions:${taskExecutionSummary.failed ?? 0}`,
+        ],
+      });
+    }
+    const escalationWatch = (state.incidentLedger ?? [])
+      .filter((incident) => incident.status !== "resolved")
+      .filter((incident) =>
+        incident.escalation?.level === "escalated" ||
+        incident.escalation?.level === "breached" ||
+        incident.severity === "critical",
+      )
+      .slice(0, 8)
+      .map((incident) => ({
+        incidentId: incident.incidentId ?? "unknown-incident",
+        severity: incident.severity ?? "warning",
+        owner: typeof incident.owner === "string" ? incident.owner : null,
+        summary: incident.summary ?? "No summary recorded.",
+      }));
+    const proofTransitions: Result["proofTransitions"] = [
+      {
+        transport: "milestone",
+        detail: `Milestone proof transport is ${proofMetrics.milestone.deadLetter > 0 ? "degraded" : "observed"} in runtime monitoring.`,
+        evidence: [
+          `pending:${proofMetrics.milestone.pending}`,
+          `retrying:${proofMetrics.milestone.retrying}`,
+          `deadLetter:${proofMetrics.milestone.deadLetter}`,
+        ],
+        classification: "proof-monitoring",
+      },
+      {
+        transport: "demandSummary",
+        detail: `Demand summary proof transport is ${proofMetrics.demandSummary.deadLetter > 0 ? "degraded" : "observed"} in runtime monitoring.`,
+        evidence: [
+          `pending:${proofMetrics.demandSummary.pending}`,
+          `retrying:${proofMetrics.demandSummary.retrying}`,
+          `deadLetter:${proofMetrics.demandSummary.deadLetter}`,
+        ],
+        classification: "proof-monitoring",
+      },
+    ];
+    const relationships: Result["relationships"] = selectedAgents.map((descriptor) => ({
+      from: "agent:system-monitor-agent",
+      to: `agent:${descriptor.id}`,
+      relationship: "monitors-agent",
+      detail: `system-monitor-agent fused service-state and task-execution telemetry for ${descriptor.id}.`,
+      evidence: [
+        `health:${agentHealth[descriptor.id]?.status ?? "UNKNOWN"}`,
+        descriptor.orchestratorTask
+          ? `task-route:${descriptor.orchestratorTask}`
+          : "task-route:unassigned",
+      ],
+      classification: "telemetry-fusion",
+    }));
+    const toolInvocations: Result["toolInvocations"] = [
+      {
+        toolId: "documentParser",
+        detail: "system-monitor-agent parsed runtime state, agent manifests, and service-state evidence.",
+        evidence: [
+          `agents:${selectedAgents.length}`,
+          `incidents:${incidentSummary.openCount}`,
+          `workflow-events:${(state.workflowEvents ?? []).length}`,
+        ],
+        classification: "required",
+      },
+    ];
+
     return {
       success: true,
       metrics: {
@@ -303,6 +441,11 @@ async function handleTask(task: Task): Promise<Result> {
         },
         alerts,
       },
+      relationships,
+      toolInvocations,
+      diagnoses,
+      proofTransitions,
+      escalationWatch,
       executionTime: Date.now() - startTime,
     };
   } catch (error) {
@@ -314,6 +457,11 @@ async function handleTask(task: Task): Promise<Result> {
         systemMetrics: {},
         alerts: [(error as Error).message],
       },
+      relationships: [],
+      toolInvocations: [],
+      diagnoses: [],
+      proofTransitions: [],
+      escalationWatch: [],
       executionTime: Date.now() - startTime,
     };
   }

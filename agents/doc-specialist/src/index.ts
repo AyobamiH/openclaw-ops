@@ -71,6 +71,30 @@ interface ProcessedDocSummary {
   firstHeading?: string;
 }
 
+interface TargetBrief {
+  agentId: string;
+  objective: string;
+  sourceFocus: Array<"openclaw" | "openai">;
+  contradictionFocus: string[];
+  suggestedActions: string[];
+}
+
+interface IncidentPack {
+  incidentId: string;
+  severity: string;
+  summary: string;
+  affectedSurfaces: string[];
+  recommendedSteps: string[];
+}
+
+interface RepairLoopSummary {
+  status: "clear" | "watching" | "repair-needed";
+  recommendedTaskType: "drift-repair" | "qa-verification" | "system-monitor";
+  contradictions: string[];
+  staleSignals: string[];
+  nextActions: string[];
+}
+
 const telemetry = new Telemetry({ component: "doc-specialist" });
 
 const __filename = fileURLToPath(import.meta.url);
@@ -500,6 +524,96 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
         demandSummary: summarizeProofTransport(runtimeState.demandSummaryDeliveries ?? []),
       },
     } satisfies RuntimeTruthSummary,
+    incidentPacks: (runtimeState.incidentLedger ?? [])
+      .filter((incident) => incident.status !== "resolved")
+      .slice(0, 8)
+      .map(
+        (incident): IncidentPack => ({
+          incidentId: incident.incidentId ?? "unknown-incident",
+          severity: incident.severity ?? "warning",
+          summary: incident.summary ?? "No runtime incident summary recorded.",
+          affectedSurfaces: Array.isArray(incident.affectedSurfaces)
+            ? incident.affectedSurfaces.slice(0, 6)
+            : [],
+          recommendedSteps: Array.isArray(incident.recommendedSteps)
+            ? incident.recommendedSteps.slice(0, 4)
+            : [],
+        }),
+      ),
+    targetBriefs: task.targetAgents.map(
+      (agentId): TargetBrief => ({
+        agentId,
+        objective: `Refresh ${agentId} with the latest repo, runtime, and proof-boundary knowledge pack.`,
+        sourceFocus:
+          config.cookbookPath && cookbookDocs.length > 0
+            ? ["openclaw", "openai"]
+            : ["openclaw"],
+        contradictionFocus: [
+          ...(configAudit.summary.criticalIssues > 0
+            ? [`${configAudit.summary.criticalIssues} critical config audit issue(s)`]
+            : []),
+          ...((runtimeState.incidentLedger ?? [])
+            .filter((incident) => incident.status !== "resolved")
+            .slice(0, 2)
+            .map((incident) => incident.summary ?? "runtime incident present")),
+        ],
+        suggestedActions: [
+          "Review the latest knowledge pack before acting.",
+          "Prefer runtime truth over stale docs when conflicts appear.",
+          "Escalate unresolved contradictions back through drift-repair.",
+        ],
+      }),
+    ),
+    repairLoop: {
+      status:
+        configAudit.summary.criticalIssues > 0 ||
+        (runtimeState.incidentLedger ?? []).some((incident) => incident.status !== "resolved")
+          ? "repair-needed"
+          : configAudit.summary.totalIssues > 0
+            ? "watching"
+            : "clear",
+      recommendedTaskType:
+        configAudit.summary.criticalIssues > 0 ? "drift-repair" : "qa-verification",
+      contradictions: [
+        ...configAudit.issues.slice(0, 6).map((issue) => issue.message),
+      ],
+      staleSignals:
+        (runtimeState.incidentLedger ?? [])
+          .filter((incident) => incident.status !== "resolved")
+          .slice(0, 4)
+          .map((incident) => incident.summary ?? "runtime signal present"),
+      nextActions:
+        configAudit.summary.criticalIssues > 0
+          ? [
+              "Repair critical manifest/config drift first.",
+              "Rebuild knowledge pack after drift repair completes.",
+              "Run qa-verification against the affected agent surfaces.",
+            ]
+          : [
+              "Keep knowledge pack current while runtime incidents remain open.",
+              "Route high-signal contradictions into verifier review.",
+            ],
+    } satisfies RepairLoopSummary,
+    relationships: task.targetAgents.map((agentId) => ({
+      from: "agent:doc-specialist",
+      to: `agent:${agentId}`,
+      relationship: "feeds-agent",
+      detail: `doc-specialist refreshed ${agentId} with pack ${packId}.`,
+      evidence: [packId, `docs:${summaries.length}`],
+      classification: "knowledge-distribution",
+    })),
+    toolInvocations: [
+      {
+        toolId: "documentParser",
+        detail: "doc-specialist parsed docs, configs, and curated clue files into a knowledge pack.",
+        evidence: [
+          `docs:${summaries.length}`,
+          `openclaw:${openclawDocs.length}`,
+          `openai:${cookbookDocs.length}`,
+        ],
+        classification: "required",
+      },
+    ],
     docs: summaries,
   };
 
@@ -528,6 +642,11 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
           docsProcessed: summaries.length,
           sourceBreakdown,
           configAuditSummary: configAudit.summary,
+          incidentPacks: payload.incidentPacks,
+          targetBriefs: payload.targetBriefs,
+          repairLoop: payload.repairLoop,
+          relationships: payload.relationships,
+          toolInvocations: payload.toolInvocations,
           runtimeTruth: payload.runtimeTruth,
         },
         null,
@@ -543,6 +662,11 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
     docsProcessed: summaries.length,
     sourceBreakdown,
     configAudit,
+    incidentPacks: payload.incidentPacks,
+    targetBriefs: payload.targetBriefs,
+    repairLoop: payload.repairLoop,
+    relationships: payload.relationships,
+    toolInvocations: payload.toolInvocations,
     runtimeTruth: payload.runtimeTruth,
   };
 }

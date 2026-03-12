@@ -234,6 +234,12 @@ function observeRuntimeRelationship(args: {
   source: string;
   status?: RelationshipObservationRecord["status"];
   evidence?: string[];
+  targetTaskId?: string | null;
+  targetRunId?: string | null;
+  toolId?: string | null;
+  proofTransport?: RelationshipObservationRecord["proofTransport"];
+  classification?: string | null;
+  parentObservationId?: string | null;
 }) {
   appendRelationshipObservationRecord(args.context.state, {
     observationId: randomUUID(),
@@ -246,8 +252,146 @@ function observeRuntimeRelationship(args: {
     detail: args.detail,
     taskId: args.task.id,
     runId: taskRunId(args.task),
+    targetTaskId: args.targetTaskId ?? null,
+    targetRunId: args.targetRunId ?? null,
+    toolId: args.toolId ?? null,
+    proofTransport: args.proofTransport ?? null,
+    classification: args.classification ?? null,
+    parentObservationId: args.parentObservationId ?? null,
     evidence: [...new Set((args.evidence ?? []).filter(Boolean))].slice(0, 12),
   });
+}
+
+function observeSpawnedAgentResult(args: {
+  context: TaskHandlerContext;
+  task: Task;
+  sourceAgentId: string;
+  result: Record<string, unknown>;
+}) {
+  const { context, task, sourceAgentId, result } = args;
+
+  const relationships = Array.isArray(result.relationships)
+    ? result.relationships.filter(
+        (entry): entry is Record<string, unknown> =>
+          Boolean(
+            entry &&
+              typeof entry === "object" &&
+              typeof entry.from === "string" &&
+              typeof entry.to === "string" &&
+              typeof entry.relationship === "string",
+          ),
+      )
+    : [];
+
+  for (const relationship of relationships) {
+    observeRuntimeRelationship({
+      context,
+      task,
+      from: String(relationship.from),
+      to: String(relationship.to),
+      relationship: relationship.relationship as RelationshipObservationType,
+      detail:
+        typeof relationship.detail === "string"
+          ? relationship.detail
+          : `${relationship.from} ${relationship.relationship} ${relationship.to}`,
+      source: sourceAgentId,
+      evidence: Array.isArray(relationship.evidence)
+        ? relationship.evidence.map(String)
+        : [],
+      targetTaskId:
+        typeof relationship.targetTaskId === "string"
+          ? relationship.targetTaskId
+          : null,
+      targetRunId:
+        typeof relationship.targetRunId === "string"
+          ? relationship.targetRunId
+          : null,
+      toolId:
+        typeof relationship.toolId === "string" ? relationship.toolId : null,
+      proofTransport:
+        relationship.proofTransport === "milestone" ||
+        relationship.proofTransport === "demandSummary"
+          ? relationship.proofTransport
+          : null,
+      classification:
+        typeof relationship.classification === "string"
+          ? relationship.classification
+          : null,
+    });
+  }
+
+  const toolInvocations = Array.isArray(result.toolInvocations)
+    ? result.toolInvocations.filter(
+        (entry): entry is Record<string, unknown> =>
+          Boolean(
+            entry &&
+              typeof entry === "object" &&
+              typeof entry.toolId === "string",
+          ),
+      )
+    : [];
+
+  for (const invocation of toolInvocations) {
+    observeRuntimeRelationship({
+      context,
+      task,
+      from: `agent:${sourceAgentId}`,
+      to: `tool:${String(invocation.toolId)}`,
+      relationship: "invokes-tool",
+      detail:
+        typeof invocation.detail === "string"
+          ? invocation.detail
+          : `${sourceAgentId} invoked ${String(invocation.toolId)}.`,
+      source: sourceAgentId,
+      evidence: Array.isArray(invocation.evidence)
+        ? invocation.evidence.map(String)
+        : [],
+      toolId: String(invocation.toolId),
+      classification:
+        typeof invocation.classification === "string"
+          ? invocation.classification
+          : null,
+    });
+  }
+
+  const proofTransitions = Array.isArray(result.proofTransitions)
+    ? result.proofTransitions.filter(
+        (entry): entry is Record<string, unknown> =>
+          Boolean(
+            entry &&
+              typeof entry === "object" &&
+              typeof entry.transport === "string",
+          ),
+      )
+    : [];
+
+  for (const transition of proofTransitions) {
+    const transport =
+      transition.transport === "milestone" || transition.transport === "demandSummary"
+        ? transition.transport
+        : null;
+    if (!transport) continue;
+    observeRuntimeRelationship({
+      context,
+      task,
+      from: `agent:${sourceAgentId}`,
+      to: `surface:proof:${transport}`,
+      relationship: "transitions-proof",
+      detail:
+        typeof transition.detail === "string"
+          ? transition.detail
+          : `${sourceAgentId} transitioned ${transport} proof state.`,
+      source: sourceAgentId,
+      evidence: Array.isArray(transition.evidence)
+        ? transition.evidence.map(String)
+        : [],
+      proofTransport: transport,
+      classification:
+        typeof transition.classification === "string"
+          ? transition.classification
+          : null,
+    });
+  }
 }
 
 function taskRunId(task: Task) {
@@ -1307,6 +1451,8 @@ const driftRepairHandler: TaskHandler = async (task, context) => {
     packPath: string;
     packId: string;
     docsProcessed: number;
+    relationships?: Array<Record<string, unknown>>;
+    toolInvocations?: Array<Record<string, unknown>>;
   } | null = null;
   try {
     docSpecResult = await runDocSpecialistJob(
@@ -1365,6 +1511,12 @@ const driftRepairHandler: TaskHandler = async (task, context) => {
   context.state.lastDriftRepairAt = record.completedAt;
 
   if (docSpecResult?.packPath) {
+    observeSpawnedAgentResult({
+      context,
+      task,
+      sourceAgentId: "doc-specialist",
+      result: docSpecResult as Record<string, unknown>,
+    });
     for (const targetAgent of targets) {
       observeRuntimeRelationship({
         context,
@@ -1553,6 +1705,12 @@ const securityAuditHandler: TaskHandler = async (task, context) => {
       context.logger,
     );
     assertSpawnedAgentReportedSuccess(result, "security audit");
+    observeSpawnedAgentResult({
+      context,
+      task,
+      sourceAgentId: "security-agent",
+      result,
+    });
     const auditedAgents = Array.isArray(result.auditedAgents)
       ? result.auditedAgents.filter(
           (agentId): agentId is string => typeof agentId === "string" && agentId.length > 0,
@@ -1646,6 +1804,12 @@ const systemMonitorHandler: TaskHandler = async (task, context) => {
       context.logger,
     );
     assertSpawnedAgentReportedSuccess(result, "system monitor");
+    observeSpawnedAgentResult({
+      context,
+      task,
+      sourceAgentId: "system-monitor-agent",
+      result,
+    });
     const metrics =
       (result.metrics as Record<string, unknown> | undefined) ?? {};
     const agentHealth =
@@ -1750,39 +1914,12 @@ const integrationWorkflowHandler: TaskHandler = async (task, context) => {
       "INTEGRATION_AGENT_RESULT_FILE",
       context.logger,
     );
-
-    const relationships = Array.isArray(result.relationships)
-      ? result.relationships.filter(
-          (item): item is {
-            from: string;
-            to: string;
-            relationship: RelationshipObservationType;
-            detail?: string;
-            evidence?: string[];
-          } =>
-            Boolean(
-              item &&
-                typeof item === "object" &&
-                typeof item.from === "string" &&
-                typeof item.to === "string" &&
-                typeof item.relationship === "string",
-            ),
-        )
-      : [];
-    for (const relationship of relationships) {
-      observeRuntimeRelationship({
-        context,
-        task,
-        from: relationship.from,
-        to: relationship.to,
-        relationship: relationship.relationship,
-        detail:
-          relationship.detail ??
-          `${relationship.from} ${relationship.relationship} ${relationship.to}.`,
-        source: "integration-agent",
-        evidence: relationship.evidence ?? [],
-      });
-    }
+    observeSpawnedAgentResult({
+      context,
+      task,
+      sourceAgentId: "integration-agent",
+      result,
+    });
 
     const steps = Array.isArray(result.steps) ? result.steps.length : 0;
     if (result.success !== true) {
@@ -1893,9 +2030,32 @@ const dataExtractionHandler: TaskHandler = async (task, context) => {
 
 const qaVerificationHandler: TaskHandler = async (task, context) => {
   await assertToolGatePermission(task, context, "qa-verification");
+  type QaVerificationAgentResult = Record<string, unknown> & {
+    success?: boolean;
+    dryRun?: boolean;
+    outcomeSummary?: string;
+    executedCommand?: string;
+    outcomeKind?: string;
+    totalChecks?: number;
+    testsRun?: number;
+    passedChecks?: number;
+    testsPassed?: number;
+    summary?: string;
+    closureRecommendation?: {
+      allowClosure?: boolean;
+      summary?: string;
+    } | null;
+  };
   const payload = {
     id: randomUUID(),
     target: String(task.payload.target ?? "workspace"),
+    targetAgentId:
+      typeof task.payload.targetAgentId === "string"
+        ? task.payload.targetAgentId
+        : typeof task.payload.target === "string" &&
+            task.payload.target.endsWith("-agent")
+          ? task.payload.target
+          : undefined,
     suite: String(task.payload.suite ?? "smoke"),
     mode:
       task.payload.mode !== undefined ? String(task.payload.mode) : undefined,
@@ -1913,15 +2073,39 @@ const qaVerificationHandler: TaskHandler = async (task, context) => {
       task.payload.constraints !== null
         ? (task.payload.constraints as Record<string, unknown>)
         : undefined,
+    incidentId:
+      typeof task.payload.__incidentId === "string"
+        ? task.payload.__incidentId
+        : typeof task.payload.incidentId === "string"
+          ? task.payload.incidentId
+          : undefined,
+    repairIds: Array.isArray(task.payload.repairIds)
+      ? task.payload.repairIds
+      : undefined,
+    runIds: Array.isArray(task.payload.runIds)
+      ? task.payload.runIds
+      : undefined,
+    serviceIds: Array.isArray(task.payload.serviceIds)
+      ? task.payload.serviceIds
+      : undefined,
+    affectedSurfaces: Array.isArray(task.payload.affectedSurfaces)
+      ? task.payload.affectedSurfaces
+      : undefined,
   };
 
   try {
-    const result = await runSpawnedAgentJob(
+    const result = (await runSpawnedAgentJob(
       "qa-verification-agent",
       payload,
       "QA_VERIFICATION_AGENT_RESULT_FILE",
       context.logger,
-    );
+    )) as QaVerificationAgentResult;
+    observeSpawnedAgentResult({
+      context,
+      task,
+      sourceAgentId: "qa-verification-agent",
+      result,
+    });
     const gate = await getToolGate();
     await gate.preflightSkillAccess("qa-verification-agent", "testRunner", {
       mode: "execute",
@@ -1936,6 +2120,18 @@ const qaVerificationHandler: TaskHandler = async (task, context) => {
 
     if (result.dryRun === true) {
       return `qa verification dry-run complete (${String(result.outcomeSummary ?? "no tests executed")})`;
+    }
+
+    if (
+      typeof task.payload.__incidentId === "string" &&
+      result.closureRecommendation &&
+      result.closureRecommendation.allowClosure !== true
+    ) {
+      throw new Error(
+        typeof result.closureRecommendation.summary === "string"
+          ? result.closureRecommendation.summary
+          : "qa verification did not permit incident closure",
+      );
     }
 
     const totalChecks = Number(result.totalChecks ?? result.testsRun ?? 0);

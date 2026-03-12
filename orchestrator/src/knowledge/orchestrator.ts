@@ -261,6 +261,7 @@ export class KnowledgeOrchestrator {
         message: string;
         entryIds: string[];
       }>;
+      repairLoop: ReturnType<typeof buildRepairLoopSummary>;
       graphs: {
         provenance: ReturnType<typeof buildProvenanceGraph>;
         contradictions: ReturnType<typeof buildContradictionGraph>;
@@ -291,6 +292,7 @@ export class KnowledgeOrchestrator {
         freshness: buildFreshnessSummary(entries),
         provenance: buildProvenanceSummary(entries),
         contradictionSignals: detectContradictions(entries),
+        repairLoop: buildRepairLoopSummary(entries),
         graphs: {
           provenance: buildProvenanceGraph(entries),
           contradictions: buildContradictionGraph(entries),
@@ -334,6 +336,7 @@ export class KnowledgeOrchestrator {
         message: string;
         entryIds: string[];
       }>;
+      repairLoop: ReturnType<typeof buildRepairLoopSummary>;
       graphs: {
         provenance: ReturnType<typeof buildProvenanceGraph>;
         contradictions: ReturnType<typeof buildContradictionGraph>;
@@ -355,6 +358,7 @@ export class KnowledgeOrchestrator {
         freshness: buildFreshnessSummary(entries),
         provenance: buildProvenanceSummary(entries),
         contradictionSignals: detectContradictions(entries),
+        repairLoop: buildRepairLoopSummary(entries),
         graphs: {
           provenance: buildProvenanceGraph(entries),
           contradictions: buildContradictionGraph(entries),
@@ -733,6 +737,60 @@ function buildFreshnessGraph(entries: KBEntry[], staleAfterHours = 72) {
         : bands.aging > 0
           ? [`${bands.aging} knowledge entr${bands.aging === 1 ? 'y is' : 'ies are'} aging.`]
           : [],
+  };
+}
+
+function buildRepairLoopSummary(entries: KBEntry[]) {
+  const freshness = buildFreshnessSummary(entries);
+  const contradictions = detectContradictions(entries);
+  const provenance = buildProvenanceSummary(entries);
+  const contradictionEntryIds = Array.from(
+    new Set(contradictions.flatMap(signal => signal.entryIds))
+  );
+  const focusAreas: string[] = [];
+  const nextActions: string[] = [];
+
+  if (contradictions.length > 0) {
+    focusAreas.push("Resolve contradictory knowledge entries before reuse.");
+    nextActions.push(
+      `Run drift-repair or doc-specialist review for ${contradictionEntryIds.length} contradictory knowledge entr${contradictionEntryIds.length === 1 ? 'y' : 'ies'}.`
+    );
+  }
+  if (freshness.status === 'stale' || freshness.status === 'aging') {
+    focusAreas.push("Refresh stale or aging knowledge entries from current repo/runtime truth.");
+    nextActions.push("Refresh knowledge from current docs, config, runtime state, and public proof.");
+  }
+  if (provenance.unknownProvenanceCount > 0) {
+    focusAreas.push("Backfill provenance for entries with unknown source identity.");
+    nextActions.push(
+      `Normalize provenance for ${provenance.unknownProvenanceCount} entr${provenance.unknownProvenanceCount === 1 ? 'y' : 'ies'} before downstream agents rely on them.`
+    );
+  }
+
+  const status =
+    contradictions.length > 0 ||
+    freshness.status === 'stale' ||
+    provenance.unknownProvenanceCount > Math.max(5, Math.floor(entries.length / 5))
+      ? ('repair-needed' as const)
+      : freshness.status === 'aging' || provenance.unknownProvenanceCount > 0
+        ? ('watching' as const)
+        : ('clear' as const);
+
+  return {
+    status,
+    recommendedTaskType:
+      contradictions.length > 0 || freshness.status !== 'fresh'
+        ? ('drift-repair' as const)
+        : ('qa-verification' as const),
+    contradictionCount: contradictions.length,
+    contradictionEntryIds,
+    unknownProvenanceCount: provenance.unknownProvenanceCount,
+    freshnessStatus: freshness.status,
+    focusAreas,
+    nextActions:
+      nextActions.length > 0
+        ? nextActions
+        : ["Knowledge diagnostics are currently stable; continue passive monitoring."],
   };
 }
 

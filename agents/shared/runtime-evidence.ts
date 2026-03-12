@@ -50,6 +50,40 @@ export interface RuntimeIncidentRemediationTask {
   blockers?: string[];
 }
 
+export interface RuntimeIncidentRemediationPlanStep {
+  stepId?: string;
+  title?: string;
+  kind?: string;
+  owner?: string;
+  status?: string;
+  description?: string;
+  taskType?: string | null;
+  dependsOn?: string[];
+  startedAt?: string | null;
+  completedAt?: string | null;
+  evidence?: string[];
+}
+
+export interface RuntimeIncidentEscalationState {
+  level?: string;
+  status?: string;
+  dueAt?: string | null;
+  escalateAt?: string | null;
+  escalatedAt?: string | null;
+  breachedAt?: string | null;
+  summary?: string;
+}
+
+export interface RuntimeIncidentVerificationState {
+  required?: boolean;
+  agentId?: string | null;
+  status?: string;
+  summary?: string;
+  verificationTaskId?: string | null;
+  verificationRunId?: string | null;
+  verifiedAt?: string | null;
+}
+
 export interface RuntimeIncidentLedgerRecord {
   incidentId?: string;
   title?: string;
@@ -61,6 +95,17 @@ export interface RuntimeIncidentLedgerRecord {
   firstSeenAt?: string | null;
   owner?: string | null;
   summary?: string;
+  policy?: {
+    policyId?: string;
+    preferredOwner?: string;
+    autoAssignOwner?: boolean;
+    autoRemediateOnCreate?: boolean;
+    remediationTaskType?: string;
+    verifierTaskType?: string | null;
+    targetSlaMinutes?: number;
+    escalationMinutes?: number;
+  };
+  escalation?: RuntimeIncidentEscalationState;
   remediation?: {
     owner?: string;
     status?: string;
@@ -68,6 +113,8 @@ export interface RuntimeIncidentLedgerRecord {
     nextAction?: string;
     blockers?: string[];
   };
+  remediationPlan?: RuntimeIncidentRemediationPlanStep[];
+  verification?: RuntimeIncidentVerificationState;
   remediationTasks?: RuntimeIncidentRemediationTask[];
 }
 
@@ -89,6 +136,13 @@ export interface RuntimeWorkflowEvent {
   source?: string;
   taskId?: string | null;
   runId?: string | null;
+  parentEventId?: string | null;
+  relatedRunId?: string | null;
+  dependencyRunIds?: string[];
+  toolId?: string | null;
+  proofTransport?: "milestone" | "demandSummary" | null;
+  classification?: string | null;
+  stopCode?: string | null;
 }
 
 export interface RuntimeRelationshipObservation {
@@ -101,6 +155,12 @@ export interface RuntimeRelationshipObservation {
   source?: string;
   taskId?: string | null;
   runId?: string | null;
+  targetTaskId?: string | null;
+  targetRunId?: string | null;
+  toolId?: string | null;
+  proofTransport?: "milestone" | "demandSummary" | null;
+  classification?: string | null;
+  parentObservationId?: string | null;
 }
 
 export interface RuntimeProofState {

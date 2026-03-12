@@ -26,6 +26,7 @@ import {
 import {
   ApprovalRecord,
   IncidentAcknowledgementRecord,
+  IncidentEscalationState,
   IncidentHistoryEvent,
   IncidentLedgerRecord,
   IncidentLedgerStatus,
@@ -34,9 +35,12 @@ import {
   IncidentLedgerTruthLayer,
   IncidentOwnershipRecord,
   IncidentRemediationOwner,
+  IncidentRemediationPlanStep,
+  IncidentRemediationPolicy,
   IncidentRemediationStatus,
   IncidentRemediationTaskRecord,
   IncidentRemediationTaskStatus,
+  IncidentVerificationState,
   OrchestratorState,
   RelationshipObservationRecord,
   RelationshipObservationStatus,
@@ -393,6 +397,36 @@ type RelationshipHistoryBucket = {
   byStatus: Partial<Record<RelationshipObservationStatus, number>>;
 };
 
+type RelationshipHistoryWindowSummary = {
+  windowHours: number;
+  totalObservations: number;
+  lastObservedAt: string | null;
+  firstObservedAt: string | null;
+  byRelationship: Partial<Record<RelationshipObservationType, number>>;
+  byStatus: Partial<Record<RelationshipObservationStatus, number>>;
+};
+
+type RelationshipHistoryGraph = {
+  totalNodes: number;
+  totalEdges: number;
+  nodes: Array<{
+    id: string;
+    label: string;
+    kind: "agent" | "task" | "skill" | "surface" | "run" | "tool" | "unknown";
+    count: number;
+    lastObservedAt: string | null;
+  }>;
+  edges: Array<{
+    id: string;
+    from: string;
+    to: string;
+    relationship: RelationshipObservationType;
+    count: number;
+    lastObservedAt: string | null;
+    classification: string | null;
+  }>;
+};
+
 type RelationshipHistory = {
   generatedAt: string;
   windowHours: number;
@@ -402,6 +436,11 @@ type RelationshipHistory = {
   byStatus: Partial<Record<RelationshipObservationStatus, number>>;
   timeline: RelationshipHistoryBucket[];
   recent: RelationshipObservationRecord[];
+  windows: {
+    short: RelationshipHistoryWindowSummary;
+    long: RelationshipHistoryWindowSummary;
+  };
+  graph: RelationshipHistoryGraph;
 };
 
 type RuntimeIncident = {
@@ -429,6 +468,8 @@ type RuntimeIncident = {
   linkedProofDeliveries: string[];
   evidence: string[];
   recommendedSteps: string[];
+  policy: IncidentRemediationPolicy;
+  escalation: IncidentEscalationState;
   remediation: {
     owner: IncidentRemediationOwner;
     status: IncidentRemediationStatus;
@@ -436,6 +477,8 @@ type RuntimeIncident = {
     nextAction: string;
     blockers: string[];
   };
+  remediationPlan: IncidentRemediationPlanStep[];
+  verification: IncidentVerificationState;
   history: IncidentHistoryEvent[];
   acknowledgements: IncidentAcknowledgementRecord[];
   ownershipHistory: IncidentOwnershipRecord[];
@@ -490,7 +533,7 @@ type WorkflowGraphNodeStatus =
 
 type WorkflowGraphNode = {
   id: string;
-  kind: "stage" | "agent" | "proof" | "event";
+  kind: "stage" | "agent" | "proof" | "event" | "tool" | "dependency" | "verification";
   stage: WorkflowEventStage;
   label: string;
   status: WorkflowGraphNodeStatus;
@@ -505,6 +548,7 @@ type WorkflowGraphEdge = {
   to: string;
   status: "declared" | "active" | "completed" | "blocked";
   detail: string;
+  relationship?: string;
 };
 
 type WorkflowGraph = {
@@ -540,6 +584,14 @@ type WorkflowGraph = {
   nodes: WorkflowGraphNode[];
   edges: WorkflowGraphEdge[];
   events: WorkflowEventRecord[];
+  causalLinks: Array<{
+    id: string;
+    from: string;
+    to: string;
+    relationship: string;
+    detail: string;
+    evidence: string[];
+  }>;
   proofLinks: Array<{
     id: string;
     type: "milestone" | "demandSummary";
@@ -2289,6 +2341,12 @@ function appendWorkflowEvent(args: {
   attempt?: number;
   relatedNodeIds?: string[];
   stopCode?: string | null;
+  parentEventId?: string | null;
+  relatedRunId?: string | null;
+  dependencyRunIds?: string[];
+  toolId?: string | null;
+  proofTransport?: "milestone" | "demandSummary" | null;
+  classification?: string | null;
 }) {
   const timestamp = normalizeIsoTimestamp(args.timestamp) ?? new Date().toISOString();
   const detail = args.detail.trim();
@@ -2320,6 +2378,27 @@ function appendWorkflowEvent(args: {
     stopCode:
       typeof args.stopCode === "string" && args.stopCode.length > 0
         ? args.stopCode
+        : null,
+    parentEventId:
+      typeof args.parentEventId === "string" && args.parentEventId.length > 0
+        ? args.parentEventId
+        : null,
+    relatedRunId:
+      typeof args.relatedRunId === "string" && args.relatedRunId.length > 0
+        ? args.relatedRunId
+        : null,
+    dependencyRunIds: args.dependencyRunIds?.filter(Boolean),
+    toolId:
+      typeof args.toolId === "string" && args.toolId.length > 0
+        ? args.toolId
+        : null,
+    proofTransport:
+      args.proofTransport === "milestone" || args.proofTransport === "demandSummary"
+        ? args.proofTransport
+        : null,
+    classification:
+      typeof args.classification === "string" && args.classification.length > 0
+        ? args.classification
         : null,
   };
 
@@ -2591,9 +2670,17 @@ function buildWorkflowGraph(args: {
   approval: ApprovalRecord | null;
   repair: OrchestratorState["repairRecords"][number] | null;
   workflowEvents: WorkflowEventRecord[];
+  relatedRelationships: RelationshipObservationRecord[];
   proofLinks: WorkflowGraph["proofLinks"];
 }) {
-  const { execution, approval, repair, workflowEvents, proofLinks } = args;
+  const {
+    execution,
+    approval,
+    repair,
+    workflowEvents,
+    relatedRelationships,
+    proofLinks,
+  } = args;
   const timingBreakdown = buildWorkflowTimingBreakdown(workflowEvents);
   const stageDurations = buildWorkflowStageDurations(workflowEvents);
   const requirement = TASK_AGENT_SKILL_REQUIREMENTS[execution.type];
@@ -2759,8 +2846,129 @@ function buildWorkflowGraph(args: {
     detail: `${event.stage} emitted ${event.state}.`,
   }));
 
-  const allNodes = [...stageNodes, ...eventNodes];
-  const allEdges = [...stageEdges, ...eventEdges, ...stageToEventEdges];
+  const supplementalNodes = new Map<string, WorkflowGraphNode>();
+  const supplementalEdges: WorkflowGraphEdge[] = [];
+  const causalLinks: WorkflowGraph["causalLinks"] = [];
+  const sortedRelationships = [...relatedRelationships].sort(
+    (left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp),
+  );
+
+  const ensureSupplementalNode = (node: WorkflowGraphNode) => {
+    if (!supplementalNodes.has(node.id)) {
+      supplementalNodes.set(node.id, node);
+    }
+    return supplementalNodes.get(node.id)!;
+  };
+
+  for (const relationship of sortedRelationships) {
+    let targetNodeId: string | null = null;
+    let targetNode: WorkflowGraphNode | null = null;
+
+    if (relationship.toolId) {
+      targetNodeId = `workflow-tool:${relationship.toolId}`;
+      targetNode = ensureSupplementalNode({
+        id: targetNodeId,
+        kind: "tool",
+        stage: "agent",
+        label: relationship.toolId,
+        status: relationship.status === "degraded" ? "warning" : "completed",
+        timestamp: relationship.timestamp,
+        detail: relationship.detail,
+        evidence: summarizeEvidence(relationship.evidence ?? []),
+      });
+    } else if (
+      relationship.relationship === "depends-on-run" ||
+      relationship.relationship === "cross-run-handoff" ||
+      relationship.targetRunId
+    ) {
+      const dependencyLabel =
+        relationship.targetRunId ??
+        relationship.targetTaskId ??
+        relationship.to ??
+        "dependency";
+      targetNodeId = `workflow-dependency:${dependencyLabel}`;
+      targetNode = ensureSupplementalNode({
+        id: targetNodeId,
+        kind: "dependency",
+        stage: "agent",
+        label: dependencyLabel,
+        status: relationship.status === "degraded" ? "blocked" : "completed",
+        timestamp: relationship.timestamp,
+        detail: relationship.detail,
+        evidence: summarizeEvidence(relationship.evidence ?? []),
+      });
+    } else if (relationship.proofTransport) {
+      targetNodeId = `workflow-proof:${relationship.proofTransport}`;
+      targetNode = ensureSupplementalNode({
+        id: targetNodeId,
+        kind: "proof",
+        stage: "proof",
+        label: relationship.proofTransport,
+        status: relationship.status === "degraded" ? "blocked" : "completed",
+        timestamp: relationship.timestamp,
+        detail: relationship.detail,
+        evidence: summarizeEvidence(relationship.evidence ?? []),
+      });
+    } else if (
+      relationship.relationship === "verifies-agent" ||
+      relationship.classification === "verification"
+    ) {
+      targetNodeId = `workflow-verification:${relationship.to}`;
+      targetNode = ensureSupplementalNode({
+        id: targetNodeId,
+        kind: "verification",
+        stage: "repair",
+        label: relationship.to.replace(/^agent:/, ""),
+        status: relationship.status === "degraded" ? "blocked" : "completed",
+        timestamp: relationship.timestamp,
+        detail: relationship.detail,
+        evidence: summarizeEvidence(relationship.evidence ?? []),
+      });
+    }
+
+    if (!targetNodeId || !targetNode) {
+      continue;
+    }
+
+    const sourceNodeId =
+      relationship.relationship === "transitions-proof"
+        ? "workflow-node:proof"
+        : relationship.relationship === "verifies-agent"
+          ? "workflow-node:repair"
+          : "workflow-node:agent";
+
+    supplementalEdges.push({
+      id: `workflow-edge:${sourceNodeId}:${targetNodeId}:${relationship.relationship}`,
+      from: sourceNodeId,
+      to: targetNodeId,
+      status:
+        relationship.status === "degraded"
+          ? "blocked"
+          : relationship.status === "warning"
+            ? "active"
+            : "completed",
+      detail: relationship.detail,
+      relationship: relationship.relationship,
+    });
+    causalLinks.push({
+      id:
+        relationship.observationId ??
+        `causal:${relationship.relationship}:${sourceNodeId}:${targetNodeId}`,
+      from: sourceNodeId,
+      to: targetNodeId,
+      relationship: relationship.relationship,
+      detail: relationship.detail,
+      evidence: summarizeEvidence(relationship.evidence ?? []),
+    });
+  }
+
+  const allNodes = [...stageNodes, ...eventNodes, ...supplementalNodes.values()];
+  const allEdges = [
+    ...stageEdges,
+    ...eventEdges,
+    ...stageToEventEdges,
+    ...supplementalEdges,
+  ];
 
   return {
     graphStatus,
@@ -2775,6 +2983,7 @@ function buildWorkflowGraph(args: {
     nodes: allNodes,
     edges: allEdges,
     events: workflowEvents,
+    causalLinks,
     proofLinks,
   };
 }
@@ -2979,6 +3188,13 @@ function buildRunRecord(
           record.runId === execution.idempotencyKey),
     ),
   );
+  const relatedRelationships = (state.relationshipObservations ?? []).filter(
+    (record) =>
+      record.runId === execution.idempotencyKey ||
+      record.targetRunId === execution.idempotencyKey ||
+      record.taskId === execution.taskId ||
+      record.targetTaskId === execution.taskId,
+  );
   const proofLinks = buildProofLinksForRun(state, execution);
   const workflowEvents = buildRunWorkflowEvents({
     execution,
@@ -2993,6 +3209,7 @@ function buildRunRecord(
     approval: relatedApproval,
     repair: relatedRepair,
     workflowEvents: relatedWorkflowEvents,
+    relatedRelationships,
     proofLinks,
   });
   const createdAt =
@@ -3165,12 +3382,22 @@ function buildKnowledgeRuntimeSignals({
     ? summary.diagnostics.contradictionSignals
     : [];
   const knowledgeGraphs = summary?.diagnostics?.graphs ?? null;
+  const repairLoop = summary?.diagnostics?.repairLoop ?? null;
   const coverageSignals: Array<{
     id: string;
     severity: "info" | "warning";
     message: string;
   }> = [];
   const stalenessSignals: Array<{
+    id: string;
+    severity: "info" | "warning";
+    message: string;
+  }> = [];
+  const openKnowledgeIncidents = (state.incidentLedger ?? []).filter(
+    (incident) =>
+      incident.status !== "resolved" && incident.classification === "knowledge",
+  ).length;
+  const repairSignals: Array<{
     id: string;
     severity: "info" | "warning";
     message: string;
@@ -3223,6 +3450,30 @@ function buildKnowledgeRuntimeSignals({
     });
   }
 
+  if (repairLoop?.status === "repair-needed") {
+    repairSignals.push({
+      id: "knowledge-repair-needed",
+      severity: "warning",
+      message:
+        "Knowledge diagnostics require an explicit repair loop before downstream agents should treat them as stable.",
+    });
+  } else if (repairLoop?.status === "watching") {
+    repairSignals.push({
+      id: "knowledge-repair-watching",
+      severity: "info",
+      message:
+        "Knowledge diagnostics are aging or partially contradictory and should stay on operator watch.",
+    });
+  }
+
+  if (openKnowledgeIncidents > 0) {
+    repairSignals.push({
+      id: "knowledge-open-incidents",
+      severity: "warning",
+      message: `${openKnowledgeIncidents} open incident(s) are currently linked to the knowledge truth layer.`,
+    });
+  }
+
   return {
     index: {
       indexedDocs: state.indexedDocs,
@@ -3250,11 +3501,30 @@ function buildKnowledgeRuntimeSignals({
       coverage: coverageSignals,
       staleness: stalenessSignals,
       contradictions: contradictionSignals,
+      repair: repairSignals,
     },
     graphs: {
       provenance: knowledgeGraphs?.provenance ?? null,
       contradictions: knowledgeGraphs?.contradictions ?? null,
       freshness: knowledgeGraphs?.freshness ?? null,
+    },
+    repairLoop: {
+      status: repairLoop?.status ?? "clear",
+      recommendedTaskType: repairLoop?.recommendedTaskType ?? "drift-repair",
+      contradictionCount: Number(repairLoop?.contradictionCount ?? contradictionSignals.length),
+      contradictionEntryIds: Array.isArray(repairLoop?.contradictionEntryIds)
+        ? repairLoop.contradictionEntryIds
+        : [],
+      unknownProvenanceCount: Number(
+        repairLoop?.unknownProvenanceCount ??
+          summary?.diagnostics?.provenance?.unknownProvenanceCount ??
+          0,
+      ),
+      freshnessStatus: repairLoop?.freshnessStatus ?? freshness?.status ?? "empty",
+      openKnowledgeIncidents,
+      focusAreas: Array.isArray(repairLoop?.focusAreas) ? repairLoop.focusAreas : [],
+      nextActions: Array.isArray(repairLoop?.nextActions) ? repairLoop.nextActions : [],
+      lastDriftRepairAt: state.lastDriftRepairAt ?? null,
     },
   };
 }
@@ -4298,8 +4568,120 @@ function buildRelationshipHistory(
   );
   const byRelationship: Partial<Record<RelationshipObservationType, number>> = {};
   const byStatus: Partial<Record<RelationshipObservationStatus, number>> = {};
-  const windowStart = Date.now() - windowHours * 60 * 60 * 1000;
+  const shortWindowHours = Math.max(6, Math.min(24, windowHours));
+  const longWindowHours = Math.max(windowHours, 24 * 7);
+  const now = Date.now();
+  const windowStart = now - windowHours * 60 * 60 * 1000;
+  const shortWindowStart = now - shortWindowHours * 60 * 60 * 1000;
+  const longWindowStart = now - longWindowHours * 60 * 60 * 1000;
   const bucketMap = new Map<string, RelationshipHistoryBucket>();
+  const graphNodeMap = new Map<
+    string,
+    {
+      id: string;
+      label: string;
+      kind:
+        | "agent"
+        | "task"
+        | "skill"
+        | "surface"
+        | "run"
+        | "tool"
+        | "unknown";
+      count: number;
+      lastObservedAt: string | null;
+    }
+  >();
+  const graphEdgeMap = new Map<
+    string,
+    {
+      id: string;
+      from: string;
+      to: string;
+      relationship: RelationshipObservationType;
+      count: number;
+      lastObservedAt: string | null;
+      classification: string | null;
+    }
+  >();
+
+  const summarizeWindow = (hours: number): RelationshipHistoryWindowSummary => {
+    const scoped = observations.filter((observation) => {
+      const timestamp = Date.parse(observation.timestamp);
+      return Number.isFinite(timestamp) && timestamp >= now - hours * 60 * 60 * 1000;
+    });
+    const scopedByRelationship: Partial<Record<RelationshipObservationType, number>> = {};
+    const scopedByStatus: Partial<Record<RelationshipObservationStatus, number>> = {};
+    for (const observation of scoped) {
+      scopedByRelationship[observation.relationship] =
+        (scopedByRelationship[observation.relationship] ?? 0) + 1;
+      scopedByStatus[observation.status] = (scopedByStatus[observation.status] ?? 0) + 1;
+    }
+    const ordered = [...scoped]
+      .map((item) => item.timestamp)
+      .filter((value) => typeof value === "string" && value.length > 0)
+      .sort();
+    return {
+      windowHours: hours,
+      totalObservations: scoped.length,
+      lastObservedAt: ordered.at(-1) ?? null,
+      firstObservedAt: ordered[0] ?? null,
+      byRelationship: scopedByRelationship,
+      byStatus: scopedByStatus,
+    };
+  };
+
+  const inferGraphNode = (raw: string | null | undefined) => {
+    const value =
+      typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : "unknown";
+    if (value.startsWith("agent:")) {
+      const label = value.slice(6);
+      return { id: value, label, kind: "agent" as const };
+    }
+    if (value.endsWith("-agent")) {
+      return { id: `agent:${value}`, label: value, kind: "agent" as const };
+    }
+    if (value.startsWith("task:")) {
+      return { id: `task:${value.slice(5)}`, label: value.slice(5), kind: "task" as const };
+    }
+    if (value.startsWith("run:")) {
+      return { id: `run:${value.slice(4)}`, label: value.slice(4), kind: "run" as const };
+    }
+    if (value.startsWith("skill:")) {
+      return { id: `skill:${value.slice(6)}`, label: value.slice(6), kind: "skill" as const };
+    }
+    if (value.startsWith("surface:")) {
+      const label = value.slice(8);
+      return { id: value, label, kind: "surface" as const };
+    }
+    if (
+      value.includes(".service") ||
+      value.includes("/api/") ||
+      value.includes("proof") ||
+      value.includes("surface")
+    ) {
+      return { id: `surface:${value}`, label: value, kind: "surface" as const };
+    }
+    if (value.includes("-") && !value.includes(" ")) {
+      return { id: `tool:${value}`, label: value, kind: "tool" as const };
+    }
+    return { id: `unknown:${value}`, label: value, kind: "unknown" as const };
+  };
+
+  const upsertGraphNode = (nodeId: string, label: string, kind: RelationshipHistoryGraph["nodes"][number]["kind"], timestamp: string) => {
+    const existing = graphNodeMap.get(nodeId) ?? {
+      id: nodeId,
+      label,
+      kind,
+      count: 0,
+      lastObservedAt: null,
+    };
+    existing.count += 1;
+    if (!existing.lastObservedAt || timestamp > existing.lastObservedAt) {
+      existing.lastObservedAt = timestamp;
+    }
+    graphNodeMap.set(nodeId, existing);
+  };
 
   for (const observation of observations) {
     byRelationship[observation.relationship] =
@@ -4326,6 +4708,40 @@ function buildRelationshipHistory(
     existing.byStatus[observation.status] =
       (existing.byStatus[observation.status] ?? 0) + 1;
     bucketMap.set(bucketStart, existing);
+
+    if (timestamp >= longWindowStart) {
+      const fromNode = inferGraphNode(observation.from);
+      const toNode = inferGraphNode(
+        observation.toolId ??
+          observation.targetRunId ??
+          observation.targetTaskId ??
+          observation.proofTransport ??
+          observation.to,
+      );
+      upsertGraphNode(fromNode.id, fromNode.label, fromNode.kind, observation.timestamp);
+      upsertGraphNode(toNode.id, toNode.label, toNode.kind, observation.timestamp);
+
+      const edgeId = [
+        fromNode.id,
+        toNode.id,
+        observation.relationship,
+        observation.classification ?? "unclassified",
+      ].join("::");
+      const existingEdge = graphEdgeMap.get(edgeId) ?? {
+        id: edgeId,
+        from: fromNode.id,
+        to: toNode.id,
+        relationship: observation.relationship,
+        count: 0,
+        lastObservedAt: null,
+        classification: observation.classification ?? null,
+      };
+      existingEdge.count += 1;
+      if (!existingEdge.lastObservedAt || observation.timestamp > existingEdge.lastObservedAt) {
+        existingEdge.lastObservedAt = observation.timestamp;
+      }
+      graphEdgeMap.set(edgeId, existingEdge);
+    }
   }
 
   return {
@@ -4339,6 +4755,26 @@ function buildRelationshipHistory(
       left.bucketStart.localeCompare(right.bucketStart),
     ),
     recent: observations.slice(0, recentLimit),
+    windows: {
+      short: summarizeWindow(shortWindowHours),
+      long: summarizeWindow(longWindowHours),
+    },
+    graph: {
+      totalNodes: graphNodeMap.size,
+      totalEdges: graphEdgeMap.size,
+      nodes: Array.from(graphNodeMap.values()).sort(
+        (left, right) =>
+          (right.lastObservedAt ?? "").localeCompare(left.lastObservedAt ?? "") ||
+          right.count - left.count ||
+          left.label.localeCompare(right.label),
+      ),
+      edges: Array.from(graphEdgeMap.values()).sort(
+        (left, right) =>
+          (right.lastObservedAt ?? "").localeCompare(left.lastObservedAt ?? "") ||
+          right.count - left.count ||
+          left.id.localeCompare(right.id),
+      ),
+    },
   };
 }
 
@@ -4433,6 +4869,394 @@ function appendIncidentHistoryEvent(
   return normalized;
 }
 
+function addMinutesIso(baseIso: string, minutes: number) {
+  const base = Date.parse(baseIso);
+  if (!Number.isFinite(base)) return null;
+  return new Date(base + minutes * 60 * 1000).toISOString();
+}
+
+function resolveIncidentRemediationPolicy(
+  classification: IncidentLedgerClassification,
+  severity: IncidentLedgerSeverity,
+): IncidentRemediationPolicy {
+  const base = (
+    {
+      knowledge: {
+        policyId: "knowledge-truth",
+        preferredOwner: "doc-specialist",
+        autoAssignOwner: true,
+        autoRemediateOnCreate: true,
+        remediationTaskType: "drift-repair",
+        verifierTaskType: "qa-verification",
+        targetSlaMinutes: 180,
+        escalationMinutes: 360,
+      },
+      repair: {
+        policyId: "repair-verification",
+        preferredOwner: "qa-verification-agent",
+        autoAssignOwner: true,
+        autoRemediateOnCreate: false,
+        remediationTaskType: "qa-verification",
+        verifierTaskType: "qa-verification",
+        targetSlaMinutes: 90,
+        escalationMinutes: 180,
+      },
+      "retry-recovery": {
+        policyId: "retry-recovery",
+        preferredOwner: "integration-agent",
+        autoAssignOwner: true,
+        autoRemediateOnCreate: true,
+        remediationTaskType: "qa-verification",
+        verifierTaskType: "qa-verification",
+        targetSlaMinutes: 60,
+        escalationMinutes: 120,
+      },
+      "runtime-mode": {
+        policyId: "runtime-mode",
+        preferredOwner: "operator",
+        autoAssignOwner: true,
+        autoRemediateOnCreate: false,
+        remediationTaskType: "system-monitor",
+        verifierTaskType: "qa-verification",
+        targetSlaMinutes: 120,
+        escalationMinutes: 240,
+      },
+      persistence: {
+        policyId: "persistence",
+        preferredOwner: "system-monitor-agent",
+        autoAssignOwner: true,
+        autoRemediateOnCreate: true,
+        remediationTaskType: "system-monitor",
+        verifierTaskType: "qa-verification",
+        targetSlaMinutes: 45,
+        escalationMinutes: 90,
+      },
+      "proof-delivery": {
+        policyId: "proof-delivery",
+        preferredOwner: "system-monitor-agent",
+        autoAssignOwner: true,
+        autoRemediateOnCreate: true,
+        remediationTaskType: "system-monitor",
+        verifierTaskType: "qa-verification",
+        targetSlaMinutes: 60,
+        escalationMinutes: 180,
+      },
+      "service-runtime": {
+        policyId: "service-runtime",
+        preferredOwner: "system-monitor-agent",
+        autoAssignOwner: true,
+        autoRemediateOnCreate: true,
+        remediationTaskType: "system-monitor",
+        verifierTaskType: "qa-verification",
+        targetSlaMinutes: 120,
+        escalationMinutes: 240,
+      },
+      "approval-backlog": {
+        policyId: "approval-backlog",
+        preferredOwner: "operator",
+        autoAssignOwner: true,
+        autoRemediateOnCreate: false,
+        remediationTaskType: "system-monitor",
+        verifierTaskType: null,
+        targetSlaMinutes: 240,
+        escalationMinutes: 480,
+      },
+    } satisfies Record<IncidentLedgerClassification, IncidentRemediationPolicy>
+  )[classification];
+
+  if (severity === "critical") {
+    return {
+      ...base,
+      targetSlaMinutes: Math.max(15, Math.floor(base.targetSlaMinutes / 2)),
+      escalationMinutes: Math.max(30, Math.floor(base.escalationMinutes / 2)),
+    };
+  }
+
+  return base;
+}
+
+function buildIncidentVerificationState(
+  record: IncidentLedgerRecord,
+  policy: IncidentRemediationPolicy,
+): IncidentVerificationState {
+  if (!policy.verifierTaskType) {
+    return {
+      required: false,
+      agentId: null,
+      status: "not-required",
+      summary: "No verifier task is required for this remediation policy.",
+      verificationTaskId: null,
+      verificationRunId: null,
+      verifiedAt: null,
+    };
+  }
+
+  const verificationTask =
+    [...(record.remediationTasks ?? [])]
+      .filter((task) => task.taskType === policy.verifierTaskType)
+      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0] ??
+    null;
+
+  if (!verificationTask) {
+    return {
+      required: true,
+      agentId: "qa-verification-agent",
+      status: "pending",
+      summary: "Verification is required before this incident can be treated as fully closed.",
+      verificationTaskId: null,
+      verificationRunId: null,
+      verifiedAt: null,
+    };
+  }
+
+  if (verificationTask.status === "running" || verificationTask.status === "verifying") {
+    return {
+      required: true,
+      agentId: "qa-verification-agent",
+      status: "running",
+      summary: "Verification is currently executing against the remediation outcome.",
+      verificationTaskId: verificationTask.taskId,
+      verificationRunId: verificationTask.runId ?? null,
+      verifiedAt: verificationTask.verifiedAt ?? null,
+    };
+  }
+
+  if (verificationTask.status === "resolved" || verificationTask.status === "verified") {
+    return {
+      required: true,
+      agentId: "qa-verification-agent",
+      status: "passed",
+      summary:
+        verificationTask.resolutionSummary ??
+        verificationTask.verificationSummary ??
+        "Verification passed for the remediation outcome.",
+      verificationTaskId: verificationTask.taskId,
+      verificationRunId: verificationTask.runId ?? null,
+      verifiedAt:
+        verificationTask.resolvedAt ??
+        verificationTask.verifiedAt ??
+        verificationTask.verificationCompletedAt ??
+        null,
+    };
+  }
+
+  if (verificationTask.status === "failed" || verificationTask.status === "blocked") {
+    return {
+      required: true,
+      agentId: "qa-verification-agent",
+      status: "failed",
+      summary:
+        verificationTask.verificationSummary ??
+        verificationTask.resolutionSummary ??
+        "Verification failed or was blocked.",
+      verificationTaskId: verificationTask.taskId,
+      verificationRunId: verificationTask.runId ?? null,
+      verifiedAt: null,
+    };
+  }
+
+  return {
+    required: true,
+    agentId: "qa-verification-agent",
+    status: "pending",
+    summary: "Verification task exists but has not yet produced a closure verdict.",
+    verificationTaskId: verificationTask.taskId,
+    verificationRunId: verificationTask.runId ?? null,
+    verifiedAt: null,
+  };
+}
+
+function buildIncidentEscalationState(
+  record: IncidentLedgerRecord,
+  policy: IncidentRemediationPolicy,
+  nowIso: string,
+): IncidentEscalationState {
+  if (record.status === "resolved") {
+    return {
+      level: "normal",
+      status: "on-track",
+      dueAt: null,
+      escalateAt: null,
+      escalatedAt: record.resolvedAt ?? null,
+      breachedAt: null,
+      summary: "Incident is resolved and no longer on an escalation clock.",
+    };
+  }
+
+  const dueAt = addMinutesIso(record.firstSeenAt, policy.targetSlaMinutes);
+  const escalateAt = addMinutesIso(record.firstSeenAt, policy.escalationMinutes);
+  const now = Date.parse(nowIso);
+  const due = dueAt ? Date.parse(dueAt) : Number.NaN;
+  const escalate = escalateAt ? Date.parse(escalateAt) : Number.NaN;
+
+  if (Number.isFinite(escalate) && now >= escalate) {
+    return {
+      level: "breached",
+      status: "breached",
+      dueAt,
+      escalateAt,
+      escalatedAt: escalateAt,
+      breachedAt: nowIso,
+      summary: "The incident has exceeded its escalation window and should be treated as breached.",
+    };
+  }
+
+  if (Number.isFinite(due) && now >= due) {
+    return {
+      level: "escalated",
+      status: "escalated",
+      dueAt,
+      escalateAt,
+      escalatedAt: nowIso,
+      breachedAt: null,
+      summary: "The incident exceeded its target response window and is now escalated.",
+    };
+  }
+
+  if (record.severity === "critical" || record.status === "active") {
+    return {
+      level: "warning",
+      status: "watching",
+      dueAt,
+      escalateAt,
+      escalatedAt: null,
+      breachedAt: null,
+      summary: "The incident is within SLA but requires active operator attention.",
+    };
+  }
+
+  return {
+    level: "normal",
+    status: "on-track",
+    dueAt,
+    escalateAt,
+    escalatedAt: null,
+    breachedAt: null,
+    summary: "The incident remains within its response window.",
+  };
+}
+
+function buildIncidentRemediationPlan(
+  record: IncidentLedgerRecord,
+  policy: IncidentRemediationPolicy,
+  verification: IncidentVerificationState,
+): IncidentRemediationPlanStep[] {
+  const remediationTasks = record.remediationTasks ?? [];
+  const primaryTasks = remediationTasks.filter(
+    (task) => task.taskType === policy.remediationTaskType,
+  );
+  const latestPrimary = primaryTasks.sort(
+    (left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt),
+  )[0];
+  const latestVerification = remediationTasks
+    .filter((task) => task.taskType === policy.verifierTaskType)
+    .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
+
+  const diagnoseStatus: IncidentRemediationPlanStep["status"] =
+    record.acknowledgedAt || record.owner ? "completed" : "active";
+  const executeStatus: IncidentRemediationPlanStep["status"] =
+    record.status === "resolved"
+      ? "completed"
+      : latestPrimary?.status === "failed" || latestPrimary?.status === "blocked"
+        ? "blocked"
+        : latestPrimary?.status === "running" ||
+            latestPrimary?.status === "assigned" ||
+            latestPrimary?.status === "queued" ||
+            latestPrimary?.status === "verifying"
+          ? "active"
+          : latestPrimary
+            ? "completed"
+            : "pending";
+  const verifyStatus: IncidentRemediationPlanStep["status"] =
+    verification.required !== true
+      ? "skipped"
+      : verification.status === "passed"
+        ? "completed"
+        : verification.status === "failed"
+          ? "blocked"
+          : verification.status === "running"
+            ? "active"
+            : "pending";
+  const closeStatus: IncidentRemediationPlanStep["status"] =
+    record.status === "resolved" ? "completed" : verification.status === "failed" ? "blocked" : "pending";
+
+  return [
+    {
+      stepId: "diagnose",
+      title: "Diagnose",
+      kind: "diagnose",
+      owner: record.owner ?? policy.preferredOwner,
+      status: diagnoseStatus,
+      description: "Triage the incident, confirm ownership, and capture operator context.",
+      taskType: null,
+      dependsOn: [],
+      startedAt: record.firstSeenAt,
+      completedAt: record.acknowledgedAt ?? null,
+      evidence: dedupeStrings([record.summary, record.owner ?? null], 6),
+    },
+    {
+      stepId: "execute",
+      title: "Execute",
+      kind: "execute",
+      owner: policy.preferredOwner,
+      status: executeStatus,
+      description: `Run the primary remediation lane using ${policy.remediationTaskType}.`,
+      taskType: policy.remediationTaskType,
+      dependsOn: ["diagnose"],
+      startedAt: latestPrimary?.executionStartedAt ?? latestPrimary?.assignedAt ?? null,
+      completedAt:
+        latestPrimary?.executionCompletedAt ??
+        latestPrimary?.resolvedAt ??
+        latestPrimary?.verifiedAt ??
+        null,
+      evidence: dedupeStrings(
+        [
+          latestPrimary?.taskId ?? null,
+          latestPrimary?.verificationSummary ?? null,
+          latestPrimary?.resolutionSummary ?? null,
+        ],
+        8,
+      ),
+    },
+    {
+      stepId: "verify",
+      title: "Verify",
+      kind: "verify",
+      owner: verification.agentId ?? "qa-verification-agent",
+      status: verifyStatus,
+      description:
+        verification.required === true
+          ? "Run verifier-led closure checks against the remediation outcome."
+          : "Verification is not required for this incident policy.",
+      taskType: policy.verifierTaskType,
+      dependsOn: ["execute"],
+      startedAt: latestVerification?.verificationStartedAt ?? latestVerification?.assignedAt ?? null,
+      completedAt:
+        verification.verifiedAt ??
+        latestVerification?.verificationCompletedAt ??
+        latestVerification?.resolvedAt ??
+        null,
+      evidence: dedupeStrings(
+        [verification.summary, latestVerification?.taskId ?? null],
+        6,
+      ),
+    },
+    {
+      stepId: "close",
+      title: "Close",
+      kind: "close",
+      owner: "operator",
+      status: closeStatus,
+      description: "Confirm the incident is resolved and preserve closure evidence.",
+      taskType: null,
+      dependsOn: ["verify"],
+      startedAt: record.resolvedAt ?? null,
+      completedAt: record.resolvedAt ?? null,
+      evidence: dedupeStrings([record.resolvedAt, record.summary], 4),
+    },
+  ];
+}
+
 function findIncidentRemediationTask(
   state: OrchestratorState,
   incidentId: string,
@@ -4506,19 +5330,23 @@ function materializeIncident(
     linkedTaskIds: record.linkedTaskIds,
     linkedRunIds: record.linkedRunIds,
     linkedRepairIds: record.linkedRepairIds,
-    linkedProofDeliveries: record.linkedProofDeliveries,
-    evidence: record.evidence,
-    recommendedSteps: record.recommendedSteps,
-    remediation: {
-      owner: record.remediation.owner,
-      status: record.remediation.status,
-      summary: record.remediation.summary,
-      nextAction: record.remediation.nextAction,
-      blockers: record.remediation.blockers,
-    },
-    history: record.history ?? [],
-    acknowledgements: record.acknowledgements ?? [],
-    ownershipHistory: record.ownershipHistory ?? [],
+  linkedProofDeliveries: record.linkedProofDeliveries,
+  evidence: record.evidence,
+  recommendedSteps: record.recommendedSteps,
+  policy: record.policy,
+  escalation: record.escalation,
+  remediation: {
+    owner: record.remediation.owner,
+    status: record.remediation.status,
+    summary: record.remediation.summary,
+    nextAction: record.remediation.nextAction,
+    blockers: record.remediation.blockers,
+  },
+  remediationPlan: record.remediationPlan ?? [],
+  verification: record.verification,
+  history: record.history ?? [],
+  acknowledgements: record.acknowledgements ?? [],
+  ownershipHistory: record.ownershipHistory ?? [],
     remediationTasks: (record.remediationTasks ?? []).map((item) => ({
       ...item,
       status: deriveIncidentRemediationTaskStatus(state, item),
@@ -4605,18 +5433,7 @@ function resolveIncidentRemediationTaskSpec(
   note?: string,
   overrideTaskType?: "drift-repair" | "qa-verification" | "system-monitor",
 ) {
-  const taskType =
-    overrideTaskType ??
-    ({
-      knowledge: "drift-repair",
-      repair: "qa-verification",
-      "retry-recovery": "qa-verification",
-      "runtime-mode": "system-monitor",
-      persistence: "system-monitor",
-      "proof-delivery": "system-monitor",
-      "service-runtime": "system-monitor",
-      "approval-backlog": "system-monitor",
-    } satisfies Record<IncidentLedgerClassification, "drift-repair" | "qa-verification" | "system-monitor">)[incident.classification];
+  const taskType = overrideTaskType ?? incident.policy.remediationTaskType;
 
   const payload: Record<string, unknown> = {
     incidentId: incident.incidentId,
@@ -4652,6 +5469,96 @@ function resolveIncidentRemediationTaskSpec(
     payload,
     reason: `Remediation task ${taskType} created for ${incident.classification}.`,
   };
+}
+
+function refreshIncidentOperationalMetadata(
+  record: IncidentLedgerRecord,
+  nowIso: string,
+) {
+  const previousEscalationLevel = record.escalation?.level ?? "normal";
+  const previousVerificationStatus = record.verification?.status ?? "not-required";
+  const previousPlanSignature = JSON.stringify(
+    (record.remediationPlan ?? []).map((step) => ({
+      stepId: step.stepId,
+      status: step.status,
+    })),
+  );
+
+  record.policy = resolveIncidentRemediationPolicy(
+    record.classification,
+    record.severity,
+  );
+  if (record.owner == null && record.policy.autoAssignOwner) {
+    record.owner = record.policy.preferredOwner;
+    record.ownershipHistory = [
+      ...(record.ownershipHistory ?? []),
+      {
+        changedAt: nowIso,
+        changedBy: "system",
+        previousOwner: null,
+        nextOwner: record.policy.preferredOwner,
+        note: "Owner assigned automatically from remediation policy.",
+      },
+    ].slice(-50);
+  }
+  record.verification = buildIncidentVerificationState(record, record.policy);
+  record.escalation = buildIncidentEscalationState(record, record.policy, nowIso);
+  record.remediationPlan = buildIncidentRemediationPlan(
+    record,
+    record.policy,
+    record.verification,
+  );
+
+  const nextPlanSignature = JSON.stringify(
+    (record.remediationPlan ?? []).map((step) => ({
+      stepId: step.stepId,
+      status: step.status,
+    })),
+  );
+
+  if (previousEscalationLevel !== record.escalation.level) {
+    appendIncidentHistoryEvent(record, {
+      timestamp: nowIso,
+      type: "escalated",
+      actor: "system",
+      summary: `Incident escalation moved to ${record.escalation.level}.`,
+      detail: record.escalation.summary,
+      evidence: [previousEscalationLevel, record.escalation.level],
+    });
+  }
+
+  if (previousVerificationStatus !== record.verification.status) {
+    appendIncidentHistoryEvent(record, {
+      timestamp: nowIso,
+      type:
+        record.verification.status === "passed"
+          ? "verification-passed"
+          : record.verification.status === "failed"
+            ? "verification-failed"
+            : "verification-required",
+      actor: "system",
+      summary: `Incident verification moved to ${record.verification.status}.`,
+      detail: record.verification.summary,
+      evidence: [
+        previousVerificationStatus,
+        record.verification.status,
+        record.verification.agentId ?? "no-agent",
+      ],
+    });
+  }
+
+  if (previousPlanSignature !== nextPlanSignature) {
+    appendIncidentHistoryEvent(record, {
+      timestamp: nowIso,
+      type: "remediation-plan-updated",
+      actor: "system",
+      summary: "Remediation plan status was refreshed from runtime evidence.",
+      detail: record.remediationPlan
+        .map((step) => `${step.title}:${step.status}`)
+        .join(", "),
+      evidence: record.remediationPlan.map((step) => `${step.stepId}:${step.status}`),
+    });
+  }
 }
 
 function reconcileRuntimeIncidentLedger(
@@ -4695,12 +5602,35 @@ function reconcileRuntimeIncidentLedger(
         linkedProofDeliveries: dedupeStrings(candidate.linkedProofDeliveries),
         evidence: dedupeStrings(candidate.evidence),
         recommendedSteps: dedupeStrings(candidate.recommendedSteps),
+        policy: resolveIncidentRemediationPolicy(
+          candidate.classification,
+          candidate.severity,
+        ),
+        escalation: {
+          level: "normal",
+          status: "on-track",
+          dueAt: null,
+          escalateAt: null,
+          escalatedAt: null,
+          breachedAt: null,
+          summary: "Escalation will be derived after reconciliation.",
+        },
         remediation: {
           owner: candidate.remediation.owner,
           status: candidate.remediation.status,
           summary: candidate.remediation.summary,
           nextAction: candidate.remediation.nextAction,
           blockers: dedupeStrings(candidate.remediation.blockers),
+        },
+        remediationPlan: [],
+        verification: {
+          required: false,
+          agentId: null,
+          status: "not-required",
+          summary: "Verification state will be derived after reconciliation.",
+          verificationTaskId: null,
+          verificationRunId: null,
+          verifiedAt: null,
         },
         history: [],
         acknowledgements: [],
@@ -4718,6 +5648,7 @@ function reconcileRuntimeIncidentLedger(
           candidate.truthLayer,
         ],
       });
+      refreshIncidentOperationalMetadata(created, detectedAt);
       state.incidentLedger.push(created);
       changed = true;
       continue;
@@ -4752,6 +5683,8 @@ function reconcileRuntimeIncidentLedger(
       linkedProofDeliveries: dedupeStrings(candidate.linkedProofDeliveries),
       evidence: dedupeStrings(candidate.evidence),
       recommendedSteps: dedupeStrings(candidate.recommendedSteps),
+      policy: existing.policy,
+      escalation: existing.escalation,
       remediation: {
         owner: candidate.remediation.owner,
         status: candidate.remediation.status,
@@ -4759,6 +5692,8 @@ function reconcileRuntimeIncidentLedger(
         nextAction: candidate.remediation.nextAction,
         blockers: dedupeStrings(candidate.remediation.blockers),
       },
+      remediationPlan: existing.remediationPlan,
+      verification: existing.verification,
       history: existing.history,
       acknowledgements: existing.acknowledgements,
       ownershipHistory: existing.ownershipHistory,
@@ -4814,6 +5749,7 @@ function reconcileRuntimeIncidentLedger(
           evidence: [previousRemediationStatus, candidate.remediation.status],
         });
       }
+      refreshIncidentOperationalMetadata(existing, detectedAt);
       changed = true;
     }
   }
@@ -4824,6 +5760,7 @@ function reconcileRuntimeIncidentLedger(
     record.status = "resolved";
     record.resolvedAt = now;
     record.remediation.status = "resolved";
+    refreshIncidentOperationalMetadata(record, now);
     appendIncidentHistoryEvent(record, {
       timestamp: now,
       type: "resolved",
@@ -4832,6 +5769,27 @@ function reconcileRuntimeIncidentLedger(
       evidence: [record.classification, record.truthLayer],
     });
     changed = true;
+  }
+
+  for (const record of state.incidentLedger) {
+    const before = JSON.stringify({
+      owner: record.owner,
+      policy: record.policy,
+      escalation: record.escalation,
+      remediationPlan: record.remediationPlan,
+      verification: record.verification,
+    });
+    refreshIncidentOperationalMetadata(record, now);
+    const after = JSON.stringify({
+      owner: record.owner,
+      policy: record.policy,
+      escalation: record.escalation,
+      remediationPlan: record.remediationPlan,
+      verification: record.verification,
+    });
+    if (before !== after) {
+      changed = true;
+    }
   }
 
   const openIncidents = [...state.incidentLedger]
@@ -5599,6 +6557,12 @@ async function bootstrap() {
       attempt?: number;
       relatedNodeIds?: string[];
       stopCode?: string | null;
+      parentEventId?: string | null;
+      relatedRunId?: string | null;
+      dependencyRunIds?: string[];
+      toolId?: string | null;
+      proofTransport?: "milestone" | "demandSummary" | null;
+      classification?: string | null;
     },
   ) => {
     const { idempotencyKey } = ensureExecutionRecord(task);
@@ -5618,6 +6582,12 @@ async function bootstrap() {
       attempt: options?.attempt,
       relatedNodeIds: options?.relatedNodeIds,
       stopCode: options?.stopCode,
+      parentEventId: options?.parentEventId,
+      relatedRunId: options?.relatedRunId,
+      dependencyRunIds: options?.dependencyRunIds,
+      toolId: options?.toolId,
+      proofTransport: options?.proofTransport,
+      classification: options?.classification,
     });
   };
 
@@ -5692,6 +6662,163 @@ async function bootstrap() {
   const findRepairRecordById = (repairId: string) =>
     state.repairRecords.find((record) => record.repairId === repairId) ?? null;
 
+  const createIncidentRemediationTask = (
+    incident: IncidentLedgerRecord,
+    options: {
+      actor: string;
+      note?: string;
+      overrideTaskType?: "drift-repair" | "qa-verification" | "system-monitor";
+      trigger: "manual" | "policy-create" | "policy-verification";
+    },
+  ) => {
+    const actor = options.actor.trim().length > 0 ? options.actor.trim() : "system";
+    const remediationSpec = resolveIncidentRemediationTaskSpec(
+      incident,
+      actor,
+      options.note,
+      options.overrideTaskType,
+    );
+    const existingOpenTask = (incident.remediationTasks ?? []).find((item) => {
+      if (item.taskType !== remediationSpec.taskType) return false;
+      const status = deriveIncidentRemediationTaskStatus(state, item);
+      return !["resolved", "failed", "blocked"].includes(status);
+    });
+    if (existingOpenTask) {
+      return {
+        created: false as const,
+        remediationTask: existingOpenTask,
+        queuedTaskId: existingOpenTask.taskId,
+      };
+    }
+
+    const remediationId = randomUUID();
+    const queuedTask = queue.enqueue(remediationSpec.taskType, {
+      ...remediationSpec.payload,
+      __remediationId: remediationId,
+      __role: options.trigger === "manual" ? "operator" : "system",
+      __requestId: null,
+    });
+    const createdAt = new Date().toISOString();
+    const assignedTo =
+      options.trigger === "manual" ? actor : incident.policy.preferredOwner;
+    const remediationTask: IncidentRemediationTaskRecord = {
+      remediationId,
+      createdAt,
+      createdBy: actor,
+      assignedTo,
+      assignedAt: createdAt,
+      taskType: remediationSpec.taskType,
+      taskId: queuedTask.id,
+      runId: queuedTask.idempotencyKey ?? queuedTask.id,
+      status: "assigned",
+      reason: remediationSpec.reason,
+      note: options.note ?? null,
+      lastUpdatedAt: createdAt,
+      blockers: [],
+    };
+
+    if (!incident.owner) {
+      assignIncidentOwner(
+        state,
+        incident.incidentId,
+        assignedTo,
+        actor,
+        options.trigger === "manual"
+          ? "Owner set automatically when remediation was assigned."
+          : `Owner assigned automatically from ${incident.policy.policyId}.`,
+      );
+    }
+
+    incident.remediationTasks = [
+      ...(incident.remediationTasks ?? []),
+      remediationTask,
+    ].slice(-50);
+    incident.linkedTaskIds = dedupeStrings(
+      [...incident.linkedTaskIds, queuedTask.id],
+      50,
+    );
+    incident.linkedRunIds = dedupeStrings(
+      [...incident.linkedRunIds, queuedTask.idempotencyKey ?? queuedTask.id],
+      50,
+    );
+    incident.remediation.status = "in-progress";
+    incident.remediation.summary =
+      options.trigger === "policy-verification"
+        ? `Verifier lane ${remediationSpec.taskType} queued automatically.`
+        : remediationSpec.reason;
+    incident.remediation.owner = incident.owner ? "operator" : incident.remediation.owner;
+    incident.remediation.nextAction = `Track assignment, execution, verification, and resolution for remediation task ${queuedTask.id}.`;
+    incident.remediation.blockers = [];
+    appendIncidentHistoryEvent(incident, {
+      timestamp: createdAt,
+      type: "remediation-task-created",
+      actor,
+      summary: remediationSpec.reason,
+      detail:
+        options.note ??
+        `Queued remediation task ${queuedTask.id} using ${remediationSpec.taskType}.`,
+      evidence: [
+        queuedTask.id,
+        queuedTask.idempotencyKey ?? queuedTask.id,
+        remediationSpec.taskType,
+      ],
+    });
+    appendIncidentHistoryEvent(incident, {
+      timestamp: createdAt,
+      type: "remediation-assigned",
+      actor,
+      summary: `Remediation ${remediationId} assigned to ${assignedTo}.`,
+      detail:
+        options.note ??
+        `${options.trigger === "manual" ? "Operator" : "Policy"} assigned remediation task ${queuedTask.id} (${remediationSpec.taskType}).`,
+      evidence: [remediationId, queuedTask.id, assignedTo],
+    });
+
+    return { created: true as const, remediationTask, queuedTaskId: queuedTask.id };
+  };
+
+  const ensureIncidentPolicyAutomation = () => {
+    let created = 0;
+    for (const incident of state.incidentLedger) {
+      if (incident.status === "resolved") continue;
+
+      const primaryTaskType = incident.policy.remediationTaskType;
+      const latestPrimary = [...(incident.remediationTasks ?? [])]
+        .filter((item) => item.taskType === primaryTaskType)
+        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
+      const latestPrimaryStatus = latestPrimary
+        ? deriveIncidentRemediationTaskStatus(state, latestPrimary)
+        : null;
+
+      if (incident.policy.autoRemediateOnCreate && !latestPrimary) {
+        const result = createIncidentRemediationTask(incident, {
+          actor: "system:auto-remediation",
+          trigger: "policy-create",
+        });
+        if (result.created) created += 1;
+        continue;
+      }
+
+      const verifierTaskType = incident.policy.verifierTaskType;
+      if (
+        verifierTaskType &&
+        verifierTaskType !== primaryTaskType &&
+        latestPrimaryStatus &&
+        ["completed", "verified", "resolved"].includes(latestPrimaryStatus) &&
+        incident.verification.status === "pending"
+      ) {
+        const result = createIncidentRemediationTask(incident, {
+          actor: "system:auto-verification",
+          note: "Verifier queued automatically after primary remediation completed.",
+          overrideTaskType: verifierTaskType,
+          trigger: "policy-verification",
+        });
+        if (result.created) created += 1;
+      }
+    }
+    return created;
+  };
+
   const refreshRuntimeIncidents = async () => {
     const persistence = await PersistenceIntegration.healthCheck();
     const agents = await buildAgentOperationalOverview(state);
@@ -5702,8 +6829,7 @@ async function bootstrap() {
       state,
     });
     const proofDelivery = buildProofDeliveryTelemetry(config, state);
-
-    return buildRuntimeIncidentModel({
+    const incidentState = buildRuntimeIncidentModel({
       config,
       state,
       fastStartMode,
@@ -5714,6 +6840,25 @@ async function bootstrap() {
       proofDelivery,
       knowledgeRuntime,
     });
+    const autoCreated = ensureIncidentPolicyAutomation();
+    if (autoCreated === 0) {
+      return incidentState;
+    }
+    const refreshed = buildRuntimeIncidentModel({
+      config,
+      state,
+      fastStartMode,
+      persistence,
+      agents,
+      governance,
+      pendingApprovalsCount: listPendingApprovals(state).length,
+      proofDelivery,
+      knowledgeRuntime,
+    });
+    return {
+      changed: incidentState.changed || autoCreated > 0 || refreshed.changed,
+      model: refreshed.model,
+    };
   };
 
   const syncIncidentRemediationOnTaskStart = (
@@ -5820,6 +6965,47 @@ async function bootstrap() {
     const verifiedAt = new Date().toISOString();
     current.remediationTask.verificationCompletedAt = verifiedAt;
     current.remediationTask.lastUpdatedAt = verifiedAt;
+    const verifierTaskType = current.incident.policy.verifierTaskType;
+    const requiresSeparateVerifier =
+      Boolean(verifierTaskType) && verifierTaskType !== current.remediationTask.taskType;
+
+    if (requiresSeparateVerifier) {
+      current.remediationTask.status = "verified";
+      current.remediationTask.verifiedAt = verifiedAt;
+      current.remediationTask.verificationSummary =
+        message ??
+        `Primary remediation ${current.remediationTask.taskType} completed; verifier lane required before closure.`;
+      current.remediationTask.blockers = [];
+      const autoVerifier = createIncidentRemediationTask(current.incident, {
+        actor: "system:auto-verification",
+        note: "Verifier queued automatically after primary remediation completed.",
+        overrideTaskType: verifierTaskType ?? undefined,
+        trigger: "policy-verification",
+      });
+      current.incident.remediation.status = autoVerifier.created ? "watching" : "in-progress";
+      current.incident.remediation.summary = autoVerifier.created
+        ? "Primary remediation completed; verifier lane is now queued."
+        : "Primary remediation completed; verifier lane is already active.";
+      current.incident.remediation.nextAction = autoVerifier.created
+        ? `Wait for verifier task ${autoVerifier.queuedTaskId} to produce a closure verdict.`
+        : "Track the existing verifier task to completion.";
+      current.incident.remediation.blockers = [];
+      appendIncidentHistoryEvent(current.incident, {
+        timestamp: verifiedAt,
+        type: "remediation-verified",
+        actor: resolveTaskActor(task),
+        summary: `Primary remediation ${current.remediationTask.remediationId} completed.`,
+        detail:
+          message ??
+          `Task ${task.type} completed; a verifier task is required before incident closure.`,
+        evidence: [
+          current.remediationTask.remediationId,
+          current.remediationTask.taskId,
+          verifierTaskType ?? "no-verifier",
+        ],
+      });
+      return;
+    }
 
     if (current.incident.status === "resolved") {
       current.remediationTask.status = "resolved";
@@ -7225,92 +8411,17 @@ async function bootstrap() {
             ? (req.body.taskType as "drift-repair" | "qa-verification" | "system-monitor")
             : undefined;
 
-        const remediationSpec = resolveIncidentRemediationTaskSpec(
-          incident,
+        const result = createIncidentRemediationTask(incident, {
           actor,
           note,
           overrideTaskType,
-        );
-        const remediationId = randomUUID();
-        const queuedTask = queue.enqueue(remediationSpec.taskType, {
-          ...remediationSpec.payload,
-          __remediationId: remediationId,
-          __role: req.auth?.role ?? "operator",
-          __requestId: req.auth?.requestId ?? null,
-        });
-        const createdAt = new Date().toISOString();
-        const remediationTask: IncidentRemediationTaskRecord = {
-          remediationId,
-          createdAt,
-          createdBy: actor,
-          assignedTo: actor,
-          assignedAt: createdAt,
-          taskType: remediationSpec.taskType,
-          taskId: queuedTask.id,
-          runId: queuedTask.idempotencyKey ?? queuedTask.id,
-          status: "assigned",
-          reason: remediationSpec.reason,
-          note: note ?? null,
-          lastUpdatedAt: createdAt,
-          blockers: [],
-        };
-
-        if (!incident.owner) {
-          assignIncidentOwner(
-            state,
-            incident.incidentId,
-            actor,
-            actor,
-            "Owner set automatically when remediation was assigned.",
-          );
-        }
-
-        incident.remediationTasks = [
-          ...(incident.remediationTasks ?? []),
-          remediationTask,
-        ].slice(-50);
-        incident.linkedTaskIds = dedupeStrings(
-          [...incident.linkedTaskIds, queuedTask.id],
-          50,
-        );
-        incident.linkedRunIds = dedupeStrings(
-          [...incident.linkedRunIds, queuedTask.idempotencyKey ?? queuedTask.id],
-          50,
-        );
-        incident.remediation.status = "in-progress";
-        incident.remediation.summary = remediationSpec.reason;
-        incident.remediation.owner = "operator";
-        incident.remediation.nextAction = `Track assignment, execution, verification, and resolution for remediation task ${queuedTask.id}.`;
-        incident.remediation.blockers = [];
-        appendIncidentHistoryEvent(incident, {
-          timestamp: createdAt,
-          type: "remediation-task-created",
-          actor,
-          summary: remediationSpec.reason,
-          detail:
-            note ??
-            `Queued remediation task ${queuedTask.id} using ${remediationSpec.taskType}.`,
-          evidence: [
-            queuedTask.id,
-            queuedTask.idempotencyKey ?? queuedTask.id,
-            remediationSpec.taskType,
-          ],
-        });
-        appendIncidentHistoryEvent(incident, {
-          timestamp: createdAt,
-          type: "remediation-assigned",
-          actor,
-          summary: `Remediation ${remediationId} assigned to ${actor}.`,
-          detail:
-            note ??
-            `Operator ${actor} assigned remediation task ${queuedTask.id} (${remediationSpec.taskType}).`,
-          evidence: [remediationId, queuedTask.id, actor],
+          trigger: "manual",
         });
 
         await flushState();
         return res.json({
           status: "ok",
-          remediationTask,
+          remediationTask: result.remediationTask,
           incident: materializeIncident(incident, state),
         });
       } catch (error: any) {
@@ -7369,17 +8480,7 @@ async function bootstrap() {
           windowHours: 24,
           recentLimit: 20,
         });
-        const incidentState = buildRuntimeIncidentModel({
-          config,
-          state,
-          fastStartMode,
-          persistence,
-          agents,
-          governance,
-          pendingApprovalsCount: pendingApprovals.length,
-          proofDelivery,
-          knowledgeRuntime,
-        });
+        const incidentState = await refreshRuntimeIncidents();
         const incidents = incidentState.model;
         if (incidentState.changed) {
           await flushState();
@@ -7423,6 +8524,8 @@ async function bootstrap() {
               byRelationship: relationshipHistory.byRelationship,
               byStatus: relationshipHistory.byStatus,
               timeline: relationshipHistory.timeline,
+              windows: relationshipHistory.windows,
+              graph: relationshipHistory.graph,
             },
           },
           incidents,
@@ -7880,17 +8983,7 @@ async function bootstrap() {
           windowHours: 24,
           recentLimit: 20,
         });
-        const incidentState = buildRuntimeIncidentModel({
-          config,
-          state,
-          fastStartMode,
-          persistence,
-          agents,
-          governance,
-          pendingApprovalsCount,
-          proofDelivery,
-          knowledgeRuntime,
-        });
+        const incidentState = await refreshRuntimeIncidents();
         const incidents = incidentState.model;
         if (incidentState.changed) {
           await flushState();
@@ -7957,6 +9050,8 @@ async function bootstrap() {
               byRelationship: relationshipHistory.byRelationship,
               byStatus: relationshipHistory.byStatus,
               timeline: relationshipHistory.timeline,
+              windows: relationshipHistory.windows,
+              graph: relationshipHistory.graph,
             },
           },
           incidents,

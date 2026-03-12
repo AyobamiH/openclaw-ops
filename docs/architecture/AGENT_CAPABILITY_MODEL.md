@@ -1,12 +1,12 @@
 ---
-title: "Ultra Super Agent Architecture"
+title: "Agent Capability Model"
 summary: "Concrete capability target for OpenClaw agents, agent by agent."
 ---
 
-# Ultra Super Agent Architecture
+# Agent Capability Model
 
 This document defines the target capability model for OpenClaw agents when they
-are treated as ultra super agents rather than thin task wrappers.
+are treated as ultra-capable operators rather than thin task wrappers.
 
 It is intentionally stricter than the current runtime.
 
@@ -34,7 +34,7 @@ The target architecture is:
 - `governance` constrains risk
 - `memory` and `verification` turn execution into operationally reliable work
 
-An ultra super agent is therefore not just “good at prompts.” It is:
+An ultra-capable agent is therefore not just “good at prompts.” It is:
 
 - role-exact
 - evidence-grounded
@@ -47,7 +47,7 @@ An ultra super agent is therefore not just “good at prompts.” It is:
 
 ## Universal Capability Baseline
 
-Every ultra super agent should eventually support all of the following.
+Every ultra-capable agent should eventually support all of the following.
 
 ### 1. Role Intelligence
 
@@ -124,8 +124,8 @@ cleverness and tool invocation noise.
 
 ## Current Runtime Progress
 
-The runtime has not reached the ultra target yet, but the current code now has
-real movement in that direction.
+The runtime has not reached the full capability target yet, but the current
+code now has real movement in that direction.
 
 - `doc-specialist` now includes runtime truth in its generated knowledge packs,
   including task execution summaries, incident counts, proof transport posture,
@@ -146,6 +146,19 @@ real movement in that direction.
   `coordinates-agent`.
 - Incident remediation is now tracked across assignment, execution,
   verification, blocking, and resolution in the persistent incident ledger.
+- Incident policy automation now adds owner preference, remediation task type,
+  verifier task type, SLA target, escalation posture, and remediation-plan
+  state directly to the ledger so operators can reason about closure rather
+  than only linkage.
+- Runtime relationship history now includes short/long windows and an observed
+  graph over agents, tasks, skills, runs, surfaces, and tools instead of only
+  aggregate counts.
+- Knowledge runtime truth now exposes provenance, contradiction, freshness, and
+  repair-loop signals so `doc-specialist` and operators can distinguish “repair
+  needed” from “watching” and “clear”.
+- Capability readiness now exposes target capabilities, evidence profiles, and
+  current gaps so the strongest agents can be judged against the capability
+  model with real runtime evidence.
 
 ## Agent Capability Targets
 

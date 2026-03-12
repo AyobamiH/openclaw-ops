@@ -106,12 +106,17 @@ export type IncidentHistoryEventType =
   | "status-changed"
   | "severity-changed"
   | "summary-updated"
+  | "escalated"
   | "acknowledged"
   | "owner-changed"
+  | "remediation-plan-updated"
   | "remediation-task-created"
   | "remediation-assigned"
   | "remediation-executing"
   | "remediation-verified"
+  | "verification-required"
+  | "verification-passed"
+  | "verification-failed"
   | "remediation-status-changed"
   | "resolved";
 
@@ -150,6 +155,58 @@ export type IncidentRemediationTaskStatus =
   | "completed"
   | "failed"
   | "unknown";
+
+export type IncidentRemediationPlanStepStatus =
+  | "pending"
+  | "active"
+  | "completed"
+  | "blocked"
+  | "skipped";
+
+export interface IncidentRemediationPlanStep {
+  stepId: string;
+  title: string;
+  kind: "diagnose" | "execute" | "verify" | "close";
+  owner: string;
+  status: IncidentRemediationPlanStepStatus;
+  description: string;
+  taskType?: string | null;
+  dependsOn: string[];
+  startedAt?: string | null;
+  completedAt?: string | null;
+  evidence: string[];
+}
+
+export interface IncidentRemediationPolicy {
+  policyId: string;
+  preferredOwner: string;
+  autoAssignOwner: boolean;
+  autoRemediateOnCreate: boolean;
+  remediationTaskType: "drift-repair" | "qa-verification" | "system-monitor";
+  verifierTaskType: "qa-verification" | null;
+  targetSlaMinutes: number;
+  escalationMinutes: number;
+}
+
+export interface IncidentEscalationState {
+  level: "normal" | "warning" | "escalated" | "breached";
+  status: "on-track" | "watching" | "escalated" | "breached";
+  dueAt: string | null;
+  escalateAt: string | null;
+  escalatedAt?: string | null;
+  breachedAt?: string | null;
+  summary: string;
+}
+
+export interface IncidentVerificationState {
+  required: boolean;
+  agentId: string | null;
+  status: "not-required" | "pending" | "running" | "passed" | "failed";
+  summary: string;
+  verificationTaskId?: string | null;
+  verificationRunId?: string | null;
+  verifiedAt?: string | null;
+}
 
 export interface IncidentRemediationTaskRecord {
   remediationId: string;
@@ -199,6 +256,8 @@ export interface IncidentLedgerRecord {
   linkedProofDeliveries: string[];
   evidence: string[];
   recommendedSteps: string[];
+  policy: IncidentRemediationPolicy;
+  escalation: IncidentEscalationState;
   remediation: {
     owner: IncidentRemediationOwner;
     status: IncidentRemediationStatus;
@@ -206,6 +265,8 @@ export interface IncidentLedgerRecord {
     nextAction: string;
     blockers: string[];
   };
+  remediationPlan: IncidentRemediationPlanStep[];
+  verification: IncidentVerificationState;
   history: IncidentHistoryEvent[];
   acknowledgements: IncidentAcknowledgementRecord[];
   ownershipHistory: IncidentOwnershipRecord[];
@@ -235,13 +296,18 @@ export type WorkflowEventStage =
 export type RelationshipObservationType =
   | "dispatches-task"
   | "routes-to-agent"
+  | "delegates-task"
   | "uses-skill"
+  | "invokes-tool"
   | "publishes-proof"
+  | "transitions-proof"
   | "feeds-agent"
   | "verifies-agent"
   | "monitors-agent"
   | "audits-agent"
-  | "coordinates-agent";
+  | "coordinates-agent"
+  | "depends-on-run"
+  | "cross-run-handoff";
 
 export type RelationshipObservationStatus =
   | "observed"
@@ -264,6 +330,12 @@ export interface WorkflowEventRecord {
   attempt?: number;
   relatedNodeIds?: string[];
   stopCode?: string | null;
+  parentEventId?: string | null;
+  relatedRunId?: string | null;
+  dependencyRunIds?: string[];
+  toolId?: string | null;
+  proofTransport?: "milestone" | "demandSummary" | null;
+  classification?: string | null;
 }
 
 export interface RelationshipObservationRecord {
@@ -277,6 +349,12 @@ export interface RelationshipObservationRecord {
   detail: string;
   taskId?: string | null;
   runId?: string | null;
+  targetTaskId?: string | null;
+  targetRunId?: string | null;
+  toolId?: string | null;
+  proofTransport?: "milestone" | "demandSummary" | null;
+  classification?: string | null;
+  parentObservationId?: string | null;
   evidence: string[];
 }
 

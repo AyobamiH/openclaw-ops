@@ -4,10 +4,14 @@ import { dirname } from "node:path";
 import { mkdir } from "node:fs/promises";
 import {
   IncidentAcknowledgementRecord,
+  IncidentEscalationState,
   IncidentHistoryEvent,
   IncidentLedgerRecord,
   IncidentOwnershipRecord,
+  IncidentRemediationPlanStep,
+  IncidentRemediationPolicy,
   IncidentRemediationTaskRecord,
+  IncidentVerificationState,
   OrchestratorState,
   RepairRecord,
   RelationshipObservationRecord,
@@ -158,6 +162,139 @@ function normalizeIncidentRemediationTask(
   };
 }
 
+function normalizeIncidentRemediationPolicy(
+  value: unknown,
+): IncidentRemediationPolicy {
+  const raw =
+    value && typeof value === "object"
+      ? (value as Partial<IncidentRemediationPolicy>)
+      : {};
+  return {
+    policyId:
+      typeof raw.policyId === "string" && raw.policyId.length > 0
+        ? raw.policyId
+        : "operator-review",
+    preferredOwner:
+      typeof raw.preferredOwner === "string" && raw.preferredOwner.length > 0
+        ? raw.preferredOwner
+        : "operator",
+    autoAssignOwner: raw.autoAssignOwner === true,
+    autoRemediateOnCreate: raw.autoRemediateOnCreate === true,
+    remediationTaskType:
+      raw.remediationTaskType === "drift-repair" ||
+      raw.remediationTaskType === "qa-verification" ||
+      raw.remediationTaskType === "system-monitor"
+        ? raw.remediationTaskType
+        : "system-monitor",
+    verifierTaskType:
+      raw.verifierTaskType === "qa-verification" ? raw.verifierTaskType : null,
+    targetSlaMinutes:
+      typeof raw.targetSlaMinutes === "number" &&
+      Number.isFinite(raw.targetSlaMinutes)
+        ? raw.targetSlaMinutes
+        : 120,
+    escalationMinutes:
+      typeof raw.escalationMinutes === "number" &&
+      Number.isFinite(raw.escalationMinutes)
+        ? raw.escalationMinutes
+        : 240,
+  };
+}
+
+function normalizeIncidentEscalationState(
+  value: unknown,
+): IncidentEscalationState {
+  const raw =
+    value && typeof value === "object"
+      ? (value as Partial<IncidentEscalationState>)
+      : {};
+  return {
+    level:
+      raw.level === "warning" ||
+      raw.level === "escalated" ||
+      raw.level === "breached"
+        ? raw.level
+        : "normal",
+    status:
+      raw.status === "watching" ||
+      raw.status === "escalated" ||
+      raw.status === "breached"
+        ? raw.status
+        : "on-track",
+    dueAt: typeof raw.dueAt === "string" ? raw.dueAt : null,
+    escalateAt: typeof raw.escalateAt === "string" ? raw.escalateAt : null,
+    escalatedAt: typeof raw.escalatedAt === "string" ? raw.escalatedAt : null,
+    breachedAt: typeof raw.breachedAt === "string" ? raw.breachedAt : null,
+    summary:
+      typeof raw.summary === "string" && raw.summary.length > 0
+        ? raw.summary
+        : "Escalation state has not been derived yet.",
+  };
+}
+
+function normalizeIncidentVerificationState(
+  value: unknown,
+): IncidentVerificationState {
+  const raw =
+    value && typeof value === "object"
+      ? (value as Partial<IncidentVerificationState>)
+      : {};
+  return {
+    required: raw.required === true,
+    agentId: typeof raw.agentId === "string" ? raw.agentId : null,
+    status:
+      raw.status === "pending" ||
+      raw.status === "running" ||
+      raw.status === "passed" ||
+      raw.status === "failed"
+        ? raw.status
+        : raw.required === true
+          ? "pending"
+          : "not-required",
+    summary:
+      typeof raw.summary === "string" && raw.summary.length > 0
+        ? raw.summary
+        : raw.required === true
+          ? "Verification is required before closure."
+          : "Verification is not required for this incident.",
+    verificationTaskId:
+      typeof raw.verificationTaskId === "string" ? raw.verificationTaskId : null,
+    verificationRunId:
+      typeof raw.verificationRunId === "string" ? raw.verificationRunId : null,
+    verifiedAt: typeof raw.verifiedAt === "string" ? raw.verifiedAt : null,
+  };
+}
+
+function normalizeIncidentRemediationPlanStep(
+  value: unknown,
+): IncidentRemediationPlanStep | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<IncidentRemediationPlanStep>;
+  if (
+    typeof raw.stepId !== "string" ||
+    typeof raw.title !== "string" ||
+    typeof raw.kind !== "string" ||
+    typeof raw.owner !== "string" ||
+    typeof raw.status !== "string" ||
+    typeof raw.description !== "string"
+  ) {
+    return null;
+  }
+  return {
+    stepId: raw.stepId,
+    title: raw.title,
+    kind: raw.kind as IncidentRemediationPlanStep["kind"],
+    owner: raw.owner,
+    status: raw.status as IncidentRemediationPlanStep["status"],
+    description: raw.description,
+    taskType: typeof raw.taskType === "string" ? raw.taskType : null,
+    dependsOn: normalizeStringArray(raw.dependsOn, 10),
+    startedAt: typeof raw.startedAt === "string" ? raw.startedAt : null,
+    completedAt: typeof raw.completedAt === "string" ? raw.completedAt : null,
+    evidence: normalizeStringArray(raw.evidence, 25),
+  };
+}
+
 function normalizeRelationshipObservation(
   value: unknown,
 ): RelationshipObservationRecord | null {
@@ -186,6 +323,17 @@ function normalizeRelationshipObservation(
     detail: raw.detail,
     taskId: typeof raw.taskId === "string" ? raw.taskId : null,
     runId: typeof raw.runId === "string" ? raw.runId : null,
+    targetTaskId: typeof raw.targetTaskId === "string" ? raw.targetTaskId : null,
+    targetRunId: typeof raw.targetRunId === "string" ? raw.targetRunId : null,
+    toolId: typeof raw.toolId === "string" ? raw.toolId : null,
+    proofTransport:
+      raw.proofTransport === "milestone" || raw.proofTransport === "demandSummary"
+        ? raw.proofTransport
+        : null,
+    classification:
+      typeof raw.classification === "string" ? raw.classification : null,
+    parentObservationId:
+      typeof raw.parentObservationId === "string" ? raw.parentObservationId : null,
     evidence: normalizeStringArray(raw.evidence, 25),
   };
 }
@@ -201,10 +349,19 @@ function normalizeIncidentLedgerRecord(record: IncidentLedgerRecord) {
     linkedProofDeliveries: normalizeStringArray(record.linkedProofDeliveries, 25),
     evidence: normalizeStringArray(record.evidence, 25),
     recommendedSteps: normalizeStringArray(record.recommendedSteps, 25),
+    policy: normalizeIncidentRemediationPolicy(record.policy),
+    escalation: normalizeIncidentEscalationState(record.escalation),
     remediation: {
       ...record.remediation,
       blockers: normalizeStringArray(record.remediation?.blockers, 25),
     },
+    remediationPlan: Array.isArray(record.remediationPlan)
+      ? record.remediationPlan
+          .map(normalizeIncidentRemediationPlanStep)
+          .filter((item): item is IncidentRemediationPlanStep => item !== null)
+          .slice(-25)
+      : [],
+    verification: normalizeIncidentVerificationState(record.verification),
     history: Array.isArray(record.history)
       ? record.history
           .map(normalizeIncidentHistoryEvent)

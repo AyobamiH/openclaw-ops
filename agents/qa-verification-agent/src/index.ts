@@ -84,6 +84,30 @@ interface VerificationContext {
   evidence: string[];
 }
 
+interface VerificationRelationshipOutput {
+  from: string;
+  to: string;
+  relationship: 'verifies-agent' | 'depends-on-run';
+  detail: string;
+  evidence: string[];
+  targetRunId?: string;
+}
+
+interface VerificationToolInvocationOutput {
+  toolId: string;
+  detail: string;
+  evidence: string[];
+  classification: 'required' | 'optional';
+}
+
+interface ClosureRecommendation {
+  decision: 'close-incident' | 'keep-open' | 'escalate';
+  allowClosure: boolean;
+  confidence: 'low' | 'medium' | 'high';
+  summary: string;
+  nextActions: string[];
+}
+
 let agentConfig: AgentConfig;
 let executeSkillFn: ExecuteSkillFn | null = null;
 
@@ -592,6 +616,68 @@ async function runTestRunner(
   );
 }
 
+function buildClosureRecommendation(args: {
+  context: VerificationContext;
+  passed: boolean;
+  evidenceQuality: 'strong' | 'partial' | 'minimal';
+  reproducibility: 'verified' | 'failed' | 'unproven';
+  dryRun?: boolean;
+}): ClosureRecommendation {
+  const { context, passed, evidenceQuality, reproducibility, dryRun } = args;
+
+  if (dryRun) {
+    return {
+      decision: 'keep-open',
+      allowClosure: false,
+      confidence: 'low',
+      summary: 'Dry-run validation cannot close an incident or certify a remediation outcome.',
+      nextActions: [
+        'Run execute mode for bounded verification.',
+        'Capture runtime evidence after remediation completes.',
+      ],
+    };
+  }
+
+  if (!passed || reproducibility === 'failed') {
+    return {
+      decision: 'escalate',
+      allowClosure: false,
+      confidence: 'high',
+      summary: 'Verification failed; incident closure is not permitted.',
+      nextActions: [
+        'Inspect the failing command output.',
+        'Review remediation blockers and rerun verification after repair.',
+      ],
+    };
+  }
+
+  if (context.verificationSignals.length > 0 || evidenceQuality === 'minimal') {
+    return {
+      decision: 'keep-open',
+      allowClosure: false,
+      confidence: evidenceQuality === 'minimal' ? 'medium' : 'high',
+      summary:
+        context.verificationSignals[0] ??
+        'Runtime evidence is still too weak to support closure.',
+      nextActions: [
+        'Reconcile runtime truth and relationship evidence.',
+        'Run another verifier pass after missing evidence appears.',
+      ],
+    };
+  }
+
+  return {
+    decision: 'close-incident',
+    allowClosure: true,
+    confidence: evidenceQuality === 'strong' ? 'high' : 'medium',
+    summary: 'Verification passed with enough runtime evidence to support closure.',
+    nextActions: [
+      'Mark the incident resolved if runtime reconciliation also agrees.',
+      'Keep the incident on watch for recurrence.',
+    ],
+  };
+}
+
 async function handleTask(task: any): Promise<any> {
   if (!agentConfig) {
     await loadConfig();
@@ -605,6 +691,7 @@ async function handleTask(task: any): Promise<any> {
     agentConfig.orchestratorStatePath,
   );
   const initialVerificationContext = buildVerificationContext(task, runtimeState);
+  const targetAgentId = resolveTargetAgentId(task);
 
   console.log(`[${agentId}] Starting task: ${taskId}`);
 
@@ -656,10 +743,38 @@ async function handleTask(task: any): Promise<any> {
 
     const runnerData = testResult.data;
     if (runnerData.dryRun === true || request.mode === 'dry-run') {
+      const closureRecommendation = buildClosureRecommendation({
+        context: initialVerificationContext,
+        passed: true,
+        evidenceQuality: 'minimal',
+        reproducibility: 'unproven',
+        dryRun: true,
+      });
       return {
         ...buildDryRunResult(taskId, agentId, request, runnerData),
         runtimeContext: initialVerificationContext,
         verificationSignals: initialVerificationContext.verificationSignals,
+        relationships:
+          targetAgentId
+            ? [
+                {
+                  from: 'agent:qa-verification-agent',
+                  to: `agent:${targetAgentId}`,
+                  relationship: 'verifies-agent',
+                  detail: `qa-verification-agent prepared dry-run coverage for ${targetAgentId}.`,
+                  evidence: initialVerificationContext.evidence,
+                },
+              ]
+            : [],
+        toolInvocations: [
+          {
+            toolId: 'testRunner',
+            detail: `qa-verification-agent validated ${request.testCommand ?? 'qa alias'} in dry-run mode.`,
+            evidence: initialVerificationContext.evidence,
+            classification: 'required',
+          },
+        ],
+        closureRecommendation,
         evidence: initialVerificationContext.evidence,
       };
     }
@@ -709,6 +824,32 @@ async function handleTask(task: any): Promise<any> {
         : totalChecks > 0
           ? 'failed'
           : 'unproven';
+    const closureRecommendation = buildClosureRecommendation({
+      context: verificationContext,
+      passed: runnerData.passed === true,
+      evidenceQuality,
+      reproducibility,
+    });
+    const relationships: VerificationRelationshipOutput[] = [];
+    if (targetAgentId) {
+      relationships.push({
+        from: 'agent:qa-verification-agent',
+        to: `agent:${targetAgentId}`,
+        relationship: 'verifies-agent',
+        detail: `qa-verification-agent verified ${targetAgentId} with ${request.testCommand ?? 'bounded verification'}.`,
+        evidence: verificationContext.evidence,
+      });
+    }
+    for (const runId of asStringArray(task.runIds ?? task.input?.runIds)) {
+      relationships.push({
+        from: 'agent:qa-verification-agent',
+        to: `task:${task.type}`,
+        relationship: 'depends-on-run',
+        detail: `qa-verification-agent relied on workflow evidence from ${runId}.`,
+        evidence: [`run:${runId}`],
+        targetRunId: runId,
+      });
+    }
 
     return {
       taskId,
@@ -733,6 +874,20 @@ async function handleTask(task: any): Promise<any> {
         reproducibility,
         policyFit: 'bounded-test-runner',
       },
+      relationships,
+      toolInvocations: [
+        {
+          toolId: 'testRunner',
+          detail: `qa-verification-agent executed ${request.testCommand ?? 'qa alias'} against the orchestrator workspace.`,
+          evidence: [
+            `checks:${totalChecks}`,
+            `passed:${passedChecks}`,
+            ...verificationContext.evidence.slice(0, 4),
+          ],
+          classification: 'required',
+        },
+      ],
+      closureRecommendation,
       report: {
         timestamp: new Date().toISOString(),
         taskId,
@@ -749,6 +904,7 @@ async function handleTask(task: any): Promise<any> {
           workflowEvents: verificationContext.workflow.totalEvents,
           relationshipEvents: verificationContext.relationships.total,
         },
+        closureRecommendation,
       },
       results: [
         {
