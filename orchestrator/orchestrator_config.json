@@ -1,7 +1,15 @@
 {
-  "docsPath": "/app/docs",
-  "logsDir": "/app/logs",
-  "stateFile": "/app/data/orchestrator-state.json",
+  "docsPath": "/workspace/openclaw-docs",
+  "cookbookPath": "/workspace/openai-cookbook",
+  "logsDir": "/workspace/logs",
+  "stateFile": "/workspace/orchestrator/data/orchestrator-state.json",
+  "strictPersistence": false,
+  "deployBaseDir": "/workspace/agents-deployed",
+  "rssConfigPath": "/workspace/rss_filter_config.json",
+  "redditDraftsPath": "/workspace/logs/reddit-drafts.jsonl",
+  "knowledgePackDir": "/workspace/logs/knowledge-packs",
+  "runtimeEngagementOsPath": "/workspace/RUNTIME_ENGAGEMENT_OS.md",
+  "digestDir": "/workspace/logs/digests",
   "corsAllowedOrigins": [
     "https://preview--openclaw-operator-station.lovable.app"
   ],
@@ -24,6 +32,6 @@
   "corsAllowCredentials": false,
   "corsMaxAgeSeconds": 600,
   "milestoneIngestUrl": "",
-  "milestoneFeedPath": "/app/data/milestones-feed.json",
+  "milestoneFeedPath": "/workspace/orchestrator/data/milestones-feed.json",
   "gitPushOnMilestone": false
 }

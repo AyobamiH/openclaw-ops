@@ -4,25 +4,35 @@ services:
   # Orchestrator Application
   orchestrator:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     container_name: openclaw-orchestrator
+    env_file:
+      - .env
     ports:
       - "3000:3000"
     environment:
       NODE_ENV: development
       LOG_LEVEL: debug
       PORT: 3000
+      ORCHESTRATOR_CONFIG: /workspace/orchestrator/orchestrator_config.json
       # API Keys (from .env)
+      API_KEY_ROTATION: ${API_KEY_ROTATION}
+      API_KEY: ${API_KEY}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       # Database
-      DATABASE_URL: ${DATABASE_URL}
+      MONGO_USERNAME: ${MONGO_USERNAME}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      DB_NAME: ${DB_NAME:-orchestrator}
+      DATABASE_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/${DB_NAME:-orchestrator}?authSource=admin
       # Redis Cache
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_URL: ${REDIS_URL}
       # Monitoring
       PROMETHEUS_ENABLED: "true"
-      PROMETHEUS_PORT: 9090
+      PROMETHEUS_PORT: 9100
       GRAFANA_ENABLED: "true"
       GRAFANA_PORT: 3001
       # Milestone pipeline
@@ -33,10 +43,8 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./logs:/app/logs
-      - ./data:/app/data
-      - ./src:/app/src
-      - .:/app/workspace
+      - ../logs:/workspace/logs
+      - ./data:/workspace/orchestrator/data
     networks:
       - orchestrator-net
     restart: unless-stopped
@@ -49,7 +57,7 @@ services:
 
   # MongoDB for State & Audit Trail Persistence
   mongo:
-    image: mongo:7.0.3
+    image: mongo:latest
     container_name: openclaw-mongo
     ports:
       - "127.0.0.1:27017:27017"
@@ -64,7 +72,7 @@ services:
       - orchestrator-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mongosh", "--username", "${MONGO_USERNAME}", "--password", "${MONGO_PASSWORD}", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--username", "${MONGO_USERNAME}", "--password", "${MONGO_PASSWORD}", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -79,7 +87,7 @@ services:
 
   # Redis for Cache & Session Storage
   redis:
-    image: redis:7.0.10-alpine
+    image: redis:latest
     container_name: openclaw-redis
     ports:
       - "127.0.0.1:6379:6379"
@@ -90,7 +98,7 @@ services:
       - orchestrator-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3

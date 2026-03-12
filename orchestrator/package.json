@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
+    "dev": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs src/index.ts",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",

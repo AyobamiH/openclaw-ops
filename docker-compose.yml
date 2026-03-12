@@ -3,22 +3,26 @@ version: '3.8'
 services:
   orchestrator:
     build:
-      context: ./orchestrator
+      context: .
       dockerfile: Dockerfile
     container_name: openclaw-orchestrator
-    working_dir: /app
+    env_file:
+      - ./orchestrator/.env
     volumes:
-      - ./orchestrator/logs:/app/logs
-      - ./orchestrator/data:/app/data
-      - ./orchestrator/orchestrator_config.json:/app/orchestrator_config.json:ro
+      - ./logs:/workspace/logs
+      - ./orchestrator/data:/workspace/orchestrator/data
     environment:
       NODE_ENV: production
       LOG_LEVEL: info
+      PORT: 3000
+      ORCHESTRATOR_CONFIG: /workspace/orchestrator/orchestrator_config.json
+      ORCHESTRATOR_FAST_START: "true"
+      PROMETHEUS_PORT: 9100
     ports:
-      - "3000:3000"  # If orchestrator exposes API in future
+      - "3000:3000"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "-e", "try { require('fs').statSync('/app/orchestrator_state.json'); } catch(e) { process.exit(1); }"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3

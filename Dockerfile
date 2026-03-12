@@ -1,45 +1,36 @@
-# Build stage
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 
-WORKDIR /app
+WORKDIR /workspace/orchestrator
 
-# Copy root package files
-COPY package.json package-lock.json ./
+COPY orchestrator/package.json orchestrator/package-lock.json ./
+RUN npm ci
 
-# Copy orchestrator
-COPY orchestrator ./orchestrator
+COPY orchestrator ./
+RUN npm run build
 
-# Install dependencies
-RUN npm install && \
-    cd orchestrator && \
-    npm install && \
-    npm run build
+FROM node:24-alpine
 
-# Runtime stage
-FROM node:22-alpine
+WORKDIR /workspace/orchestrator
 
-WORKDIR /app
+RUN apk add --no-cache curl dumb-init
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+COPY --from=builder /workspace/orchestrator /workspace/orchestrator
+COPY agents /workspace/agents
+COPY skills /workspace/skills
+COPY openclaw-docs /workspace/openclaw-docs
+COPY openai-cookbook /workspace/openai-cookbook
+COPY RUNTIME_ENGAGEMENT_OS.md /workspace/RUNTIME_ENGAGEMENT_OS.md
+COPY rss_filter_config.json /workspace/rss_filter_config.json
 
-# Copy compiled code from builder
-COPY --from=builder /app/orchestrator/dist ./dist
-COPY --from=builder /app/orchestrator/package.json ./package.json
-COPY --from=builder /app/orchestrator/node_modules ./node_modules
+RUN mkdir -p /workspace/logs /workspace/orchestrator/data /workspace/agents-deployed
 
-# Copy configuration (will be mounted or injected)
-COPY orchestrator_config.json orchestrator_state.json* ./
+ENV NODE_ENV=production
+ENV ORCHESTRATOR_CONFIG=/workspace/orchestrator/orchestrator_config.json
+ENV PORT=3000
+ENV PROMETHEUS_PORT=9100
 
-# Create logs directory
-RUN mkdir -p logs/knowledge-packs logs/digests
-
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD node -e "try { require('fs').statSync('orchestrator_state.json'); } catch(e) { process.exit(1); }"
+  CMD curl -fsS http://localhost:3000/health || exit 1
 
-# Use dumb-init to handle signals properly
-ENTRYPOINT ["/sbin/dumb-init", "--"]
-
-# Start orchestrator
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["node", "dist/index.js"]

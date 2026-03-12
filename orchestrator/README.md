@@ -23,16 +23,32 @@ stack, including the orchestrator and its supporting services.
 The repo root also contains `../docker-compose.yml`, but that file is a smaller
 alternative and is not a drop-in replacement for this one.
 
+Before using either compose mode, create `orchestrator/.env` from
+`.env.example`. The container startup posture requires
+`API_KEY_ROTATION`/`API_KEY`, `WEBHOOK_SECRET`, `MONGO_USERNAME`,
+`MONGO_PASSWORD`, and `REDIS_PASSWORD`; compose passes those through from the
+env file instead of hardcoding them in YAML.
+
+The full compose stack intentionally overrides `DATABASE_URL` inside the
+orchestrator container so it always uses the local `mongo` service. That keeps
+Docker validation honest even when the host `.env` used by systemd or manual
+runs points at an external database.
+
 ## Common Commands
 
 From this directory:
 
 ```bash
 npm install
+PORT=3313 npm run dev
 npm run dev
 npm run build
 npm run test:run
 ```
+
+`npm run dev` now loads `./.env` automatically. If the systemd-managed
+orchestrator is already using `3312`, run a second local dev instance on a
+different port such as `3313`.
 
 Useful targeted checks:
 
@@ -44,6 +60,14 @@ Useful targeted checks:
 
 - Do not run the root and orchestrator compose stacks at the same time unless
   you have intentionally reconciled their port/container overlap.
+- The runtime security posture is intentional: local and host startup both
+  require `WEBHOOK_SECRET`, `MONGO_USERNAME`, `MONGO_PASSWORD`, and
+  `REDIS_PASSWORD` in addition to the bearer auth key configuration.
+- `WEBHOOK_SECRET` is used to verify HMAC signatures on `POST /webhook/alerts`
+  so AlertManager-style webhook traffic cannot inject fake incidents.
+- `REDIS_PASSWORD` is required because the compose/runtime posture treats Redis
+  as an authenticated dependency; `docker-compose.yml` starts Redis with
+  `--requirepass`, and bootstrap refuses to start without the matching secret.
 - Code and config are the source of truth. This README is a current entrypoint,
   not a replacement for the implementation.
 - Material orchestrator code/config changes should update the appropriate
