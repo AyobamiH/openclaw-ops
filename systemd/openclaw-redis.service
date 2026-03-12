@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenClaw Local Redis Cache
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/home/oneclickwebsitedesignfactory/.openclaw/workspace/orchestrator/.env
+ExecStartPre=-/usr/bin/docker rm -f openclaw-host-redis
+ExecStart=/bin/bash -lc 'exec /usr/bin/docker run --rm --name openclaw-host-redis -p 127.0.0.1:6379:6379 -v /home/oneclickwebsitedesignfactory/.openclaw/workspace/orchestrator/data/redis:/data redis:7-alpine redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"'
+ExecStop=/usr/bin/docker stop openclaw-host-redis
+Restart=always
+RestartSec=5
+TimeoutStartSec=0
+
+[Install]
+WantedBy=default.target

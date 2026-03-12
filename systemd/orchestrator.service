@@ -1,7 +1,7 @@
 [Unit]
 Description=OpenClaw Orchestrator Service
-After=network-online.target openclawdbot.service cloudflared-openclawdbot.service
-Wants=openclawdbot.service cloudflared-openclawdbot.service
+After=network-online.target openclaw-redis.service openclawdbot.service cloudflared-openclawdbot.service
+Wants=openclaw-redis.service openclawdbot.service cloudflared-openclawdbot.service
 
 [Service]
 Type=simple

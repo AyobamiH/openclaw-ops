@@ -34,6 +34,11 @@ orchestrator container so it always uses the local `mongo` service. That keeps
 Docker validation honest even when the host `.env` used by systemd or manual
 runs points at an external database.
 
+The host/systemd path now assumes an open-source local Redis service on
+`127.0.0.1:6379`. In this workspace that service is provided by the
+repo-managed `systemd/openclaw-redis.service`, which runs `redis:7-alpine`
+locally through Docker. No paid Redis subscription is required.
+
 ## Common Commands
 
 From this directory:
@@ -55,6 +60,30 @@ Useful targeted checks:
 - `npm run test:unit:fixtures`
 - `npm run test:integration`
 - `npm run docs:check-sync`
+
+## Response Cache
+
+The orchestrator now uses a bounded response cache for repeated read-heavy API
+surfaces such as `/api/dashboard/overview`, `/api/health/extended`,
+`/api/tasks/runs`, `/api/agents/overview`, `/api/memory/recall`, and the
+knowledge summary/query paths.
+
+Runtime behavior:
+
+- if `REDIS_URL` is reachable, the response cache uses Redis
+- if Redis is unavailable, the orchestrator falls back to an in-memory cache
+  instead of failing startup
+- cache invalidation is tag-based and tied to orchestrator runtime state
+  writes
+
+Cached responses expose:
+
+- `X-OpenClaw-Cache: hit|miss`
+- `X-OpenClaw-Cache-Store: redis|memory`
+
+Protected cached reads also return `Cache-Control: private, max-age=*` and
+`Vary: Authorization` so repeated identical operator fetches do less work
+without mixing actor-scoped views.
 
 ## Operational Notes
 

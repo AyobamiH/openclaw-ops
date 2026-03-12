@@ -114,6 +114,10 @@ import {
 } from "./middleware/rate-limit.js";
 import { getMilestoneEmitter, initMilestoneEmitter } from "./milestones/emitter.js";
 import { initDemandSummaryEmitter } from "./demand/emitter.js";
+import {
+  getCachedJson,
+  invalidateResponseCacheTags,
+} from "./cache/response-cache.js";
 
 /**
  * Security Posture Verification
@@ -6424,10 +6428,73 @@ async function bootstrap() {
   const { recoveredRetryCount, staleRecoveryCount } =
     reconcileTaskRetryRecoveryState(state);
 
-  const flushState = async () => {
+  const flushState = async (tags: string[] = ["runtime-state"]) => {
     await persistState(config.stateFile, state, {
       taskHistoryLimit: config.taskHistoryLimit,
     });
+    await invalidateResponseCacheTags(tags);
+  };
+
+  const readCacheTtls = {
+    knowledgeSummary: 300,
+    knowledgeQuery: 300,
+    tasksCatalog: 300,
+    openApi: 300,
+    persistenceHealth: 20,
+    persistenceSummary: 60,
+    approvalsPending: 15,
+    incidents: 30,
+    dashboardOverview: 20,
+    agentsOverview: 30,
+    memoryRecall: 45,
+    skillsRegistry: 120,
+    skillsPolicy: 120,
+    skillsTelemetry: 30,
+    skillsAudit: 30,
+    taskRuns: 20,
+    taskRunDetail: 30,
+    healthExtended: 15,
+  } as const;
+
+  const respondWithCachedJson = async <T>(
+    req: express.Request,
+    res: express.Response,
+    options: {
+      namespace: string;
+      ttlSeconds: number;
+      tags: string[];
+      scope: "public" | "protected";
+      keyData?: unknown;
+      compute: () => Promise<T> | T;
+    },
+  ) => {
+    const auth = (req as AuthenticatedRequest).auth;
+    const cached = await getCachedJson({
+      namespace: options.namespace,
+      ttlSeconds: options.ttlSeconds,
+      tags: options.tags,
+      keyData: {
+        scope: options.scope,
+        actor: options.scope === "protected" ? auth?.actor ?? null : null,
+        role: options.scope === "protected" ? auth?.role ?? null : null,
+        query: req.query,
+        params: req.params,
+        body: req.method === "POST" ? req.body ?? null : null,
+        extra: options.keyData ?? null,
+      },
+      compute: options.compute,
+    });
+
+    res.setHeader("X-OpenClaw-Cache", cached.meta.status);
+    res.setHeader("X-OpenClaw-Cache-Store", cached.meta.store);
+    res.setHeader(
+      "Cache-Control",
+      `${options.scope === "public" ? "public" : "private"}, max-age=${options.ttlSeconds}`,
+    );
+    if (options.scope === "protected") {
+      res.setHeader("Vary", "Authorization");
+    }
+    res.json(cached.value);
   };
 
   const warmDocumentIndexInBackground = async () => {
@@ -6454,7 +6521,7 @@ async function bootstrap() {
       indexedDocCount = warmCount;
       state.indexedDocs = indexedDocCount;
       state.docIndexVersion += 1;
-      await flushState();
+      await flushState(["runtime-state", "knowledge-state"]);
       console.log(
         `[orchestrator] indexed ${indexedDocCount} docs across ${readyCount} source(s)`,
       );
@@ -6469,7 +6536,7 @@ async function bootstrap() {
     }
   };
 
-  await flushState();
+  await flushState(["runtime-state", "knowledge-state"]);
   if (recoveredRetryCount > 0) {
     console.warn(
       `[orchestrator] recovered ${recoveredRetryCount} interrupted retry task(s) as failed after restart`,
@@ -7389,6 +7456,11 @@ async function bootstrap() {
   };
 
   queue.onEnqueue((task) => {
+    void invalidateResponseCacheTags(
+      task.type === "doc-change"
+        ? ["runtime-state", "knowledge-state"]
+        : ["runtime-state"],
+    );
     const { idempotencyKey } = ensureExecutionRecord(task);
     appendTaskWorkflowEvent(
       task,
@@ -7429,6 +7501,7 @@ async function bootstrap() {
   });
 
   queue.onProcess(async (task) => {
+    void invalidateResponseCacheTags(["runtime-state"]);
     const { existing: execution, idempotencyKey } = ensureExecutionRecord(task);
 
     if (execution.status === "retrying" && findRetryRecovery(idempotencyKey)) {
@@ -7950,14 +8023,26 @@ async function bootstrap() {
   // Knowledge Base summary endpoint (Phase 5) - Public for dashboards
   app.get("/api/knowledge/summary", apiLimiter, (req, res) => {
     try {
-      const summary = knowledgeIntegration.getSummary();
-      res.json({
-        ...summary,
-        runtime: buildKnowledgeRuntimeSignals({
-          summary,
-          config,
-          state,
-        }),
+      void respondWithCachedJson(req, res, {
+        namespace: "knowledge.summary",
+        ttlSeconds: readCacheTtls.knowledgeSummary,
+        tags: ["knowledge-state"],
+        scope: "public",
+        keyData: {
+          docIndexVersion: state.docIndexVersion,
+          indexedDocs: state.indexedDocs,
+        },
+        compute: () => {
+          const summary = knowledgeIntegration.getSummary();
+          return {
+            ...summary,
+            runtime: buildKnowledgeRuntimeSignals({
+              summary,
+              config,
+              state,
+            }),
+          };
+        },
       });
     } catch (error: any) {
       console.error("[api/knowledge/summary] Error", { error: error.message });
@@ -7966,14 +8051,26 @@ async function bootstrap() {
   });
 
   app.get("/api/openapi.json", apiLimiter, (_req, res) => {
-    res.json(buildOpenApiSpec(PORT));
+    void respondWithCachedJson(_req, res, {
+      namespace: "openapi.spec",
+      ttlSeconds: readCacheTtls.openApi,
+      tags: [],
+      scope: "public",
+      keyData: { port: PORT },
+      compute: () => buildOpenApiSpec(PORT),
+    });
   });
 
   // Persistence health endpoint - Public for monitoring
   app.get("/api/persistence/health", healthLimiter, async (req, res) => {
     try {
-      const health = await PersistenceIntegration.healthCheck();
-      res.json(health);
+      await respondWithCachedJson(req, res, {
+        namespace: "persistence.health",
+        ttlSeconds: readCacheTtls.persistenceHealth,
+        tags: [],
+        scope: "public",
+        compute: () => PersistenceIntegration.healthCheck(),
+      });
     } catch (error: any) {
       res.status(500).json({ status: "error", message: error.message });
     }
@@ -8011,11 +8108,20 @@ async function bootstrap() {
     viewerReadLimiter,
     requireRole("viewer"),
     auditProtectedAction("tasks.catalog.read"),
-    async (_req, res) => {
+    async (req, res) => {
       try {
-        res.json({
-          generatedAt: new Date().toISOString(),
-          tasks: buildOperatorTaskCatalog(config, state),
+        await respondWithCachedJson(req, res, {
+          namespace: "tasks.catalog",
+          ttlSeconds: readCacheTtls.tasksCatalog,
+          tags: [],
+          scope: "protected",
+          keyData: {
+            approvalRequiredTaskTypes: config.approvalRequiredTaskTypes ?? [],
+          },
+          compute: () => ({
+            generatedAt: new Date().toISOString(),
+            tasks: buildOperatorTaskCatalog(config, state),
+          }),
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -8048,6 +8154,7 @@ async function bootstrap() {
         };
 
         const task = queue.enqueue(type, enrichedPayload);
+        await invalidateResponseCacheTags(["runtime-state"]);
         res.status(202).json({
           status: "queued",
           taskId: task.id,
@@ -8090,16 +8197,24 @@ async function bootstrap() {
     viewerReadLimiter,
     requireRole("operator"),
     auditProtectedAction("approvals.pending.read"),
-    async (_req, res) => {
+    async (req, res) => {
       try {
-        const pending = listPendingApprovals(state);
-        res.json({
-          count: pending.length,
-          pending: pending.map((approval) => ({
-            ...approval,
-            impact: buildApprovalImpactMetadata(approval, config),
-            payloadPreview: summarizePayloadPreview(approval.payload),
-          })),
+        await respondWithCachedJson(req, res, {
+          namespace: "approvals.pending",
+          ttlSeconds: readCacheTtls.approvalsPending,
+          tags: ["runtime-state"],
+          scope: "protected",
+          compute: () => {
+            const pending = listPendingApprovals(state);
+            return {
+              count: pending.length,
+              pending: pending.map((approval) => ({
+                ...approval,
+                impact: buildApprovalImpactMetadata(approval, config),
+                payloadPreview: summarizePayloadPreview(approval.payload),
+              })),
+            };
+          },
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -8265,33 +8380,47 @@ async function bootstrap() {
         const limit = Number(req.query.limit ?? 50);
         const offset = Number(req.query.offset ?? 0);
 
-        const filtered = state.incidentLedger
-          .filter((record) => (includeResolved ? true : record.status !== "resolved"))
-          .filter((record) => (status ? record.status === status : true))
-          .filter((record) =>
-            classification ? record.classification === classification : true,
-          )
-          .sort((left, right) => Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt));
+        await respondWithCachedJson(req, res, {
+          namespace: "incidents.list",
+          ttlSeconds: readCacheTtls.incidents,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: { status, classification, includeResolved, limit, offset },
+          compute: () => {
+            const filtered = state.incidentLedger
+              .filter((record) =>
+                includeResolved ? true : record.status !== "resolved",
+              )
+              .filter((record) => (status ? record.status === status : true))
+              .filter((record) =>
+                classification ? record.classification === classification : true,
+              )
+              .sort(
+                (left, right) =>
+                  Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt),
+              );
 
-        const page = filtered.slice(offset, offset + limit);
+            const page = filtered.slice(offset, offset + limit);
 
-        res.json({
-          generatedAt: new Date().toISOString(),
-          query: {
-            status: status ?? null,
-            classification: classification ?? null,
-            includeResolved,
-            limit,
-            offset,
+            return {
+              generatedAt: new Date().toISOString(),
+              query: {
+                status: status ?? null,
+                classification: classification ?? null,
+                includeResolved,
+                limit,
+                offset,
+              },
+              total: filtered.length,
+              page: {
+                returned: page.length,
+                offset,
+                limit,
+                hasMore: offset + page.length < filtered.length,
+              },
+              incidents: page.map((record) => materializeIncident(record, state)),
+            };
           },
-          total: filtered.length,
-          page: {
-            returned: page.length,
-            offset,
-            limit,
-            hasMore: offset + page.length < filtered.length,
-          },
-          incidents: page.map((record) => materializeIncident(record, state)),
         });
       } catch (error: any) {
         res.status(400).json({ error: error.message });
@@ -8309,14 +8438,23 @@ async function bootstrap() {
     async (req: AuthenticatedRequest, res) => {
       try {
         const { id } = IncidentDetailParamsSchema.parse(req.params);
-        const incident = state.incidentLedger.find((record) => record.incidentId === id);
+        const incident = state.incidentLedger.find(
+          (record) => record.incidentId === id,
+        );
         if (!incident) {
           return res.status(404).json({ error: `Incident not found: ${id}` });
         }
 
-        return res.json({
-          generatedAt: new Date().toISOString(),
-          incident: materializeIncident(incident, state),
+        await respondWithCachedJson(req, res, {
+          namespace: "incidents.detail",
+          ttlSeconds: readCacheTtls.incidents,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: { incidentId: id },
+          compute: () => ({
+            generatedAt: new Date().toISOString(),
+            incident: materializeIncident(incident, state),
+          }),
         });
       } catch (error: any) {
         return res.status(400).json({ error: error.message });
@@ -8334,21 +8472,30 @@ async function bootstrap() {
     async (_req: AuthenticatedRequest, res) => {
       try {
         const { id } = IncidentDetailParamsSchema.parse(_req.params);
-        const incident = state.incidentLedger.find((record) => record.incidentId === id);
+        const incident = state.incidentLedger.find(
+          (record) => record.incidentId === id,
+        );
         if (!incident) {
           return res.status(404).json({ error: `Incident not found: ${id}` });
         }
 
-        return res.json({
-          generatedAt: new Date().toISOString(),
-          incidentId: id,
-          history: incident.history ?? [],
-          acknowledgements: incident.acknowledgements ?? [],
-          ownershipHistory: incident.ownershipHistory ?? [],
-          remediationTasks: (incident.remediationTasks ?? []).map((item) => ({
-            ...item,
-            status: deriveIncidentRemediationTaskStatus(state, item),
-          })),
+        await respondWithCachedJson(_req, res, {
+          namespace: "incidents.history",
+          ttlSeconds: readCacheTtls.incidents,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: { incidentId: id },
+          compute: () => ({
+            generatedAt: new Date().toISOString(),
+            incidentId: id,
+            history: incident.history ?? [],
+            acknowledgements: incident.acknowledgements ?? [],
+            ownershipHistory: incident.ownershipHistory ?? [],
+            remediationTasks: (incident.remediationTasks ?? []).map((item) => ({
+              ...item,
+              status: deriveIncidentRemediationTaskStatus(state, item),
+            })),
+          }),
         });
       } catch (error: any) {
         return res.status(400).json({ error: error.message });
@@ -8437,99 +8584,118 @@ async function bootstrap() {
     viewerReadLimiter,
     requireRole("viewer"),
     auditProtectedAction("dashboard.overview.read"),
-    async (_req, res) => {
+    async (req, res) => {
       try {
-        const persistence = await PersistenceIntegration.healthCheck();
-        const agents = await buildAgentOperationalOverview(state);
-        const pendingApprovals = listPendingApprovals(state);
-        const pendingApprovalDetails = pendingApprovals.map((approval) => ({
-          ...approval,
-          impact: buildApprovalImpactMetadata(approval, config),
-          payloadPreview: summarizePayloadPreview(approval.payload),
-        }));
-        const memory = await buildMemoryOverviewSummary(24);
-        const governance = summarizeGovernanceVisibility(state);
-        const selfHealing = governance.repairs;
-        const queueQueued = queue.getQueuedCount();
-        const queueProcessing = queue.getPendingCount();
-        const knowledge = knowledgeIntegration.getSummary();
-        const knowledgeRuntime = buildKnowledgeRuntimeSignals({
-          summary: knowledge,
-          config,
-          state,
-        });
-        const proofDelivery = buildProofDeliveryTelemetry(config, state);
-        const truthLayers = buildRuntimeTruthLayers({
-          claimed: claimedTruthLayer,
-          config,
-          state,
-          fastStartMode,
-          persistenceStatus:
-            typeof persistence.status === "string" ? persistence.status : "unknown",
-          knowledgeRuntime,
-          queueQueued,
-          queueProcessing,
-          pendingApprovalsCount: pendingApprovals.length,
-          repairs: selfHealing,
-          retryRecoveries: governance.taskRetryRecoveries,
-          agents,
-          proofDelivery,
-        });
-        const topology = await buildAgentTopology({ agents, proofDelivery, state });
-        const relationshipHistory = buildRelationshipHistory(state, {
-          windowHours: 24,
-          recentLimit: 20,
-        });
-        const incidentState = await refreshRuntimeIncidents();
-        const incidents = incidentState.model;
-        if (incidentState.changed) {
-          await flushState();
-        }
-        const overviewHealthStatus =
-          incidents.overallStatus === "critical" || truthLayers.observed.status === "degraded"
-            ? "degraded"
-            : incidents.overallStatus === "warning" || truthLayers.observed.status === "warning"
-              ? "warning"
-              : "healthy";
+        await respondWithCachedJson(req, res, {
+          namespace: "dashboard.overview",
+          ttlSeconds: readCacheTtls.dashboardOverview,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: {
+            docIndexVersion: state.docIndexVersion,
+          },
+          compute: async () => {
+            const persistence = await PersistenceIntegration.healthCheck();
+            const agents = await buildAgentOperationalOverview(state);
+            const pendingApprovals = listPendingApprovals(state);
+            const pendingApprovalDetails = pendingApprovals.map((approval) => ({
+              ...approval,
+              impact: buildApprovalImpactMetadata(approval, config),
+              payloadPreview: summarizePayloadPreview(approval.payload),
+            }));
+            const memory = await buildMemoryOverviewSummary(24);
+            const governance = summarizeGovernanceVisibility(state);
+            const selfHealing = governance.repairs;
+            const queueQueued = queue.getQueuedCount();
+            const queueProcessing = queue.getPendingCount();
+            const knowledge = knowledgeIntegration.getSummary();
+            const knowledgeRuntime = buildKnowledgeRuntimeSignals({
+              summary: knowledge,
+              config,
+              state,
+            });
+            const proofDelivery = buildProofDeliveryTelemetry(config, state);
+            const truthLayers = buildRuntimeTruthLayers({
+              claimed: claimedTruthLayer,
+              config,
+              state,
+              fastStartMode,
+              persistenceStatus:
+                typeof persistence.status === "string"
+                  ? persistence.status
+                  : "unknown",
+              knowledgeRuntime,
+              queueQueued,
+              queueProcessing,
+              pendingApprovalsCount: pendingApprovals.length,
+              repairs: selfHealing,
+              retryRecoveries: governance.taskRetryRecoveries,
+              agents,
+              proofDelivery,
+            });
+            const topology = await buildAgentTopology({
+              agents,
+              proofDelivery,
+              state,
+            });
+            const relationshipHistory = buildRelationshipHistory(state, {
+              windowHours: 24,
+              recentLimit: 20,
+            });
+            const incidentState = await refreshRuntimeIncidents();
+            const incidents = incidentState.model;
+            if (incidentState.changed) {
+              await flushState();
+            }
+            const overviewHealthStatus =
+              incidents.overallStatus === "critical" ||
+              truthLayers.observed.status === "degraded"
+                ? "degraded"
+                : incidents.overallStatus === "warning" ||
+                    truthLayers.observed.status === "warning"
+                  ? "warning"
+                  : "healthy";
 
-        res.json({
-          generatedAt: new Date().toISOString(),
-          health: {
-            status: overviewHealthStatus,
-            fastStartMode,
+            return {
+              generatedAt: new Date().toISOString(),
+              health: {
+                status: overviewHealthStatus,
+                fastStartMode,
+              },
+              persistence,
+              memory,
+              queue: {
+                queued: queueQueued,
+                processing: queueProcessing,
+              },
+              approvals: {
+                pendingCount: pendingApprovalDetails.length,
+                pending: pendingApprovalDetails,
+              },
+              selfHealing: {
+                model: "partial-runtime",
+                autoPolicies: ["doc-drift", "task-retry-recovery"],
+                summary: selfHealing,
+              },
+              governance,
+              truthLayers,
+              proofDelivery,
+              topology: {
+                ...topology,
+                relationshipHistory: {
+                  totalObservations: relationshipHistory.totalObservations,
+                  lastObservedAt: relationshipHistory.lastObservedAt,
+                  byRelationship: relationshipHistory.byRelationship,
+                  byStatus: relationshipHistory.byStatus,
+                  timeline: relationshipHistory.timeline,
+                  windows: relationshipHistory.windows,
+                  graph: relationshipHistory.graph,
+                },
+              },
+              incidents,
+              recentTasks: state.taskHistory.slice(-20),
+            };
           },
-          persistence,
-          memory,
-          queue: {
-            queued: queueQueued,
-            processing: queueProcessing,
-          },
-          approvals: {
-            pendingCount: pendingApprovalDetails.length,
-            pending: pendingApprovalDetails,
-          },
-          selfHealing: {
-            model: "partial-runtime",
-            autoPolicies: ["doc-drift", "task-retry-recovery"],
-            summary: selfHealing,
-          },
-          governance,
-          truthLayers,
-          proofDelivery,
-          topology: {
-            ...topology,
-            relationshipHistory: {
-              totalObservations: relationshipHistory.totalObservations,
-              lastObservedAt: relationshipHistory.lastObservedAt,
-              byRelationship: relationshipHistory.byRelationship,
-              byStatus: relationshipHistory.byStatus,
-              timeline: relationshipHistory.timeline,
-              windows: relationshipHistory.windows,
-              graph: relationshipHistory.graph,
-            },
-          },
-          incidents,
-          recentTasks: state.taskHistory.slice(-20),
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -8544,21 +8710,33 @@ async function bootstrap() {
     viewerReadLimiter,
     requireRole("viewer"),
     auditProtectedAction("agents.overview.read"),
-    async (_req, res) => {
+    async (req, res) => {
       try {
-        const agents = await buildAgentOperationalOverview(state);
-        const proofDelivery = buildProofDeliveryTelemetry(config, state);
-        const topology = await buildAgentTopology({ agents, proofDelivery, state });
-        const relationshipHistory = buildRelationshipHistory(state, {
-          windowHours: 48,
-          recentLimit: 80,
-        });
-        res.json({
-          generatedAt: new Date().toISOString(),
-          count: agents.length,
-          agents,
-          topology,
-          relationshipHistory,
+        await respondWithCachedJson(req, res, {
+          namespace: "agents.overview",
+          ttlSeconds: readCacheTtls.agentsOverview,
+          tags: ["runtime-state"],
+          scope: "protected",
+          compute: async () => {
+            const agents = await buildAgentOperationalOverview(state);
+            const proofDelivery = buildProofDeliveryTelemetry(config, state);
+            const topology = await buildAgentTopology({
+              agents,
+              proofDelivery,
+              state,
+            });
+            const relationshipHistory = buildRelationshipHistory(state, {
+              windowHours: 48,
+              recentLimit: 80,
+            });
+            return {
+              generatedAt: new Date().toISOString(),
+              count: agents.length,
+              agents,
+              topology,
+              relationshipHistory,
+            };
+          },
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -8588,62 +8766,77 @@ async function bootstrap() {
             ? req.query.agentId.trim()
             : null;
 
-        const registry = await getAgentRegistry();
-        const agentIds = registry
-          .listAgents()
-          .map((agent) => agent.id)
-          .filter((id) => (agentIdFilter ? id === agentIdFilter : true));
-
-        const loaded = await Promise.all(
-          agentIds.map(async (agentId) => {
-            const memory = await loadAgentMemoryState(agentId);
-            if (!memory) return null;
-            const timeline = includeErrors
-              ? (memory.taskTimeline ?? [])
-              : (memory.taskTimeline ?? []).filter(
-                  (entry) => entry.status !== "error",
-                );
-            const normalized: AgentMemoryState = {
-              ...memory,
-              agentId,
-              taskTimeline: timeline,
-            };
-            return redactMemoryState(normalized, includeSensitive);
-          }),
-        );
-
-        const items = loaded
-          .filter((item): item is AgentMemoryState => item !== null)
-          .sort((a, b) => {
-            const ta = a.lastRunAt ? new Date(a.lastRunAt).getTime() : 0;
-            const tb = b.lastRunAt ? new Date(b.lastRunAt).getTime() : 0;
-            return tb - ta;
-          });
-
-        const page = items.slice(offset, offset + limit);
-        const totalRuns = items.reduce(
-          (sum, item) => sum + Number(item.totalRuns ?? 0),
-          0,
-        );
-
-        res.json({
-          generatedAt: new Date().toISOString(),
-          query: {
-            agentId: agentIdFilter,
+        await respondWithCachedJson(req, res, {
+          namespace: "memory.recall",
+          ttlSeconds: readCacheTtls.memoryRecall,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: {
+            agentIdFilter,
             limit,
             offset,
             includeErrors,
             includeSensitive,
           },
-          totalAgents: items.length,
-          totalRuns,
-          page: {
-            returned: page.length,
-            offset,
-            limit,
-            hasMore: offset + page.length < items.length,
+          compute: async () => {
+            const registry = await getAgentRegistry();
+            const agentIds = registry
+              .listAgents()
+              .map((agent) => agent.id)
+              .filter((id) => (agentIdFilter ? id === agentIdFilter : true));
+
+            const loaded = await Promise.all(
+              agentIds.map(async (agentId) => {
+                const memory = await loadAgentMemoryState(agentId);
+                if (!memory) return null;
+                const timeline = includeErrors
+                  ? (memory.taskTimeline ?? [])
+                  : (memory.taskTimeline ?? []).filter(
+                      (entry) => entry.status !== "error",
+                    );
+                const normalized: AgentMemoryState = {
+                  ...memory,
+                  agentId,
+                  taskTimeline: timeline,
+                };
+                return redactMemoryState(normalized, includeSensitive);
+              }),
+            );
+
+            const items = loaded
+              .filter((item): item is AgentMemoryState => item !== null)
+              .sort((a, b) => {
+                const ta = a.lastRunAt ? new Date(a.lastRunAt).getTime() : 0;
+                const tb = b.lastRunAt ? new Date(b.lastRunAt).getTime() : 0;
+                return tb - ta;
+              });
+
+            const page = items.slice(offset, offset + limit);
+            const totalRuns = items.reduce(
+              (sum, item) => sum + Number(item.totalRuns ?? 0),
+              0,
+            );
+
+            return {
+              generatedAt: new Date().toISOString(),
+              query: {
+                agentId: agentIdFilter,
+                limit,
+                offset,
+                includeErrors,
+                includeSensitive,
+              },
+              totalAgents: items.length,
+              totalRuns,
+              page: {
+                returned: page.length,
+                offset,
+                limit,
+                hasMore: offset + page.length < items.length,
+              },
+              items: page,
+            };
           },
-          items: page,
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -8660,18 +8853,30 @@ async function bootstrap() {
     requireRole("operator"),
     auditProtectedAction("knowledge.query.read"),
     createValidationMiddleware(KBQuerySchema, "body"),
-    async (req, res) => {
+    async (req: AuthenticatedRequest, res) => {
       try {
         const { query } = req.body;
-        const results = await knowledgeIntegration.queryAPI(query);
-        const summary = knowledgeIntegration.getSummary();
-        res.json({
-          ...results,
-          runtime: buildKnowledgeRuntimeSignals({
-            summary,
-            config,
-            state,
-          }),
+        await respondWithCachedJson(req, res, {
+          namespace: "knowledge.query",
+          ttlSeconds: readCacheTtls.knowledgeQuery,
+          tags: ["knowledge-state"],
+          scope: "protected",
+          keyData: {
+            query,
+            docIndexVersion: state.docIndexVersion,
+          },
+          compute: async () => {
+            const results = await knowledgeIntegration.queryAPI(query);
+            const summary = knowledgeIntegration.getSummary();
+            return {
+              ...results,
+              runtime: buildKnowledgeRuntimeSignals({
+                summary,
+                config,
+                state,
+              }),
+            };
+          },
         });
       } catch (error: any) {
         console.error("[api/knowledge/query] Error", { error: error.message });
@@ -8751,36 +8956,44 @@ async function bootstrap() {
     requireRole("viewer"),
     auditProtectedAction("tasks.runs.read"),
     createValidationMiddleware(TaskRunsQuerySchema, "query"),
-    async (req, res) => {
+    async (req: AuthenticatedRequest, res) => {
       try {
         const type = typeof req.query.type === "string" ? req.query.type : undefined;
         const status =
           typeof req.query.status === "string" ? req.query.status : undefined;
         const limit = Number(req.query.limit ?? 50);
         const offset = Number(req.query.offset ?? 0);
+        await respondWithCachedJson(req, res, {
+          namespace: "tasks.runs",
+          ttlSeconds: readCacheTtls.taskRuns,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: { type, status, limit, offset },
+          compute: () => {
+            const filtered = state.taskExecutions.filter((execution) => {
+              if (type && execution.type !== type) return false;
+              if (status && execution.status !== status) return false;
+              return true;
+            });
 
-        const filtered = state.taskExecutions.filter((execution) => {
-          if (type && execution.type !== type) return false;
-          if (status && execution.status !== status) return false;
-          return true;
-        });
+            const sorted = [...filtered].sort((a, b) =>
+              b.lastHandledAt.localeCompare(a.lastHandledAt),
+            );
+            const page = sorted.slice(offset, offset + limit);
 
-        const sorted = [...filtered].sort((a, b) =>
-          b.lastHandledAt.localeCompare(a.lastHandledAt),
-        );
-        const page = sorted.slice(offset, offset + limit);
-
-        res.json({
-          generatedAt: new Date().toISOString(),
-          query: { type: type ?? null, status: status ?? null, limit, offset },
-          total: filtered.length,
-          page: {
-            returned: page.length,
-            offset,
-            limit,
-            hasMore: offset + page.length < filtered.length,
+            return {
+              generatedAt: new Date().toISOString(),
+              query: { type: type ?? null, status: status ?? null, limit, offset },
+              total: filtered.length,
+              page: {
+                returned: page.length,
+                offset,
+                limit,
+                hasMore: offset + page.length < filtered.length,
+              },
+              runs: page.map((execution) => buildRunRecord(execution, state, config)),
+            };
           },
-          runs: page.map((execution) => buildRunRecord(execution, state, config)),
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -8795,7 +9008,7 @@ async function bootstrap() {
     viewerReadLimiter,
     requireRole("viewer"),
     auditProtectedAction("tasks.run.read"),
-    async (req, res) => {
+    async (req: AuthenticatedRequest, res) => {
       try {
         const runId = String(req.params.runId);
         const execution = state.taskExecutions.find(
@@ -8806,9 +9019,16 @@ async function bootstrap() {
           return res.status(404).json({ error: `Run not found: ${runId}` });
         }
 
-        return res.json({
-          generatedAt: new Date().toISOString(),
-          run: buildRunRecord(execution, state, config),
+        return await respondWithCachedJson(req, res, {
+          namespace: "tasks.run.detail",
+          ttlSeconds: readCacheTtls.taskRunDetail,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: { runId },
+          compute: () => ({
+            generatedAt: new Date().toISOString(),
+            run: buildRunRecord(execution, state, config),
+          }),
         });
       } catch (error: any) {
         return res.status(500).json({ error: error.message });
@@ -8823,22 +9043,28 @@ async function bootstrap() {
     viewerReadLimiter,
     requireRole("viewer"),
     auditProtectedAction("skills.registry.read"),
-    async (_req, res) => {
-      res.json({
-        generatedAt: new Date().toISOString(),
-        total: state.governedSkillState.length,
-        skills: state.governedSkillState.map((skill) => ({
-          skillId: skill.skillId,
-          name: skill.definition.id,
-          description: skill.definition.description,
-          trustStatus: skill.trustStatus,
-          intakeSource: skill.intakeSource,
-          persistenceMode: skill.persistenceMode,
-          auditedAt: skill.auditedAt,
-          reviewedBy: skill.reviewedBy ?? null,
-          reviewedAt: skill.reviewedAt ?? null,
-          reviewedNote: skill.reviewNote ?? null,
-        })),
+    async (req: AuthenticatedRequest, res) => {
+      await respondWithCachedJson(req, res, {
+        namespace: "skills.registry",
+        ttlSeconds: readCacheTtls.skillsRegistry,
+        tags: ["runtime-state"],
+        scope: "protected",
+        compute: () => ({
+          generatedAt: new Date().toISOString(),
+          total: state.governedSkillState.length,
+          skills: state.governedSkillState.map((skill) => ({
+            skillId: skill.skillId,
+            name: skill.definition.id,
+            description: skill.definition.description,
+            trustStatus: skill.trustStatus,
+            intakeSource: skill.intakeSource,
+            persistenceMode: skill.persistenceMode,
+            auditedAt: skill.auditedAt,
+            reviewedBy: skill.reviewedBy ?? null,
+            reviewedAt: skill.reviewedAt ?? null,
+            reviewedNote: skill.reviewNote ?? null,
+          })),
+        }),
       });
     },
   );
@@ -8850,10 +9076,16 @@ async function bootstrap() {
     viewerReadLimiter,
     requireRole("viewer"),
     auditProtectedAction("skills.policy.read"),
-    (_req, res) => {
-      res.json({
-        generatedAt: new Date().toISOString(),
-        policy: summarizeGovernanceVisibility(state).governedSkills,
+    async (req: AuthenticatedRequest, res) => {
+      await respondWithCachedJson(req, res, {
+        namespace: "skills.policy",
+        ttlSeconds: readCacheTtls.skillsPolicy,
+        tags: ["runtime-state"],
+        scope: "protected",
+        compute: () => ({
+          generatedAt: new Date().toISOString(),
+          policy: summarizeGovernanceVisibility(state).governedSkills,
+        }),
       });
     },
   );
@@ -8865,16 +9097,24 @@ async function bootstrap() {
     viewerReadLimiter,
     requireRole("viewer"),
     auditProtectedAction("skills.telemetry.read"),
-    async (_req, res) => {
+    async (req: AuthenticatedRequest, res) => {
       try {
-        const gate = await getToolGate();
-        const toolLog = gate.getLog();
-        res.json({
-          generatedAt: new Date().toISOString(),
-          telemetry: {
-            totalInvocations: toolLog.invocations.length,
-            allowedCount: toolLog.allowedCount,
-            deniedCount: toolLog.deniedCount,
+        await respondWithCachedJson(req, res, {
+          namespace: "skills.telemetry",
+          ttlSeconds: readCacheTtls.skillsTelemetry,
+          tags: ["runtime-state"],
+          scope: "protected",
+          compute: async () => {
+            const gate = await getToolGate();
+            const toolLog = gate.getLog();
+            return {
+              generatedAt: new Date().toISOString(),
+              telemetry: {
+                totalInvocations: toolLog.invocations.length,
+                allowedCount: toolLog.allowedCount,
+                deniedCount: toolLog.deniedCount,
+              },
+            };
           },
         });
       } catch (error: any) {
@@ -8891,29 +9131,40 @@ async function bootstrap() {
     requireRole("viewer"),
     auditProtectedAction("skills.audit.read"),
     createValidationMiddleware(SkillsAuditQuerySchema, "query"),
-    async (req, res) => {
+    async (req: AuthenticatedRequest, res) => {
       try {
         const limit = Number(req.query.limit ?? 100);
         const offset = Number(req.query.offset ?? 0);
         const deniedOnly = parseBoolean(req.query.deniedOnly, false);
-        const gate = await getToolGate();
-        const log = deniedOnly
-          ? gate.getDeniedInvocations()
-          : gate.getLog().invocations;
-        const sorted = [...log].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-        const items = sorted.slice(offset, offset + limit);
+        await respondWithCachedJson(req, res, {
+          namespace: "skills.audit",
+          ttlSeconds: readCacheTtls.skillsAudit,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: { limit, offset, deniedOnly },
+          compute: async () => {
+            const gate = await getToolGate();
+            const log = deniedOnly
+              ? gate.getDeniedInvocations()
+              : gate.getLog().invocations;
+            const sorted = [...log].sort((a, b) =>
+              b.timestamp.localeCompare(a.timestamp),
+            );
+            const items = sorted.slice(offset, offset + limit);
 
-        res.json({
-          generatedAt: new Date().toISOString(),
-          query: { limit, offset, deniedOnly },
-          total: log.length,
-          page: {
-            returned: items.length,
-            offset,
-            limit,
-            hasMore: offset + items.length < log.length,
+            return {
+              generatedAt: new Date().toISOString(),
+              query: { limit, offset, deniedOnly },
+              total: log.length,
+              page: {
+                returned: items.length,
+                offset,
+                limit,
+                hasMore: offset + items.length < log.length,
+              },
+              records: items,
+            };
           },
-          records: items,
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -8928,133 +9179,148 @@ async function bootstrap() {
     viewerReadLimiter,
     requireRole("viewer"),
     auditProtectedAction("health.extended.read"),
-    async (_req, res) => {
+    async (req: AuthenticatedRequest, res) => {
       try {
-        const persistence = await PersistenceIntegration.healthCheck();
-        const agents = await buildAgentOperationalOverview(state);
-        const knowledge = knowledgeIntegration.getSummary();
-        const knowledgeRuntime = buildKnowledgeRuntimeSignals({
-          summary: knowledge,
-          config,
-          state,
-        });
-        const governance = summarizeGovernanceVisibility(state);
-        const queueQueued = queue.getQueuedCount();
-        const queueProcessing = queue.getPendingCount();
-        const pendingApprovalsCount = listPendingApprovals(state).length;
+        await respondWithCachedJson(req, res, {
+          namespace: "health.extended",
+          ttlSeconds: readCacheTtls.healthExtended,
+          tags: ["runtime-state"],
+          scope: "protected",
+          compute: async () => {
+            const persistence = await PersistenceIntegration.healthCheck();
+            const agents = await buildAgentOperationalOverview(state);
+            const knowledge = knowledgeIntegration.getSummary();
+            const knowledgeRuntime = buildKnowledgeRuntimeSignals({
+              summary: knowledge,
+              config,
+              state,
+            });
+            const governance = summarizeGovernanceVisibility(state);
+            const queueQueued = queue.getQueuedCount();
+            const queueProcessing = queue.getPendingCount();
+            const pendingApprovalsCount = listPendingApprovals(state).length;
 
-        const serviceAvailableCount = agents.filter(
-          (agent) => agent.serviceAvailable,
-        ).length;
-        const serviceInstalledCount = agents.filter(
-          (agent) => agent.serviceInstalled === true,
-        ).length;
-        const serviceRunningCount = agents.filter(
-          (agent) => agent.serviceRunning === true,
-        ).length;
-        const serviceOperationalCount = serviceRunningCount;
-        const spawnedWorkerCapableCount = agents.filter(
-          (agent) => agent.spawnedWorkerCapable,
-        ).length;
+            const serviceAvailableCount = agents.filter(
+              (agent) => agent.serviceAvailable,
+            ).length;
+            const serviceInstalledCount = agents.filter(
+              (agent) => agent.serviceInstalled === true,
+            ).length;
+            const serviceRunningCount = agents.filter(
+              (agent) => agent.serviceRunning === true,
+            ).length;
+            const serviceOperationalCount = serviceRunningCount;
+            const spawnedWorkerCapableCount = agents.filter(
+              (agent) => agent.spawnedWorkerCapable,
+            ).length;
 
-        const controlPlaneHealthy = queueProcessing >= 0;
-        const dependencyStatus =
-          persistence.status === "healthy" ? "healthy" : "degraded";
-        const repairSummary = governance.repairs;
-        const proofDelivery = buildProofDeliveryTelemetry(config, state);
-        const truthLayers = buildRuntimeTruthLayers({
-          claimed: claimedTruthLayer,
-          config,
-          state,
-          fastStartMode,
-          persistenceStatus:
-            typeof persistence.status === "string" ? persistence.status : "unknown",
-          knowledgeRuntime,
-          queueQueued,
-          queueProcessing,
-          pendingApprovalsCount,
-          repairs: repairSummary,
-          retryRecoveries: governance.taskRetryRecoveries,
-          agents,
-          proofDelivery,
-        });
-        const topology = await buildAgentTopology({ agents, proofDelivery, state });
-        const relationshipHistory = buildRelationshipHistory(state, {
-          windowHours: 24,
-          recentLimit: 20,
-        });
-        const incidentState = await refreshRuntimeIncidents();
-        const incidents = incidentState.model;
-        if (incidentState.changed) {
-          await flushState();
-        }
-        const healthStatus =
-          controlPlaneHealthy &&
-          dependencyStatus === "healthy" &&
-          incidents.overallStatus === "stable"
-            ? "healthy"
-            : incidents.overallStatus === "critical" || dependencyStatus !== "healthy"
-              ? "degraded"
-              : "warning";
+            const controlPlaneHealthy = queueProcessing >= 0;
+            const dependencyStatus =
+              persistence.status === "healthy" ? "healthy" : "degraded";
+            const repairSummary = governance.repairs;
+            const proofDelivery = buildProofDeliveryTelemetry(config, state);
+            const truthLayers = buildRuntimeTruthLayers({
+              claimed: claimedTruthLayer,
+              config,
+              state,
+              fastStartMode,
+              persistenceStatus:
+                typeof persistence.status === "string"
+                  ? persistence.status
+                  : "unknown",
+              knowledgeRuntime,
+              queueQueued,
+              queueProcessing,
+              pendingApprovalsCount,
+              repairs: repairSummary,
+              retryRecoveries: governance.taskRetryRecoveries,
+              agents,
+              proofDelivery,
+            });
+            const topology = await buildAgentTopology({
+              agents,
+              proofDelivery,
+              state,
+            });
+            const relationshipHistory = buildRelationshipHistory(state, {
+              windowHours: 24,
+              recentLimit: 20,
+            });
+            const incidentState = await refreshRuntimeIncidents();
+            const incidents = incidentState.model;
+            if (incidentState.changed) {
+              await flushState();
+            }
+            const healthStatus =
+              controlPlaneHealthy &&
+              dependencyStatus === "healthy" &&
+              incidents.overallStatus === "stable"
+                ? "healthy"
+                : incidents.overallStatus === "critical" ||
+                    dependencyStatus !== "healthy"
+                  ? "degraded"
+                  : "warning";
 
-        res.json({
-          generatedAt: new Date().toISOString(),
-          status: healthStatus,
-          controlPlane: {
-            routing:
-              incidents.overallStatus === "critical"
-                ? "degraded"
-                : controlPlaneHealthy
-                  ? incidents.overallStatus === "warning"
-                    ? "warning"
-                    : "healthy"
-                  : "degraded",
-            queue: {
-              queued: queueQueued,
-              processing: queueProcessing,
-            },
+            return {
+              generatedAt: new Date().toISOString(),
+              status: healthStatus,
+              controlPlane: {
+                routing:
+                  incidents.overallStatus === "critical"
+                    ? "degraded"
+                    : controlPlaneHealthy
+                      ? incidents.overallStatus === "warning"
+                        ? "warning"
+                        : "healthy"
+                      : "degraded",
+                queue: {
+                  queued: queueQueued,
+                  processing: queueProcessing,
+                },
+              },
+              workers: {
+                declaredAgents: agents.length,
+                spawnedWorkerCapableCount,
+                serviceAvailableCount,
+                serviceInstalledCount,
+                serviceRunningCount,
+                serviceOperationalCount,
+              },
+              repairs: {
+                model: "partial-runtime",
+                activeCount: repairSummary.activeCount,
+                verifiedCount: repairSummary.verifiedCount,
+                failedCount: repairSummary.failedCount,
+                lastDetectedAt: repairSummary.lastDetectedAt,
+                lastVerifiedAt: repairSummary.lastVerifiedAt,
+                lastFailedAt: repairSummary.lastFailedAt,
+              },
+              dependencies: {
+                persistence,
+                knowledge: {
+                  indexedEntries: knowledge.stats?.total ?? 0,
+                  conceptCount: knowledge.networkStats?.totalConcepts ?? 0,
+                },
+              },
+              truthLayers,
+              proofDelivery,
+              topology: {
+                status: topology.status,
+                counts: topology.counts,
+                hotspots: topology.hotspots,
+                relationshipHistory: {
+                  totalObservations: relationshipHistory.totalObservations,
+                  lastObservedAt: relationshipHistory.lastObservedAt,
+                  byRelationship: relationshipHistory.byRelationship,
+                  byStatus: relationshipHistory.byStatus,
+                  timeline: relationshipHistory.timeline,
+                  windows: relationshipHistory.windows,
+                  graph: relationshipHistory.graph,
+                },
+              },
+              incidents,
+            };
           },
-          workers: {
-            declaredAgents: agents.length,
-            spawnedWorkerCapableCount,
-            serviceAvailableCount,
-            serviceInstalledCount,
-            serviceRunningCount,
-            serviceOperationalCount,
-          },
-          repairs: {
-            model: "partial-runtime",
-            activeCount: repairSummary.activeCount,
-            verifiedCount: repairSummary.verifiedCount,
-            failedCount: repairSummary.failedCount,
-            lastDetectedAt: repairSummary.lastDetectedAt,
-            lastVerifiedAt: repairSummary.lastVerifiedAt,
-            lastFailedAt: repairSummary.lastFailedAt,
-          },
-          dependencies: {
-            persistence,
-            knowledge: {
-              indexedEntries: knowledge.stats?.total ?? 0,
-              conceptCount: knowledge.networkStats?.totalConcepts ?? 0,
-            },
-          },
-          truthLayers,
-          proofDelivery,
-          topology: {
-            status: topology.status,
-            counts: topology.counts,
-            hotspots: topology.hotspots,
-            relationshipHistory: {
-              totalObservations: relationshipHistory.totalObservations,
-              lastObservedAt: relationshipHistory.lastObservedAt,
-              byRelationship: relationshipHistory.byRelationship,
-              byStatus: relationshipHistory.byStatus,
-              timeline: relationshipHistory.timeline,
-              windows: relationshipHistory.windows,
-              graph: relationshipHistory.graph,
-            },
-          },
-          incidents,
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -9069,10 +9335,15 @@ async function bootstrap() {
     viewerReadLimiter,
     requireRole("viewer"),
     auditProtectedAction("persistence.summary.read"),
-    async (_req, res) => {
+    async (req: AuthenticatedRequest, res) => {
       try {
-        const summary = await PersistenceIntegration.getOperatorSummary(state);
-        res.json(summary);
+        await respondWithCachedJson(req, res, {
+          namespace: "persistence.summary",
+          ttlSeconds: readCacheTtls.persistenceSummary,
+          tags: ["runtime-state"],
+          scope: "protected",
+          compute: async () => PersistenceIntegration.getOperatorSummary(state),
+        });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
       }

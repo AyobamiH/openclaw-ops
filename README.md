@@ -527,6 +527,9 @@ Compose requirements:
 - the full dependency stack mode forces the orchestrator container onto the
   local `mongo` service even if your host `.env` outside Docker points at an
   external database
+- the host `systemd` path now expects local open-source Redis on
+  `127.0.0.1:6379` through `systemd/openclaw-redis.service`; this is a
+  Docker-backed local Redis service, not a paid hosted dependency
 - existing Docker volumes are not downgrade-safe; if you already have local
   MongoDB or Redis data from newer images, keep the compose image versions
   compatible or reset those volumes before expecting a clean boot

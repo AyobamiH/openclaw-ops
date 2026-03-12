@@ -435,6 +435,57 @@ Configuration keys (JSON config or env override):
 - `corsAllowCredentials` / `ORCHESTRATOR_CORS_ALLOW_CREDENTIALS`
 - `corsMaxAgeSeconds` / `ORCHESTRATOR_CORS_MAX_AGE_SECONDS`
 
+## Response Cache Contract
+
+The orchestrator now uses a bounded response cache for repeated read-heavy API
+surfaces.
+
+Runtime truth:
+
+- If `REDIS_URL` is reachable, cached responses are stored in Redis.
+- If Redis is unavailable or not configured, the orchestrator falls back to a
+  bounded in-memory cache instead of failing startup.
+- Cache invalidation is tag-based and tied to orchestrator runtime state
+  writes. Knowledge surfaces are invalidated separately from broader runtime
+  state.
+
+Operator-visible headers:
+
+- `X-OpenClaw-Cache: hit|miss`
+- `X-OpenClaw-Cache-Store: redis|memory`
+- `Cache-Control: public|max-age=*` for public cached reads
+- `Cache-Control: private|max-age=*` plus `Vary: Authorization` for protected
+  cached reads
+
+Current cached read surfaces:
+
+- Public:
+  - `GET /api/knowledge/summary`
+  - `GET /api/openapi.json`
+  - `GET /api/persistence/health`
+- Protected:
+  - `GET /api/tasks/catalog`
+  - `GET /api/approvals/pending`
+  - `GET /api/incidents`
+  - `GET /api/incidents/:id`
+  - `GET /api/incidents/:id/history`
+  - `GET /api/dashboard/overview`
+  - `GET /api/agents/overview`
+  - `GET /api/memory/recall`
+  - `POST /api/knowledge/query`
+  - `GET /api/tasks/runs`
+  - `GET /api/tasks/runs/:runId`
+  - `GET /api/skills/registry`
+  - `GET /api/skills/policy`
+  - `GET /api/skills/telemetry`
+  - `GET /api/skills/audit`
+  - `GET /api/health/extended`
+  - `GET /api/persistence/summary`
+
+The response cache is intended to reduce repeated operator-console fetch cost
+for identical route/query/body/auth combinations over short windows. It is not
+a claim of browser-side offline caching or immutable API payloads.
+
 ## Rate Limits And 429 Handling
 
 Current runtime limiter policy:
