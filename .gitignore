@@ -65,6 +65,11 @@ orchestrator_status.md
 orchestrator/logs/
 orchestrator/data/*
 !orchestrator/data/milestones-feed.json
+openclawdbot/data/
+operator-s-console/
+public-decision-intelligence-console/
+orchestrator/MEMORY.md
+orchestrator/OpenClaw operator console dashboard.png
 
 # misc
 .DS_Store

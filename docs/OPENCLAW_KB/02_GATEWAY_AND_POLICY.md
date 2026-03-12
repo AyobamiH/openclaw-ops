@@ -1,6 +1,6 @@
 # Gateway, Auth, and Policy Enforcement
 
-Last updated: 2026-02-24
+Last updated: 2026-03-02
 
 ## Verified Request Guard Layers
 
@@ -28,11 +28,21 @@ Last updated: 2026-02-24
 
 ## Policy Drift Risks
 
-- Static token compare (single API key) with no key rotation framework in code.
+- Bearer token comparison is now constant-time, and key rotation metadata is
+  enforced at startup. The remaining gap is operational rotation discipline, not
+  absence of code support.
 - Query validation regex for KB query is strict ASCII-only; may reject valid multilingual input.
-- Signature verification uses `JSON.stringify(req.body)`; signing behavior depends on upstream body canonicalization.
+- Signature verification uses recursively sorted canonical JSON, so drift risk
+  now centers on caller contract alignment rather than raw `JSON.stringify`
+  ordering.
 
 ## Governance Position
 
 - **Verified good**: strong baseline middleware stack.
-- **Needs policy formalization**: key rotation cadence, webhook canonicalization contract, endpoint ownership review cadence.
+- **Partial runtime**: ToolGate and route-context protections now exist, but
+  they are not a full universal governance boundary for every execution path.
+- **Deferred / planned**: full manifest boundary enforcement, full skill audit
+  wiring, and stronger sandboxing remain future governance work.
+- **Needs policy formalization**: key rotation cadence, endpoint ownership
+  review cadence, and continued clarity about which internal app routes are
+  lifecycle-only versus interactive-user surfaces.

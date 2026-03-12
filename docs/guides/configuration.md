@@ -54,6 +54,11 @@ These are frequently used in the current workspace:
 }
 ```
 
+`cookbookPath` is optional. If it is omitted, the orchestrator should continue
+with `docsPath` indexing only. If it is present, it should point at a local
+OpenAI Cookbook mirror; the default sync is a curated text-and-clues baseline,
+and a broader full sync is an explicit operator choice.
+
 ## Milestone Pipeline Fields
 
 If you are using the milestone delivery path, these fields matter:

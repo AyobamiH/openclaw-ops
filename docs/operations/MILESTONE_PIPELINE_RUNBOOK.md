@@ -47,7 +47,13 @@ GET /api/command-center/demand         ← composed Demand view payload
 
 ### 2a. Set the ingest URL
 
-After deploying openclawdbot, update `orchestrator_config.json`:
+After deploying openclawdbot, update the orchestrator config file that is
+actually loaded at runtime by default:
+
+- `workspace/orchestrator_config.json`
+
+Do not leave `milestoneIngestUrl` empty, or orchestrator delivery will no-op
+before making any POST attempts.
 
 ```json
 {
@@ -57,6 +63,10 @@ After deploying openclawdbot, update `orchestrator_config.json`:
 ```
 
 Restart the orchestrator after editing.
+
+Optional runtime override for environment-specific deploys:
+
+- `MILESTONE_INGEST_URL` (takes precedence over file config)
 
 ### 2b. Set the signing secret
 
@@ -76,7 +86,7 @@ node -e "require('crypto').randomBytes(32).toString('hex')"
 secret form or the form submit route:
 
 - Reddit app menu: `Configure Milestone Pipeline Secret`
-- Internal form submit route: `POST /internal/forms/milestone-secret-submit`
+- Internal form submit route: `POST /internal/form/milestone-secret-submit`
 
 The app stores this value in Redis under the app-scoped key
 `milestones:signing-secret`.
@@ -85,6 +95,23 @@ Both values **must be identical**. The same secret is reused for:
 
 - `POST /internal/milestones/ingest`
 - `POST /internal/demand/ingest`
+
+Ingest auth boundary (current runtime contract):
+
+- client requests are validated by HMAC headers
+  `x-openclaw-signature` + `x-openclaw-timestamp`
+- `/internal/milestones/ingest` is not gated by interactive/lifecycle Devvit
+  context middleware
+- missing/invalid signature is rejected (`401`)
+
+There is no longer an active code-known default secret fallback in the app.
+Until this Redis secret is configured, bootstrap and recovery paths that need to
+sign built-in feed content will fail closed instead of silently restoring a
+known default.
+
+For local integration tests, a valid non-empty local ingest URL is also allowed
+(for example `http://127.0.0.1:3000/internal/milestones/ingest`) as long as
+both sides share the same signing secret.
 
 ---
 
@@ -185,6 +212,12 @@ The composed UI route should also respond:
 curl https://<your-devvit-app-hostname>/api/command-center/demand
 ```
 
+`selectedForDraftTotal` now reflects queue items auto-selected from the
+existing RSS routing tags. In current runtime, `nightly-batch` selects only
+`priority` leads for `reddit-response`; plain `draft` leads remain queued and
+`manual-review` leads stay unselected until an operator approves replay
+through the existing approval surface.
+
 ---
 
 ## 5. Rotating the signing secret
@@ -210,7 +243,7 @@ curl https://<your-devvit-app-hostname>/api/command-center/demand
    ```
 
 4. Update the app-side secret via the milestone secret form (or
-   `POST /internal/forms/milestone-secret-submit`) using the same new value.
+   `POST /internal/form/milestone-secret-submit`) using the same new value.
 
 5. Restart the orchestrator:
 
@@ -243,6 +276,18 @@ The 5-minute delivery poller in `index.ts` will retry them automatically. If the
 
 ```bash
 docker exec -it <orchestrator-container> npm run milestones:backfill
+```
+
+### Symptom: ingest request reports success but live UI did not refresh immediately
+
+The app now treats Redis state writes as the durable success boundary. If
+`realtime.send()` fails after that commit, the ingest still succeeds and logs a
+broadcast warning instead of reporting a total request failure. Check app logs
+for the broadcast warning, then verify Redis-backed routes directly:
+
+```bash
+curl https://<your-devvit-app-hostname>/api/milestones/latest?limit=1
+curl https://<your-devvit-app-hostname>/api/command-center/demand-live
 ```
 
 ### Symptom: `dead-letter` records in orchestrator state

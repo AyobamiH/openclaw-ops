@@ -27,6 +27,7 @@ where it helps prevent drift.
 3. [operations/deployment.md](./operations/deployment.md)
 4. [guides/monitoring.md](./guides/monitoring.md)
 5. [operations/backup-recovery.md](./operations/backup-recovery.md)
+6. [operations/KNOWLEDGE_MIRROR_POLICY.md](./operations/KNOWLEDGE_MIRROR_POLICY.md)
 
 ## I Need To Understand The Architecture
 
@@ -56,6 +57,7 @@ Sprint To Completion is the primary execution tracker for unfinished repository 
 2. [guides/configuration.md](./guides/configuration.md)
 3. [guides/running-agents.md](./guides/running-agents.md)
 4. [reference/api.md](./reference/api.md)
+5. [operations/KNOWLEDGE_MIRROR_POLICY.md](./operations/KNOWLEDGE_MIRROR_POLICY.md)
 
 ## I Need To Work On The Incubated Decision Intelligence Product
 

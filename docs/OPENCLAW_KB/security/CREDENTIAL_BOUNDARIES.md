@@ -1,6 +1,6 @@
 # Credential Boundaries
 
-Last updated: 2026-02-24
+Last updated: 2026-03-02
 
 ## Current Model
 - Secrets enter process through environment variables.
@@ -8,10 +8,16 @@ Last updated: 2026-02-24
 - Auth logic uses API key + rotation metadata.
 
 ## Risk Observations
-- Child process spawns pass through `...process.env` in task handlers.
-- This can over-expose credentials to agents unless explicitly filtered.
+- Child process spawns no longer pass through the full parent environment.
+- A curated allowlist now limits inherited env variables, but selected provider
+  credentials still flow to spawned agents by design, and there is still no
+  host-level sandbox boundary.
 
 ## Required Guardrails
-- Per-agent env allowlist at spawn time.
-- Secret minimization by role.
+- Keep the per-agent env allowlist narrow and review it whenever a new child
+  execution path is added.
+- Continue reducing credential exposure by role instead of expanding shared
+  provider-env pass-through.
 - Secret access audit logs tied to task ID.
+- Do not describe the current env allowlist as a sandbox. It is partial
+  hardening, not full process isolation.

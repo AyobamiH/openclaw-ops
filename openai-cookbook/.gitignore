@@ -147,3 +147,29 @@ examples/coding-agent-workspace
 # VS Code files
 .vscode/
 .cursorignore
+
+# OpenClaw packaging policy:
+# The committed mirror is intentionally text-and-clues-first. Full upstream sync
+# is allowed locally, but heavyweight example assets should stay local.
+/images/
+/examples/**/*.ipynb
+/examples/**/data/
+/examples/**/datasets/
+/examples/**/image/
+/examples/**/*.csv
+/examples/**/*.pkl
+/examples/**/*.pdf
+/examples/**/*.mp3
+/examples/**/*.wav
+/examples/**/*.mp4
+/examples/**/*.png
+/examples/**/*.jpg
+/examples/**/*.jpeg
+/examples/**/*.gif
+/examples/**/*.svg
+/examples/**/*.db
+/examples/**/*.tex
+/examples/**/outputs/
+/examples/**/results/
+/examples/**/results_*/
+/examples/**/uv.lock

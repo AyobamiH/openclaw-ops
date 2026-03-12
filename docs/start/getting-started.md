@@ -14,7 +14,7 @@ Get the orchestrator running locally in under 5 minutes.
 
 - Node.js 22+ (latest LTS recommended)
 - npm or yarn
-- ~200MB free disk space (for docs and logs)
+- ~200MB free disk space for the default text-and-clues mirrors and logs
 - One model provider API key (OpenAI, Anthropic, etc.)
 
 ## Installation
@@ -57,10 +57,23 @@ Key settings to check:
 ### 4. Sync Official Docs (Optional)
 
 ```bash
-./sync_openclaw_docs.sh
+./sync_docs_sources.sh
 ```
 
-This pulls the latest OpenClaw documentation. If you skip it, the system will use whatever docs are already in `openclaw-docs/`.
+This keeps `openclaw-docs/` current and refreshes a small text-and-clues
+`openai-cookbook/` mirror. That baseline includes curated markdown, code, and
+config files that agents can mine for implementation clues. If you skip it, the
+system will use whatever is already present locally.
+
+If you explicitly want the broader upstream cookbook mirror for local
+exploration, use:
+
+```bash
+./sync_docs_sources.sh --mode=full
+```
+
+That full mode is intended for local enrichment, not for expanding the
+committed repository baseline.
 
 ### 5. Build
 
@@ -175,7 +188,7 @@ npm install
 
 ```bash
 # Sync docs
-../sync_openclaw_docs.sh
+../sync_docs_sources.sh
 
 # Or create empty directory
 mkdir openclaw-docs

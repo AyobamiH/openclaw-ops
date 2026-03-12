@@ -1,6 +1,13 @@
 # PRD: OpenClaw Governance Remediation (Feb 23, 2026)
 
-**Status**: Foundation audit complete. 3 critical governance gaps identified. This PRD prevents scope drift.
+**Status**: Historical remediation snapshot. This is planning context from 2026-02-23, not current runtime authority.
+
+Current truth now lives in active runtime code, the root `OPENCLAW_CONTEXT_ANCHOR.md`, and the current KB truth docs under `docs/OPENCLAW_KB/**`.
+
+The gap statements below should be read as dated audit findings. Some items listed here as missing have since landed in runtime code and now remain useful mainly as historical change context.
+Do not use this file as the live remediation contract, the current sprint ladder,
+or the current runtime severity baseline. Treat it as preserved historical
+change context only.
 
 ---
 
@@ -9,6 +16,7 @@
 ### Gap 1: Missing Runtime ToolGate
 **Claim**: Deny-by-default permission enforcement at skill execution
 **Reality**: `toolGate.ts` absent from orchestrator runtime
+**Historical note**: This claim is no longer current. `workspace/orchestrator/src/toolGate.ts` now exists in runtime, but it should still be described as a partial runtime governance surface rather than full containment.
 **Impact**: No runtime skill access control; relies only on agent-side validation
 **Fix**: 
 - Create `orchestrator/src/skills/toolGate.ts` (80-120 LOC)
@@ -22,6 +30,7 @@
 ### Gap 2: Missing Runtime SkillAudit
 **Claim**: Startup skill configuration validation gate
 **Reality**: `orchestrator/src/skillAudit.ts` doesn't exist; `skills/index.ts` imports broken path
+**Historical note**: This claim is no longer current. `workspace/orchestrator/src/skillAudit.ts` now exists, but the runtime wiring question should be treated as partial/deferred rather than resolved by this older PRD.
 **Impact**: Invalid/misconfigured skills load silently
 **Fix**:
 - Create `orchestrator/src/skillAudit.ts` with startup validation (60-100 LOC)
@@ -91,6 +100,7 @@
 ### Gap 7: No API Key Rotation Framework
 **Claim**: Auth is secure + rotatable
 **Reality**: Static token comparison; no key expiration or rotation mechanism in code
+**Historical note**: This claim is no longer current. Runtime auth now includes key rotation metadata checks; remaining risk is operational rotation discipline, not total absence of code support.
 **Impact**: Compromised key requires code deployment to remedy
 **Fix**:
 - Add key versions + expiration timestamps to auth config

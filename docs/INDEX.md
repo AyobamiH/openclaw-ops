@@ -42,6 +42,7 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 |---|---|
 | [OPERATOR_GUIDE.md](./OPERATOR_GUIDE.md) | operator-facing runtime behavior |
 | [GOVERNANCE_REPO_HYGIENE.md](./GOVERNANCE_REPO_HYGIENE.md) | cleanup and protection policy |
+| [operations/KNOWLEDGE_MIRROR_POLICY.md](./operations/KNOWLEDGE_MIRROR_POLICY.md) | policy for mirrored upstream knowledge sources |
 | [operations/SPRINT_TO_COMPLETION.md](./operations/SPRINT_TO_COMPLETION.md) | Sprint To Completion subordinate execution tracker for the root anchor |
 | [operations/deployment.md](./operations/deployment.md) | production operations checklist |
 | [operations/backup-recovery.md](./operations/backup-recovery.md) | recovery guidance |

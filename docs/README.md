@@ -34,6 +34,7 @@ Documentation growth rule:
 - [Operator Guide](./OPERATOR_GUIDE.md)
 - [System Architecture](./concepts/architecture.md)
 - [Configuration Guide](./guides/configuration.md)
+- [Knowledge Mirror Policy](./operations/KNOWLEDGE_MIRROR_POLICY.md)
 - [Task Types](./reference/task-types.md)
 - [State Schema](./reference/state-schema.md)
 

@@ -566,6 +566,7 @@ Source-of-truth order for implementation work:
 Recommended starting points:
 
 - `docs/README.md`
+- `docs/operations/KNOWLEDGE_MIRROR_POLICY.md`
 - `docs/operations/SPRINT_TO_COMPLETION.md`
 - `docs/operations/orchestrator-status.md`
 - `agents/README.md`

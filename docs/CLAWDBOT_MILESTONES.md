@@ -113,6 +113,23 @@ Current code already includes:
 - runtime milestones for startup, `rss-sweep`, `nightly-batch`, `reddit-response`,
   approval state changes, and demand summary refreshes
 
+Operational prerequisites for automatic publish to the proof feed:
+
+- the active orchestrator runtime config (`workspace/orchestrator_config.json`
+  by default) must have a non-empty `milestoneIngestUrl`
+- orchestrator must have `MILESTONE_SIGNING_SECRET` set
+- openclawdbot must have Redis key `milestones:signing-secret` set to the same value
+
+If any of those are missing, milestone generation can still happen locally in
+orchestrator state/logs, but signed proof-feed ingestion will not complete.
+
+Signed ingest boundary truth:
+
+- `/internal/milestones/ingest` is HMAC-gated (`x-openclaw-signature`,
+  `x-openclaw-timestamp`)
+- missing/invalid signature is rejected (`401`)
+- ingest trust is signature-based; it is not an interactive-user context gate
+
 ## Parallel Demand Telemetry
 
 Milestones remain the **Proof** channel.
@@ -125,6 +142,8 @@ queue and draft pressure. That demand summary channel:
 - stores only the latest verified demand snapshot in the app
 - powers `/api/command-center/demand` and `/api/command-center/demand-live`
 - reuses the same signing secret model as milestone ingest by default
+- requires an explicitly configured app signing secret; there is no longer an
+  active code-known default secret bootstrap path
 
 This means:
 
