@@ -33,7 +33,9 @@ async function runAgentEntryPointWithDeniedSkill(args: {
 }) {
   const fixtureRoot = await mkdtemp(join(tmpdir(), `${args.agentId}-fixture-`));
   const sourceRoot = join(process.cwd(), '..', 'agents', args.agentId);
+  const sharedSourceRoot = join(process.cwd(), '..', 'agents', 'shared');
   const stagedRoot = join(fixtureRoot, args.agentId);
+  const stagedSharedRoot = join(fixtureRoot, 'shared');
   const payloadPath = join(fixtureRoot, 'payload.json');
   const resultPath = join(fixtureRoot, 'result.json');
   const configPath = join(stagedRoot, 'agent.config.json');
@@ -48,6 +50,7 @@ async function runAgentEntryPointWithDeniedSkill(args: {
 
   try {
     await cp(sourceRoot, stagedRoot, { recursive: true });
+    await cp(sharedSourceRoot, stagedSharedRoot, { recursive: true });
     const config = JSON.parse(await readFile(configPath, 'utf-8'));
     config.permissions.skills[args.deniedSkillId].allowed = false;
     await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');

@@ -11,6 +11,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import {
+  buildIncidentPriorityQueue,
+  buildWorkflowBlockerSummary,
   countByStatus,
   loadRuntimeState,
   normalizeAgentIdFromNode,
@@ -37,6 +39,9 @@ interface AgentConfig {
   id: string;
   name: string;
   orchestratorStatePath?: string;
+  constraints?: {
+    timeout?: number;
+  };
   permissions: any;
 }
 
@@ -82,6 +87,25 @@ interface VerificationContext {
   serviceIds: string[];
   verificationSignals: string[];
   evidence: string[];
+  priorityIncidents: Array<{
+    incidentId: string;
+    classification: string | null;
+    severity: string | null;
+    status: string | null;
+    priorityScore: number;
+    nextAction: string | null;
+    blockers: string[];
+  }>;
+  workflowWatch: {
+    totalStopSignals: number;
+    latestStopAt: string | null;
+    latestStopCode: string | null;
+    byStage: Record<string, number>;
+    byClassification: Record<string, number>;
+    byStopCode: Record<string, number>;
+    blockedRunIds: string[];
+    proofStopSignals: number;
+  };
 }
 
 interface VerificationRelationshipOutput {
@@ -409,6 +433,35 @@ function buildVerificationContext(task: any, state: RuntimeState): VerificationC
     ),
   );
   const relationshipSummary = summarizeRelationshipObservations(relatedRelationships);
+  const priorityIncidents = buildIncidentPriorityQueue(state.incidentLedger ?? [])
+    .filter((incident) => {
+      if (
+        incidentContext.incident?.incidentId &&
+        incident.incidentId === incidentContext.incident.incidentId
+      ) {
+        return true;
+      }
+      if (
+        targetAgentId &&
+        incident.linkedServiceIds.some((serviceId) => serviceId.includes(targetAgentId))
+      ) {
+        return true;
+      }
+      return incident.severity === 'critical';
+    })
+    .slice(0, 5)
+    .map((incident) => ({
+      incidentId: incident.incidentId,
+      classification: incident.classification,
+      severity: incident.severity,
+      status: incident.status,
+      priorityScore: incident.priorityScore,
+      nextAction: incident.nextAction,
+      blockers: incident.blockers,
+    }));
+  const workflowWatch = buildWorkflowBlockerSummary(
+    relatedWorkflowEvents.length > 0 ? relatedWorkflowEvents : state.workflowEvents ?? [],
+  );
   const verificationSignals: string[] = [];
   const evidence: string[] = [];
 
@@ -432,6 +485,12 @@ function buildVerificationContext(task: any, state: RuntimeState): VerificationC
     )
   ) {
     verificationSignals.push('One or more related repairs remain failed or error-marked.');
+  }
+  if (workflowWatch.totalStopSignals > 0) {
+    verificationSignals.push('Workflow stop signals are still present in runtime evidence.');
+  }
+  if (priorityIncidents.some((incident) => incident.severity === 'critical')) {
+    verificationSignals.push('A critical incident remains open in the verification context.');
   }
 
   if (incidentContext.incident?.incidentId) {
@@ -478,6 +537,8 @@ function buildVerificationContext(task: any, state: RuntimeState): VerificationC
     serviceIds: incidentContext.serviceIds,
     verificationSignals,
     evidence,
+    priorityIncidents,
+    workflowWatch,
   };
 }
 
@@ -754,6 +815,8 @@ async function handleTask(task: any): Promise<any> {
         ...buildDryRunResult(taskId, agentId, request, runnerData),
         runtimeContext: initialVerificationContext,
         verificationSignals: initialVerificationContext.verificationSignals,
+        priorityIncidents: initialVerificationContext.priorityIncidents,
+        workflowWatch: initialVerificationContext.workflowWatch,
         relationships:
           targetAgentId
             ? [
@@ -869,6 +932,8 @@ async function handleTask(task: any): Promise<any> {
       agentId,
       runtimeContext: verificationContext,
       verificationSignals: verificationContext.verificationSignals,
+      priorityIncidents: verificationContext.priorityIncidents,
+      workflowWatch: verificationContext.workflowWatch,
       verification: {
         evidenceQuality,
         reproducibility,
@@ -903,6 +968,8 @@ async function handleTask(task: any): Promise<any> {
           repairCount: verificationContext.repairs.total,
           workflowEvents: verificationContext.workflow.totalEvents,
           relationshipEvents: verificationContext.relationships.total,
+          workflowStopSignals: verificationContext.workflowWatch.totalStopSignals,
+          priorityIncidents: verificationContext.priorityIncidents.length,
         },
         closureRecommendation,
       },

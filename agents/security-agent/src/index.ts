@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  buildIncidentPriorityQueue,
   loadRuntimeState,
   type RuntimeStateSubset,
 } from "../../shared/runtime-evidence.js";
@@ -81,6 +82,13 @@ interface SecurityResult {
     blockerCount: number;
     summary: string;
   };
+  remediationPriorities: Array<{
+    incidentId: string;
+    severity: string;
+    owner: string | null;
+    recommendedOwner: string | null;
+    nextAction: string;
+  }>;
   evidence: string[];
   executionTime: number;
 }
@@ -378,6 +386,7 @@ async function handleTask(task: SecurityTask): Promise<SecurityResult> {
         auditedAgents: [],
         relationships: [],
         toolInvocations: [],
+        remediationPriorities: [],
         operationalMaturity: {
           trustBoundaryCoverage: "minimal",
           auditedAgentCount: 0,
@@ -396,7 +405,21 @@ async function handleTask(task: SecurityTask): Promise<SecurityResult> {
       config.orchestratorStatePath,
     );
     const { findings, auditedAgents, evidence } = await buildFindings(task, state);
-    const boundedFixes = findings.slice(0, 8).map((finding) => ({
+    const remediationPriorities = buildIncidentPriorityQueue(state.incidentLedger ?? [])
+      .filter((incident) =>
+        incident.classification === "service-runtime" ||
+        incident.classification === "proof-delivery" ||
+        incident.severity === "critical",
+      )
+      .slice(0, 6)
+      .map((incident) => ({
+        incidentId: incident.incidentId,
+        severity: incident.severity,
+        owner: incident.owner,
+        recommendedOwner: incident.recommendedOwner,
+        nextAction: incident.nextAction,
+      }));
+    const boundedFixes: SecurityResult["boundedFixes"] = findings.slice(0, 8).map((finding) => ({
       title: finding.description,
       target: finding.location,
       risk:
@@ -477,6 +500,7 @@ async function handleTask(task: SecurityTask): Promise<SecurityResult> {
       relationships,
       toolInvocations,
       operationalMaturity,
+      remediationPriorities,
       evidence,
       executionTime: Date.now() - startTime,
     };
@@ -501,6 +525,7 @@ async function handleTask(task: SecurityTask): Promise<SecurityResult> {
         blockerCount: 1,
         summary: "Security audit execution failed before trust-boundary coverage could be established.",
       },
+      remediationPriorities: [],
       evidence: [],
       executionTime: Date.now() - startTime,
     };

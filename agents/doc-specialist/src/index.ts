@@ -3,6 +3,9 @@ import { basename, dirname, extname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Telemetry } from "../../shared/telemetry.js";
 import {
+  buildAgentRelationshipWindow,
+  buildIncidentPriorityQueue,
+  buildWorkflowBlockerSummary,
   loadRuntimeState,
   summarizeProofTransport,
   summarizeTaskExecutions,
@@ -93,6 +96,23 @@ interface RepairLoopSummary {
   contradictions: string[];
   staleSignals: string[];
   nextActions: string[];
+}
+
+interface RepairDraft {
+  targetAgentId: string;
+  priority: "critical" | "high" | "medium";
+  title: string;
+  rationale: string;
+  sourceIncidentIds: string[];
+  recommendedTasks: Array<"drift-repair" | "qa-verification" | "system-monitor">;
+  workflowSignals: string[];
+  relationshipWindow: {
+    total: number;
+    recentSixHours: number;
+    recentTwentyFourHours: number;
+    lastObservedAt: string | null;
+  };
+  evidence: string[];
 }
 
 const telemetry = new Telemetry({ component: "doc-specialist" });
@@ -671,6 +691,87 @@ function dedupeSummaries(summaries: ProcessedDocSummary[]): ProcessedDocSummary[
   return deduped;
 }
 
+function buildRepairDrafts(args: {
+  targetAgents: string[];
+  runtimeState: RuntimeState;
+  configAudit: ConfigAudit;
+}): RepairDraft[] {
+  const priorityIncidents = buildIncidentPriorityQueue(args.runtimeState.incidentLedger ?? []);
+  const workflowBlockers = buildWorkflowBlockerSummary(args.runtimeState.workflowEvents ?? []);
+
+  return args.targetAgents.map((agentId) => {
+    const relationshipWindow = buildAgentRelationshipWindow(
+      args.runtimeState.relationshipObservations ?? [],
+      agentId,
+    );
+    const relevantIncidents = priorityIncidents.filter((incident) => {
+      if (incident.linkedServiceIds.includes(agentId)) return true;
+      return incident.affectedSurfaces.some((surface) => surface.includes(agentId));
+    });
+
+    const priority: RepairDraft["priority"] =
+      args.configAudit.summary.criticalIssues > 0 || relevantIncidents.some((incident) => incident.severity === "critical")
+        ? "critical"
+        : workflowBlockers.totalStopSignals > 0 || relevantIncidents.length > 0
+          ? "high"
+          : "medium";
+
+    const recommendedTaskCandidates: RepairDraft["recommendedTasks"] = [];
+    if (args.configAudit.summary.totalIssues > 0) {
+      recommendedTaskCandidates.push("drift-repair");
+    }
+    if (relevantIncidents.some((incident) => incident.remediationTaskType === "system-monitor")) {
+      recommendedTaskCandidates.push("system-monitor");
+    }
+    if (
+      workflowBlockers.totalStopSignals > 0 ||
+      relevantIncidents.some((incident) => incident.verificationStatus !== "passed")
+    ) {
+      recommendedTaskCandidates.push("qa-verification");
+    }
+    const recommendedTasks = Array.from(new Set(recommendedTaskCandidates));
+
+    const workflowSignals = [
+      ...(workflowBlockers.latestStopCode ? [`stop-code:${workflowBlockers.latestStopCode}`] : []),
+      ...Object.entries(workflowBlockers.byStage)
+        .slice(0, 3)
+        .map(([stage, count]) => `blocked-${stage}:${count}`),
+    ];
+
+    const evidence = [
+      `config-issues:${args.configAudit.summary.totalIssues}`,
+      `critical-config-issues:${args.configAudit.summary.criticalIssues}`,
+      `agent-relationships:${relationshipWindow.total}`,
+      `agent-relationships-24h:${relationshipWindow.recentTwentyFourHours}`,
+      ...(relevantIncidents.slice(0, 3).map((incident) => `incident:${incident.incidentId}:${incident.priorityScore}`)),
+      ...workflowSignals,
+    ];
+
+    const rationale = relevantIncidents.length > 0
+      ? `Target ${agentId} is touched by ${relevantIncidents.length} prioritized incident(s) and ${relationshipWindow.total} observed relationship event(s).`
+      : workflowBlockers.totalStopSignals > 0
+        ? `Target ${agentId} should refresh against current workflow stop signals and relationship evidence.`
+        : `Target ${agentId} should refresh against the latest knowledge and runtime truth.`;
+
+    return {
+      targetAgentId: agentId,
+      priority,
+      title: `Repair and refresh ${agentId} against current runtime truth`,
+      rationale,
+      sourceIncidentIds: relevantIncidents.map((incident) => incident.incidentId),
+      recommendedTasks: recommendedTasks.length > 0 ? recommendedTasks : ["qa-verification"],
+      workflowSignals,
+      relationshipWindow: {
+        total: relationshipWindow.total,
+        recentSixHours: relationshipWindow.recentSixHours,
+        recentTwentyFourHours: relationshipWindow.recentTwentyFourHours,
+        lastObservedAt: relationshipWindow.lastObservedAt,
+      },
+      evidence,
+    };
+  });
+}
+
 async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConfig) {
   await telemetry.info("pack.start", { files: task.docPaths.length, useDualSources: !!config.cookbookPath });
   const configAudit = await runConfigAudit(task, config);
@@ -678,6 +779,8 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
     resolve(__dirname, "../agent.config.json"),
     config.stateFile ?? config.orchestratorStatePath,
   );
+  const priorityIncidents = buildIncidentPriorityQueue(runtimeState.incidentLedger ?? []);
+  const workflowBlockers = buildWorkflowBlockerSummary(runtimeState.workflowEvents ?? []);
   const targetedDocs =
     task.docPaths && task.docPaths.length > 0
       ? await collectDocSummaries(task.docPaths, config.docsPath)
@@ -733,6 +836,12 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
             : [],
         }),
       ),
+    incidentPriorityQueue: priorityIncidents.slice(0, 8),
+    repairDrafts: buildRepairDrafts({
+      targetAgents: task.targetAgents,
+      runtimeState,
+      configAudit,
+    }),
     targetBriefs: task.targetAgents.map(
       (agentId): TargetBrief => ({
         agentId,
@@ -771,10 +880,15 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
         ...configAudit.issues.slice(0, 6).map((issue) => issue.message),
       ],
       staleSignals:
-        (runtimeState.incidentLedger ?? [])
-          .filter((incident) => incident.status !== "resolved")
-          .slice(0, 4)
-          .map((incident) => incident.summary ?? "runtime signal present"),
+        [
+          ...(runtimeState.incidentLedger ?? [])
+            .filter((incident) => incident.status !== "resolved")
+            .slice(0, 4)
+            .map((incident) => incident.summary ?? "runtime signal present"),
+          ...(workflowBlockers.latestStopCode
+            ? [`workflow stop signal: ${workflowBlockers.latestStopCode}`]
+            : []),
+        ],
       nextActions:
         configAudit.summary.criticalIssues > 0
           ? [
@@ -782,6 +896,12 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
               "Rebuild knowledge pack after drift repair completes.",
               "Run qa-verification against the affected agent surfaces.",
             ]
+          : workflowBlockers.totalStopSignals > 0
+            ? [
+                "Inspect workflow stop signals and update the repair drafts.",
+                "Route qa-verification over the affected workflow and relationship paths.",
+                "Keep incident-linked knowledge packs fresh until stop signals clear.",
+              ]
           : [
               "Keep knowledge pack current while runtime incidents remain open.",
               "Route high-signal contradictions into verifier review.",
@@ -836,6 +956,8 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
           sourceBreakdown,
           configAuditSummary: configAudit.summary,
           incidentPacks: payload.incidentPacks,
+          incidentPriorityQueue: payload.incidentPriorityQueue,
+          repairDrafts: payload.repairDrafts,
           targetBriefs: payload.targetBriefs,
           repairLoop: payload.repairLoop,
           relationships: payload.relationships,
@@ -856,6 +978,8 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
     sourceBreakdown,
     configAudit,
     incidentPacks: payload.incidentPacks,
+    incidentPriorityQueue: payload.incidentPriorityQueue,
+    repairDrafts: payload.repairDrafts,
     targetBriefs: payload.targetBriefs,
     repairLoop: payload.repairLoop,
     relationships: payload.relationships,

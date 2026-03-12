@@ -14,16 +14,23 @@ Produce high-confidence security assessments with actionable remediation guidanc
 - Local policy/config/code artifacts relevant to audit scope.
 
 ### Outputs
-- Structured audit findings with severity and remediation.
+- Structured audit findings with severity and remediation
+- runtime remediation priorities for security-adjacent incidents
 
 ### File Path Scope
-- No explicit path map in config; outputs remain task-scoped and auditable.
+- Reads: task-scoped repo/config/runtime targets plus orchestrator runtime state
+- Writes: task-scoped JSON result only
 
 ## Runtime
 
-- Local entrypoint: `npm run dev`
-- Validation: `npm run test:local`
-- Focused checks: `npm run test:security`, `npm run test:secrets`
+Runtime invocation is handled by orchestrator dispatch and optional managed
+service wiring. The executable contract lives in `src/index.ts`.
+
+## Operation Flow
+1. Inspect code, config, and runtime posture relevant to the requested security scope.
+2. Rank findings by severity and operational impact.
+3. Cross-check the live incident ledger so security-adjacent runtime gaps are not lost behind static findings.
+4. Return both findings and remediation priorities for operators or downstream agents.
 
 ## Governance
 - `ROLE.md`

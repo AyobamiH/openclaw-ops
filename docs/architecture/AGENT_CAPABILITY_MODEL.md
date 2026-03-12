@@ -130,16 +130,28 @@ code now has real movement in that direction.
 - `doc-specialist` now includes runtime truth in its generated knowledge packs,
   including task execution summaries, incident counts, proof transport posture,
   and observed relationship counts.
+- `doc-specialist` now also emits incident-priority queues, workflow blocker
+  summaries, and structured repair drafts so drift/repair work can be planned
+  instead of only described.
 - `system-monitor-agent` now reads real orchestrator runtime state and per-agent
   service-state files instead of generating synthetic health summaries.
+- `system-monitor-agent` now ranks remediation work, surfaces workflow stop
+  pressure, and emits operator action queues derived from live runtime truth.
 - `security-agent` now performs bounded repo/runtime checks for wildcard CORS,
   committed secret-like literals, default-secret fallbacks, and incident-driven
   service-runtime risk.
+- `security-agent` now also carries remediation priorities for security-adjacent
+  runtime incidents so static findings and live risk are aligned.
 - `integration-agent` now validates workflow dependencies against real agent
   manifests, allowed skills, and dependency order instead of simulating success.
+- `integration-agent` now returns recovery plans with priority incidents,
+  workflow watch state, verifier handoff requirements, and agent relationship
+  windows for participating agents.
 - `qa-verification-agent` now returns verification output with runtime incident,
   repair, workflow, and relationship evidence instead of reporting only test
   runner results.
+- `qa-verification-agent` now also includes priority incident context and
+  workflow blocker summaries when recommending whether an incident can close.
 - The orchestrator now persists runtime relationship observations for
   `dispatches-task`, `routes-to-agent`, `uses-skill`, `publishes-proof`,
   `feeds-agent`, `verifies-agent`, `monitors-agent`, `audits-agent`, and

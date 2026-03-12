@@ -1,7 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Telemetry } from "../../shared/telemetry.js";
 
 type ExecuteSkillFn = (
   skillId: string,
@@ -35,7 +34,31 @@ interface ResolvedConfig {
   orchestratorRoot: string;
 }
 
-const telemetry = new Telemetry({ component: "qa-verification-agent-service" });
+class LocalTelemetry {
+  constructor(private readonly component: string) {}
+
+  private emit(
+    severity: "info" | "warn" | "error",
+    event: string,
+    data: Record<string, unknown> = {},
+  ) {
+    console.log(`[${this.component}] ${severity.toUpperCase()} ${event}`, data);
+  }
+
+  info(event: string, data?: Record<string, unknown>) {
+    this.emit("info", event, data);
+  }
+
+  warn(event: string, data?: Record<string, unknown>) {
+    this.emit("warn", event, data);
+  }
+
+  error(event: string, data?: Record<string, unknown>) {
+    this.emit("error", event, data);
+  }
+}
+
+const telemetry = new LocalTelemetry("qa-verification-agent-service");
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DEFAULT_COMMAND = "build-verify";
@@ -188,8 +211,17 @@ function installSignalHandlers() {
   return () => stopping;
 }
 
-async function sleep(ms: number) {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+async function sleep(ms: number, isStopping: () => boolean) {
+  const deadline = Date.now() + ms;
+
+  while (!isStopping()) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, Math.min(remaining, 1000)));
+  }
 }
 
 async function loop() {
@@ -215,7 +247,7 @@ async function loop() {
       break;
     }
 
-    await sleep(config.heartbeatIntervalMs);
+    await sleep(config.heartbeatIntervalMs, isStopping);
   }
 }
 

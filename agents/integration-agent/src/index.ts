@@ -3,6 +3,9 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  buildAgentRelationshipWindow,
+  buildIncidentPriorityQueue,
+  buildWorkflowBlockerSummary,
   loadRuntimeState,
   summarizeTaskExecutions,
   type RuntimeStateSubset,
@@ -109,6 +112,29 @@ interface Result {
   reroutes: Array<{ step: string; from: string; to: string; reason: string }>;
   stopClassification: "dependency-blocked" | "agent-missing" | "skill-mismatch" | "simulated-failure" | "complete";
   stopReason: string | null;
+  recoveryPlan: {
+    priorityIncidents: Array<{
+      incidentId: string;
+      severity: string;
+      summary: string;
+      nextAction: string;
+      owner: string | null;
+      recommendedOwner: string | null;
+      remediationTaskType: string | null;
+    }>;
+    workflowWatch: ReturnType<typeof buildWorkflowBlockerSummary>;
+    verificationHandoff: {
+      required: boolean;
+      agentId: string;
+      reason: string;
+    };
+    relationshipWindows: Array<{
+      agentId: string;
+      recentSixHours: number;
+      recentTwentyFourHours: number;
+      total: number;
+    }>;
+  };
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -190,6 +216,8 @@ async function handleTask(task: Task): Promise<Result> {
     config.orchestratorStatePath,
   );
   const agentConfigs = await listAgentConfigs();
+  const incidentQueue = buildIncidentPriorityQueue(state.incidentLedger ?? []);
+  const runtimeWorkflowWatch = buildWorkflowBlockerSummary(state.workflowEvents ?? []);
 
   const integrationRuns = summarizeTaskExecutions(
     state.taskExecutions ?? [],
@@ -412,6 +440,20 @@ async function handleTask(task: Task): Promise<Result> {
   const readySteps = executedSteps.filter((step) => step.status === "ready").length;
   const blockedSteps = executedSteps.filter((step) => step.status === "blocked").length;
   const reroutedSteps = reroutes.length;
+  const selectedAgentIds = Array.from(
+    new Set(
+      executedSteps
+        .map((step) => step.agent)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  );
+  const relationshipWindows = selectedAgentIds.map((agentId) =>
+    buildAgentRelationshipWindow(state.relationshipObservations ?? [], agentId),
+  );
+  const verificationHandoffRequired =
+    stopReason !== null ||
+    reroutedSteps > 0 ||
+    incidentQueue.some((incident) => incident.verificationStatus !== "passed");
 
   return {
     success: stopReason === null,
@@ -442,6 +484,46 @@ async function handleTask(task: Task): Promise<Result> {
     reroutes,
     stopClassification,
     stopReason,
+    recoveryPlan: {
+      priorityIncidents: incidentQueue.slice(0, 5).map((incident) => ({
+        incidentId: incident.incidentId,
+        severity: incident.severity,
+        summary: incident.summary,
+        nextAction: incident.nextAction,
+        owner: incident.owner,
+        recommendedOwner: incident.recommendedOwner,
+        remediationTaskType: incident.remediationTaskType,
+      })),
+      workflowWatch: {
+        totalStopSignals:
+          runtimeWorkflowWatch.totalStopSignals + (stopReason !== null ? 1 : 0),
+        latestStopAt: runtimeWorkflowWatch.latestStopAt,
+        latestStopCode:
+          runtimeWorkflowWatch.latestStopCode ??
+          (stopClassification !== "complete" ? stopClassification : null),
+        byStage: runtimeWorkflowWatch.byStage,
+        byClassification: runtimeWorkflowWatch.byClassification,
+        byStopCode: runtimeWorkflowWatch.byStopCode,
+        blockedRunIds: runtimeWorkflowWatch.blockedRunIds,
+        proofStopSignals: runtimeWorkflowWatch.proofStopSignals,
+      },
+      verificationHandoff: {
+        required: verificationHandoffRequired,
+        agentId: "qa-verification-agent",
+        reason:
+          verificationHandoffRequired
+            ? stopReason !== null
+              ? "Workflow stopped or rerouted and needs verifier review before closure."
+              : "Runtime incidents still require verifier-backed closure."
+            : "Workflow can complete without immediate verifier handoff.",
+      },
+      relationshipWindows: relationshipWindows.map((window) => ({
+        agentId: window.agentId,
+        recentSixHours: window.recentSixHours,
+        recentTwentyFourHours: window.recentTwentyFourHours,
+        total: window.total,
+      })),
+    },
   };
 }
 

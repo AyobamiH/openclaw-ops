@@ -33,6 +33,11 @@ These paths are part of the protected repository hygiene surface and must be eva
 - Structured completion logs pushed back to the Orchestrator (`doc-sync` and `drift-repair` records)
 - Updated knowledge packs written to `knowledgePackDir`
 - Telemetry events (success/failure, per-file stats)
+- Runtime intelligence overlays including:
+  - incident priority queue
+  - workflow blocker summary
+  - target-agent relationship windows
+  - repair drafts for the strongest agent surfaces
 
 ## Runtime
 
@@ -43,8 +48,10 @@ service wiring.
 ## Operation Flow
 1. Receive a `drift-repair` task containing doc paths and target agents to refresh.
 2. Load the affected docs and create a knowledge pack artifact.
-3. Emit telemetry via `shared/telemetry.ts` for each stage (load, pack generation, upload).
-4. Return a JSON summary so the Orchestrator can update `driftRepairs` history.
+3. Reconcile runtime incidents, workflow stop signals, and recent relationship history for the requested target agents.
+4. Generate repair drafts that explain which agent or operator action should happen next and why.
+5. Emit telemetry via `shared/telemetry.ts` for each stage (load, pack generation, upload).
+6. Return a JSON summary so the Orchestrator can update `driftRepairs` history.
 
 ## Escalation Rules
 - If a doc fails validation, emit `drift-alert` with the file path and reason.

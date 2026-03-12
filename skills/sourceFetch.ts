@@ -7,7 +7,7 @@
  * Used by: market-and-web-research-agent, integration-and-automation-agent
  */
 
-import { SkillDefinition, SkillInputSchema, SkillOutputSchema } from '../orchestrator/src/skills/types.js';
+import { SkillDefinition } from '../orchestrator/src/skills/types.js';
 
 export const sourceFetchDefinition: SkillDefinition = {
   id: 'sourceFetch',
@@ -85,23 +85,24 @@ export const sourceFetchDefinition: SkillDefinition = {
  */
 export async function executeSourceFetch(input: any): Promise<any> {
   const { url, timeout = 10000, stripScripts = true, normalizeText = true } = input;
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeout);
 
   try {
-    const startTime = Date.now();
-    const response = await fetch(url, { timeout });
+    const response = await fetch(url, {
+      signal: controller.signal,
+    });
     const content = await response.text();
 
-    const result = {
+    return {
       success: response.ok,
       url,
       statusCode: response.status,
       content: normalizeText ? normalizeContent(content, stripScripts) : stripScriptTags(content, stripScripts),
       contentType: response.headers.get('content-type'),
       fetchedAt: new Date().toISOString(),
-      sizeBytes: Buffer.byteLength(content),
+      sizeBytes: new TextEncoder().encode(content).byteLength,
     };
-
-    return result;
   } catch (error: any) {
     return {
       success: false,
@@ -111,6 +112,8 @@ export async function executeSourceFetch(input: any): Promise<any> {
       error: error.message,
       fetchedAt: new Date().toISOString(),
     };
+  } finally {
+    clearTimeout(timeoutHandle);
   }
 }
 

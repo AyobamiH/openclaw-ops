@@ -95,6 +95,9 @@ export interface RuntimeIncidentLedgerRecord {
   firstSeenAt?: string | null;
   owner?: string | null;
   summary?: string;
+  affectedSurfaces?: string[];
+  linkedServiceIds?: string[];
+  recommendedSteps?: string[];
   policy?: {
     policyId?: string;
     preferredOwner?: string;
@@ -116,6 +119,24 @@ export interface RuntimeIncidentLedgerRecord {
   remediationPlan?: RuntimeIncidentRemediationPlanStep[];
   verification?: RuntimeIncidentVerificationState;
   remediationTasks?: RuntimeIncidentRemediationTask[];
+}
+
+export interface IncidentPriorityRecord {
+  incidentId: string;
+  classification: string | null;
+  severity: string;
+  status: string;
+  owner: string | null;
+  recommendedOwner: string | null;
+  escalationLevel: string | null;
+  verificationStatus: string | null;
+  priorityScore: number;
+  summary: string;
+  nextAction: string;
+  blockers: string[];
+  remediationTaskType: string | null;
+  affectedSurfaces: string[];
+  linkedServiceIds: string[];
 }
 
 export interface RuntimeDeliveryRecord {
@@ -161,6 +182,33 @@ export interface RuntimeRelationshipObservation {
   proofTransport?: "milestone" | "demandSummary" | null;
   classification?: string | null;
   parentObservationId?: string | null;
+}
+
+export interface WorkflowBlockerSummary {
+  totalStopSignals: number;
+  latestStopAt: string | null;
+  latestStopCode: string | null;
+  byStage: Record<string, number>;
+  byClassification: Record<string, number>;
+  byStopCode: Record<string, number>;
+  blockedRunIds: string[];
+  proofStopSignals: number;
+}
+
+export interface AgentRelationshipWindow {
+  agentId: string;
+  total: number;
+  recentSixHours: number;
+  recentTwentyFourHours: number;
+  lastObservedAt: string | null;
+  byRelationship: Record<string, number>;
+  recentEdges: Array<{
+    from: string;
+    to: string;
+    relationship: string;
+    timestamp: string | null;
+    source: string | null;
+  }>;
 }
 
 export interface RuntimeProofState {
@@ -273,4 +321,224 @@ export function summarizeRelationshipObservations(
 export function normalizeAgentIdFromNode(nodeId: string | undefined | null) {
   if (typeof nodeId !== "string" || nodeId.length === 0) return null;
   return nodeId.startsWith("agent:") ? nodeId.slice("agent:".length) : null;
+}
+
+function severityRank(severity: string | undefined | null) {
+  switch ((severity ?? "").toLowerCase()) {
+    case "critical":
+      return 40;
+    case "warning":
+      return 20;
+    case "info":
+      return 10;
+    default:
+      return 5;
+  }
+}
+
+function escalationRank(level: string | undefined | null) {
+  switch ((level ?? "").toLowerCase()) {
+    case "breached":
+      return 30;
+    case "escalated":
+      return 20;
+    case "warning":
+      return 10;
+    default:
+      return 0;
+  }
+}
+
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return Array.from(
+    new Set(values.filter((value): value is string => typeof value === "string" && value.length > 0)),
+  );
+}
+
+export function buildIncidentPriorityQueue(
+  incidents: RuntimeIncidentLedgerRecord[],
+): IncidentPriorityRecord[] {
+  return incidents
+    .filter((incident) => incident.status !== "resolved")
+    .map((incident) => {
+      const severity = typeof incident.severity === "string" ? incident.severity : "warning";
+      const escalationLevel =
+        typeof incident.escalation?.level === "string" ? incident.escalation.level : null;
+      const owner = typeof incident.owner === "string" && incident.owner.length > 0 ? incident.owner : null;
+      const recommendedOwner =
+        typeof incident.policy?.preferredOwner === "string" && incident.policy.preferredOwner.length > 0
+          ? incident.policy.preferredOwner
+          : owner;
+      const blockers = uniqueStrings([
+        ...(Array.isArray(incident.remediation?.blockers) ? incident.remediation?.blockers : []),
+        ...((incident.remediationTasks ?? [])
+          .flatMap((task) => (Array.isArray(task.blockers) ? task.blockers : []))),
+      ]);
+      const summary =
+        typeof incident.summary === "string" && incident.summary.length > 0
+          ? incident.summary
+          : `Open ${incident.classification ?? "runtime"} incident`;
+      const nextAction =
+        typeof incident.remediation?.nextAction === "string" && incident.remediation.nextAction.length > 0
+          ? incident.remediation.nextAction
+          : Array.isArray(incident.recommendedSteps) && incident.recommendedSteps.length > 0
+            ? incident.recommendedSteps[0]
+            : "Inspect incident evidence and drive remediation to closure.";
+
+      let priorityScore = severityRank(severity) + escalationRank(escalationLevel);
+      if (!owner) priorityScore += 8;
+      if ((incident.remediationTasks ?? []).some((task) => task.status === "blocked" || task.status === "failed")) {
+        priorityScore += 6;
+      }
+      if (blockers.length > 0) priorityScore += 4;
+
+      return {
+        incidentId: incident.incidentId ?? "unknown-incident",
+        classification:
+          typeof incident.classification === "string" ? incident.classification : null,
+        severity,
+        status: typeof incident.status === "string" ? incident.status : "active",
+        owner,
+        recommendedOwner,
+        escalationLevel,
+        verificationStatus:
+          typeof incident.verification?.status === "string" ? incident.verification.status : null,
+        priorityScore,
+        summary,
+        nextAction,
+        blockers,
+        remediationTaskType:
+          typeof incident.policy?.remediationTaskType === "string"
+            ? incident.policy.remediationTaskType
+            : null,
+        affectedSurfaces: uniqueStrings(
+          Array.isArray(incident.affectedSurfaces) ? incident.affectedSurfaces : [],
+        ),
+        linkedServiceIds: uniqueStrings(
+          Array.isArray(incident.linkedServiceIds) ? incident.linkedServiceIds : [],
+        ),
+      };
+    })
+    .sort((left, right) => {
+      if (right.priorityScore !== left.priorityScore) {
+        return right.priorityScore - left.priorityScore;
+      }
+      return left.incidentId.localeCompare(right.incidentId);
+    });
+}
+
+export function buildWorkflowBlockerSummary(
+  events: RuntimeWorkflowEvent[],
+): WorkflowBlockerSummary {
+  const stopEvents = events.filter(
+    (event) =>
+      event.state === "blocked" ||
+      event.state === "failed" ||
+      (typeof event.stopCode === "string" && event.stopCode.length > 0),
+  );
+
+  const byStage = stopEvents.reduce<Record<string, number>>((acc, event) => {
+    const stage = typeof event.stage === "string" ? event.stage : "unknown";
+    acc[stage] = (acc[stage] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const byClassification = stopEvents.reduce<Record<string, number>>((acc, event) => {
+    const classification =
+      typeof event.classification === "string" && event.classification.length > 0
+        ? event.classification
+        : "unspecified";
+    acc[classification] = (acc[classification] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const byStopCode = stopEvents.reduce<Record<string, number>>((acc, event) => {
+    const stopCode =
+      typeof event.stopCode === "string" && event.stopCode.length > 0
+        ? event.stopCode
+        : "unspecified";
+    acc[stopCode] = (acc[stopCode] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const latestStopAt =
+    sortIsoDescending(stopEvents.map((event) => event.timestamp)).at(0) ?? null;
+  const latestStopCode =
+    stopEvents
+      .slice()
+      .sort(
+        (left, right) =>
+          Date.parse(right.timestamp ?? "1970-01-01T00:00:00.000Z") -
+          Date.parse(left.timestamp ?? "1970-01-01T00:00:00.000Z"),
+      )
+      .map((event) => event.stopCode)
+      .find((value): value is string => typeof value === "string" && value.length > 0) ??
+    null;
+
+  return {
+    totalStopSignals: stopEvents.length,
+    latestStopAt,
+    latestStopCode,
+    byStage,
+    byClassification,
+    byStopCode,
+    blockedRunIds: uniqueStrings(
+      stopEvents.flatMap((event) => [event.runId, event.relatedRunId]),
+    ),
+    proofStopSignals: stopEvents.filter((event) => event.stage === "proof").length,
+  };
+}
+
+export function buildAgentRelationshipWindow(
+  observations: RuntimeRelationshipObservation[],
+  agentId: string,
+): AgentRelationshipWindow {
+  const now = Date.now();
+  const sixHoursMs = 6 * 60 * 60 * 1000;
+  const twentyFourHoursMs = 24 * 60 * 60 * 1000;
+  const relevant = observations.filter((observation) => {
+    const fromAgent = normalizeAgentIdFromNode(observation.from ?? null);
+    const toAgent = normalizeAgentIdFromNode(observation.to ?? null);
+    return fromAgent === agentId || toAgent === agentId;
+  });
+
+  const recentEdges = relevant
+    .slice()
+    .sort(
+      (left, right) =>
+        Date.parse(right.timestamp ?? "1970-01-01T00:00:00.000Z") -
+        Date.parse(left.timestamp ?? "1970-01-01T00:00:00.000Z"),
+    )
+    .slice(0, 8)
+    .map((observation) => ({
+      from: observation.from ?? "unknown",
+      to: observation.to ?? "unknown",
+      relationship: observation.relationship ?? "unknown",
+      timestamp: observation.timestamp ?? null,
+      source: observation.source ?? null,
+    }));
+
+  const byRelationship = relevant.reduce<Record<string, number>>((acc, observation) => {
+    const relationship =
+      typeof observation.relationship === "string" ? observation.relationship : "unknown";
+    acc[relationship] = (acc[relationship] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return {
+    agentId,
+    total: relevant.length,
+    recentSixHours: relevant.filter((observation) => {
+      const timestamp = Date.parse(observation.timestamp ?? "");
+      return Number.isFinite(timestamp) && now - timestamp <= sixHoursMs;
+    }).length,
+    recentTwentyFourHours: relevant.filter((observation) => {
+      const timestamp = Date.parse(observation.timestamp ?? "");
+      return Number.isFinite(timestamp) && now - timestamp <= twentyFourHoursMs;
+    }).length,
+    lastObservedAt:
+      sortIsoDescending(relevant.map((observation) => observation.timestamp)).at(0) ?? null,
+    byRelationship,
+    recentEdges,
+  };
 }

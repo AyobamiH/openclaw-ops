@@ -11,7 +11,7 @@
 import { SkillDefinition } from '../orchestrator/src/skills/types.js';
 
 // Whitelisted test commands
-const ALLOWED_TESTS = {
+export const ALLOWED_TESTS = {
   'unit-tests': 'npm run test:unit',
   'integration-tests': 'npm run test:integration',
   'e2e-tests': 'npm run test:e2e',
@@ -20,6 +20,16 @@ const ALLOWED_TESTS = {
   'security-audit': 'npm audit --audit-level=moderate',
   'build-verify': 'npm run build',
 };
+
+export const ALLOWED_TEST_COMMANDS = Object.freeze(
+  Object.keys(ALLOWED_TESTS),
+);
+
+export function isAllowedTestCommand(
+  command: string,
+): command is keyof typeof ALLOWED_TESTS {
+  return Object.prototype.hasOwnProperty.call(ALLOWED_TESTS, command);
+}
 
 export const testRunnerDefinition: SkillDefinition = {
   id: 'testRunner',
@@ -32,6 +42,16 @@ export const testRunnerDefinition: SkillDefinition = {
         type: 'string',
         description: 'Test command to run',
         enum: Object.keys(ALLOWED_TESTS),
+      },
+      mode: {
+        type: 'string',
+        description: 'Execution mode for the runner',
+        enum: ['execute', 'dry-run'],
+      },
+      dryRun: {
+        type: 'boolean',
+        description: 'If true, validate the command without executing it',
+        default: false,
       },
       timeout: { type: 'number', description: 'Timeout in milliseconds', default: 60000 },
       collectCoverage: { type: 'boolean', description: 'Collect coverage metrics', default: false },
@@ -64,7 +84,7 @@ export const testRunnerDefinition: SkillDefinition = {
     },
   },
   permissions: {
-    exec: ['npm', 'vitest', 'jest'],
+    execAllowed: ['npm', 'vitest', 'jest', 'sh'],
     fileRead: ['workspace', 'node_modules/.bin'],
   },
   provenance: {
@@ -102,13 +122,38 @@ export const testRunnerDefinition: SkillDefinition = {
  */
 export async function executeTestRunner(input: any): Promise<any> {
   const { command, timeout = 60000, collectCoverage = false } = input;
+  const startTime = Date.now();
+  const requestedMode = typeof input?.mode === 'string' ? input.mode.trim().toLowerCase() : '';
+  const dryRun = input?.dryRun === true || requestedMode === 'dry-run' || requestedMode === 'dryrun';
 
   // Verify command is whitelisted
-  if (!ALLOWED_TESTS[command as keyof typeof ALLOWED_TESTS]) {
+  if (!isAllowedTestCommand(command)) {
     return {
+      success: false,
       passed: false,
       command,
-      error: `Command not whitelisted. Allowed: ${Object.keys(ALLOWED_TESTS).join(', ')}`,
+      error: `Command not whitelisted. Allowed: ${ALLOWED_TEST_COMMANDS.join(', ')}`,
+    };
+  }
+
+  if (dryRun) {
+    return {
+      success: true,
+      passed: true,
+      command,
+      dryRun: true,
+      executed: false,
+      exitCode: 0,
+      stdout: '',
+      stderr: '',
+      duration: Date.now() - startTime,
+      summary: {
+        passed: 0,
+        failed: 0,
+        skipped: 0,
+      },
+      outcomeKind: 'dry-run',
+      outcomeSummary: `dry-run accepted for ${command}`,
     };
   }
 
@@ -117,11 +162,7 @@ export async function executeTestRunner(input: any): Promise<any> {
     const { promisify } = await import('util');
     const execFileAsync = promisify(execFile);
 
-    const startTime = Date.now();
-    const testCommand = ALLOWED_TESTS[command as keyof typeof ALLOWED_TESTS];
-
-    // Parse command into executable and args
-    const [exe, ...args] = testCommand.split(' ');
+    const testCommand = ALLOWED_TESTS[command];
 
     let fullCommand = testCommand;
     if (collectCoverage && command === 'unit-tests') {
@@ -134,14 +175,16 @@ export async function executeTestRunner(input: any): Promise<any> {
     });
 
     const duration = Date.now() - startTime;
+    const exitCode = 0;
 
     // Parse output to extract summary
     const summary = parseTestOutput(result.stdout);
 
     return {
+      success: true,
       command,
-      passed: result.exitCode === 0,
-      exitCode: result.exitCode || 0,
+      passed: true,
+      exitCode,
       stdout: result.stdout,
       stderr: result.stderr || '',
       duration,
@@ -149,9 +192,10 @@ export async function executeTestRunner(input: any): Promise<any> {
       coverage: collectCoverage ? {} : undefined,
     };
   } catch (error: any) {
-    const duration = Date.now() - Date.now();
+    const duration = Date.now() - startTime;
 
     return {
+      success: false,
       command,
       passed: false,
       error: error.message,

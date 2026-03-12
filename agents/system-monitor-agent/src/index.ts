@@ -3,6 +3,8 @@ import { readdir, readFile, stat, writeFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  buildIncidentPriorityQueue,
+  buildWorkflowBlockerSummary,
   countByStatus,
   loadRuntimeState,
   readJsonFile,
@@ -98,6 +100,24 @@ interface Result {
     severity: string;
     owner: string | null;
     summary: string;
+  }>;
+  remediationQueue: Array<{
+    incidentId: string;
+    priorityScore: number;
+    severity: string;
+    owner: string | null;
+    recommendedOwner: string | null;
+    nextAction: string;
+    remediationTaskType: string | null;
+    blockers: string[];
+  }>;
+  workflowWatch: ReturnType<typeof buildWorkflowBlockerSummary>;
+  operatorActions: Array<{
+    id: string;
+    priority: "critical" | "high" | "medium";
+    owner: string;
+    summary: string;
+    evidence: string[];
   }>;
   executionTime: number;
 }
@@ -239,20 +259,26 @@ function deriveAgentHealthSnapshot(args: {
 async function handleTask(task: Task): Promise<Result> {
   const startTime = Date.now();
 
-  if (!canUseSkill("documentParser")) {
-    return {
-      success: false,
-      metrics: {
-        timestamp: new Date().toISOString(),
+    if (!canUseSkill("documentParser")) {
+      return {
+        success: false,
+        metrics: {
+          timestamp: new Date().toISOString(),
         agentHealth: {},
         systemMetrics: {},
         alerts: ["documentParser skill access is required"],
-      },
-      relationships: [],
-      toolInvocations: [],
-      executionTime: Date.now() - startTime,
-    };
-  }
+        },
+        relationships: [],
+        toolInvocations: [],
+        diagnoses: [],
+        proofTransitions: [],
+        escalationWatch: [],
+        remediationQueue: [],
+        workflowWatch: buildWorkflowBlockerSummary([]),
+        operatorActions: [],
+        executionTime: Date.now() - startTime,
+      };
+    }
 
   try {
     const config = loadConfig();
@@ -287,6 +313,8 @@ async function handleTask(task: Task): Promise<Result> {
     const agentHealth = Object.fromEntries(agentHealthEntries);
     const taskExecutionSummary = summarizeTaskExecutions(state.taskExecutions ?? []);
     const incidentSummary = summarizeIncidents(state.incidentLedger ?? []);
+    const remediationQueue = buildIncidentPriorityQueue(state.incidentLedger ?? []).slice(0, 8);
+    const workflowWatch = buildWorkflowBlockerSummary(state.workflowEvents ?? []);
     const proofMetrics = {
       milestone: summarizeProofTransport(state.milestoneDeliveries ?? []),
       demandSummary: summarizeProofTransport(state.demandSummaryDeliveries ?? []),
@@ -357,6 +385,36 @@ async function handleTask(task: Task): Promise<Result> {
         ],
       });
     }
+    if (workflowWatch.totalStopSignals > 0) {
+      diagnoses.push({
+        id: "workflow-stop-signals",
+        severity: workflowWatch.proofStopSignals > 0 ? "critical" : "warning",
+        summary: `${workflowWatch.totalStopSignals} workflow stop signal(s) are present in runtime history.`,
+        recommendedOwner: workflowWatch.proofStopSignals > 0 ? "integration-agent" : "system-monitor-agent",
+        nextAction:
+          workflowWatch.proofStopSignals > 0
+            ? "Prioritize blocked proof/workflow paths and confirm verifier closure."
+            : "Inspect recent workflow stop codes and route recovery through the owning agent.",
+        evidence: [
+          `latest-stop:${workflowWatch.latestStopCode ?? "none"}`,
+          `blocked-runs:${workflowWatch.blockedRunIds.length}`,
+          `proof-stop-signals:${workflowWatch.proofStopSignals}`,
+        ],
+      });
+    }
+    if (remediationQueue.some((incident) => incident.owner === null)) {
+      diagnoses.push({
+        id: "unowned-incidents",
+        severity: "warning",
+        summary: `${remediationQueue.filter((incident) => incident.owner === null).length} prioritized incident(s) lack an explicit owner.`,
+        recommendedOwner: "operator",
+        nextAction: "Assign owners or confirm preferred-owner policy before remediation drifts further.",
+        evidence: remediationQueue
+          .filter((incident) => incident.owner === null)
+          .slice(0, 4)
+          .map((incident) => `incident:${incident.incidentId}:${incident.recommendedOwner ?? "no-policy-owner"}`),
+      });
+    }
     const escalationWatch = (state.incidentLedger ?? [])
       .filter((incident) => incident.status !== "resolved")
       .filter((incident) =>
@@ -371,6 +429,43 @@ async function handleTask(task: Task): Promise<Result> {
         owner: typeof incident.owner === "string" ? incident.owner : null,
         summary: incident.summary ?? "No summary recorded.",
       }));
+    const operatorActions: Result["operatorActions"] = [
+      ...remediationQueue.slice(0, 4).map(
+        (incident): Result["operatorActions"][number] => ({
+          id: `remediate:${incident.incidentId}`,
+          priority:
+            incident.severity === "critical"
+              ? "critical"
+              : incident.priorityScore >= 30
+                ? "high"
+                : "medium",
+          owner: incident.recommendedOwner ?? incident.owner ?? "operator",
+          summary: incident.nextAction,
+          evidence: [
+            `incident:${incident.incidentId}`,
+            `severity:${incident.severity}`,
+            ...(incident.blockers.slice(0, 2).map((blocker) => `blocker:${blocker}`)),
+          ],
+        }),
+      ),
+      ...(workflowWatch.totalStopSignals > 0
+        ? [
+            {
+              id: "workflow-watch",
+              priority: workflowWatch.proofStopSignals > 0 ? "critical" : "high",
+              owner: "integration-agent",
+              summary:
+                workflowWatch.proofStopSignals > 0
+                  ? "Drive recovery for proof-linked workflow stop signals."
+                  : "Reconcile recent workflow stop codes with recovery paths.",
+              evidence: [
+                `latest-stop:${workflowWatch.latestStopCode ?? "none"}`,
+                `blocked-runs:${workflowWatch.blockedRunIds.length}`,
+              ],
+            } satisfies Result["operatorActions"][number],
+          ]
+        : []),
+    ].slice(0, 6);
     const proofTransitions: Result["proofTransitions"] = [
       {
         transport: "milestone",
@@ -446,6 +541,18 @@ async function handleTask(task: Task): Promise<Result> {
       diagnoses,
       proofTransitions,
       escalationWatch,
+      remediationQueue: remediationQueue.map((incident) => ({
+        incidentId: incident.incidentId,
+        priorityScore: incident.priorityScore,
+        severity: incident.severity,
+        owner: incident.owner,
+        recommendedOwner: incident.recommendedOwner,
+        nextAction: incident.nextAction,
+        remediationTaskType: incident.remediationTaskType,
+        blockers: incident.blockers,
+      })),
+      workflowWatch,
+      operatorActions,
       executionTime: Date.now() - startTime,
     };
   } catch (error) {
@@ -462,6 +569,9 @@ async function handleTask(task: Task): Promise<Result> {
       diagnoses: [],
       proofTransitions: [],
       escalationWatch: [],
+      remediationQueue: [],
+      workflowWatch: buildWorkflowBlockerSummary([]),
+      operatorActions: [],
       executionTime: Date.now() - startTime,
     };
   }

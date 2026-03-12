@@ -12,19 +12,30 @@ Provide objective, reproducible quality verification for orchestrated outputs.
 ### Inputs
 - `qa-verification` tasks and test targets.
 - `workspace` and `artifacts` data.
+- orchestrator runtime state for incident, repair, workflow, and relationship evidence.
 
 ### Outputs
-- Verification reports in `artifacts/qa-reports`.
+- Verification reports with:
+  - runtime context
+  - verification signals
+  - priority incidents
+  - workflow watch summary
+  - closure recommendation
 
 ### File Path Scope
-- Reads: `workspace`, `artifacts`
-- Writes: `artifacts/qa-reports`
+- Reads: `workspace`, `artifacts`, `orchestratorStatePath`
+- Writes: task-scoped JSON result and optional `artifacts/qa-reports`
 
 ## Runtime
 
-- Local entrypoint: `npm start`
-- Alternate development loop: `npm run dev`
-- Current test surface: `npm test` (placeholder until richer tests are added)
+Runtime invocation is handled by orchestrator dispatch and optional managed
+service wiring. The executable contract lives in `src/index.ts`.
+
+## Operation Flow
+1. Resolve the verification request and bounded test-runner command.
+2. Build pre-execution verification context from incident, repair, workflow, and relationship evidence.
+3. Run dry-run or execute verification.
+4. Reconcile post-execution runtime evidence and emit a closure recommendation instead of a naked pass/fail.
 
 ## Governance
 - `ROLE.md`

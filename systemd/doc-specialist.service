@@ -1,5 +1,6 @@
 [Unit]
 Description=OpenClaw Doc Specialist Service
+ConditionPathExists=/home/oneclickwebsitedesignfactory/.openclaw/workspace/agents/doc-specialist/src/service.ts
 After=network-online.target
 
 [Service]
@@ -12,4 +13,4 @@ Restart=always
 RestartSec=5
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
