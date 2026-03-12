@@ -104,6 +104,7 @@ const KNOWLEDGE_EXTENSIONS = new Set([
   ".md",
   ".mdx",
   ".txt",
+  ".ipynb",
   ".json",
   ".yaml",
   ".yml",
@@ -134,12 +135,15 @@ const KNOWLEDGE_BASENAMES = new Set([
   ".gitignore",
 ]);
 
-const IGNORED_KNOWLEDGE_DIRECTORIES = new Set([
+const HARD_IGNORED_KNOWLEDGE_DIRECTORIES = new Set([
   "__pycache__",
   "node_modules",
   "dist",
   "build",
   "coverage",
+]);
+
+const ASSET_MANIFEST_DIRECTORIES = new Set([
   "data",
   "datasets",
   "images",
@@ -151,13 +155,55 @@ const IGNORED_KNOWLEDGE_DIRECTORIES = new Set([
   "video",
 ]);
 
+const BINARY_ASSET_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".svg",
+  ".webp",
+  ".bmp",
+  ".ico",
+  ".mp3",
+  ".wav",
+  ".ogg",
+  ".m4a",
+  ".flac",
+  ".mp4",
+  ".mov",
+  ".webm",
+  ".avi",
+  ".mkv",
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".ppt",
+  ".pptx",
+  ".xls",
+  ".xlsx",
+  ".zip",
+  ".tar",
+  ".gz",
+  ".parquet",
+  ".feather",
+  ".avro",
+  ".rdb",
+]);
+
 function isIgnoredKnowledgeDirectory(segment: string): boolean {
   const normalizedSegment = segment.toLowerCase();
   return (
     normalizedSegment.startsWith(".") ||
+    HARD_IGNORED_KNOWLEDGE_DIRECTORIES.has(normalizedSegment)
+  );
+}
+
+function isAssetManifestDirectory(segment: string): boolean {
+  const normalizedSegment = segment.toLowerCase();
+  return (
     normalizedSegment === "results" ||
     normalizedSegment.startsWith("results_") ||
-    IGNORED_KNOWLEDGE_DIRECTORIES.has(normalizedSegment)
+    ASSET_MANIFEST_DIRECTORIES.has(normalizedSegment)
   );
 }
 
@@ -366,6 +412,13 @@ async function findKnowledgeFiles(
           continue;
         }
 
+        if (isAssetManifestDirectory(entry.name)) {
+          results.push({
+            path: `${relativePath}/.asset-manifest.md`,
+            absolutePath: `${absolutePath}#asset-manifest`,
+          });
+        }
+
         const subFiles = await findKnowledgeFiles(absolutePath, relativePath);
         results.push(...subFiles);
       } else if (shouldIncludeKnowledgeFile(entry.name, relativePath)) {
@@ -386,6 +439,121 @@ function summarize(content: string, maxChars = 600) {
   const collapsed = content.replace(/\s+/g, " ").trim();
   if (collapsed.length <= maxChars) return collapsed;
   return `${collapsed.slice(0, maxChars)}…`;
+}
+
+function createNotebookSummary(content: string) {
+  try {
+    const parsed = JSON.parse(content) as {
+      cells?: Array<{ cell_type?: string; source?: string[] | string; outputs?: unknown[] }>;
+      metadata?: Record<string, unknown>;
+      nbformat?: number;
+      nbformat_minor?: number;
+    };
+    const cells = Array.isArray(parsed.cells) ? parsed.cells : [];
+    const markdownCount = cells.filter((cell) => cell.cell_type === "markdown").length;
+    const codeCount = cells.filter((cell) => cell.cell_type === "code").length;
+    const outputCount = cells.reduce(
+      (count, cell) => count + (Array.isArray(cell.outputs) ? cell.outputs.length : 0),
+      0,
+    );
+    const previews = cells
+      .slice(0, 10)
+      .map((cell, index) => {
+        const raw = Array.isArray(cell.source) ? cell.source.join("") : String(cell.source ?? "");
+        const preview = raw.replace(/\s+/g, " ").trim().slice(0, 220);
+        return `[cell ${index} | ${cell.cell_type ?? "unknown"}] ${preview}`;
+      })
+      .filter(Boolean);
+    const metadataKeys = Object.keys(parsed.metadata ?? {}).slice(0, 8);
+    const summary = [
+      `Notebook with ${cells.length} cells (${markdownCount} markdown, ${codeCount} code, ${outputCount} output blocks).`,
+      metadataKeys.length > 0 ? `Metadata keys: ${metadataKeys.join(", ")}.` : "",
+      previews.join(" "),
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return {
+      summary: summarize(summary, 900),
+      wordCount: summary.split(/\s+/).filter(Boolean).length,
+      firstHeading: `Notebook (${parsed.nbformat ?? "?"}.${parsed.nbformat_minor ?? "?"})`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const fallback = `Notebook JSON could not be parsed cleanly (${message}).`;
+    return {
+      summary: fallback,
+      wordCount: fallback.split(/\s+/).filter(Boolean).length,
+      firstHeading: "Notebook parse fallback",
+    };
+  }
+}
+
+async function createAssetManifestSummary(
+  dirPath: string,
+  relativePath: string,
+): Promise<{ summary: string; wordCount: number; bytes: number; firstHeading?: string }> {
+  const extensionCounts = new Map<string, number>();
+  const sampleAssets: string[] = [];
+  const textClues: string[] = [];
+  let totalFiles = 0;
+  let totalBytes = 0;
+
+  async function walk(currentDir: string, currentPrefix: string) {
+    const entries = await readdir(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (isIgnoredKnowledgeDirectory(entry.name)) {
+        continue;
+      }
+
+      const absolute = resolve(currentDir, entry.name);
+      const nestedRelative = currentPrefix ? `${currentPrefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        await walk(absolute, nestedRelative);
+        continue;
+      }
+
+      const stats = await stat(absolute);
+      totalFiles += 1;
+      totalBytes += stats.size;
+
+      const extension = extname(entry.name).toLowerCase() || "(no extension)";
+      extensionCounts.set(extension, (extensionCounts.get(extension) ?? 0) + 1);
+
+      if (shouldIncludeKnowledgeFile(entry.name, nestedRelative)) {
+        if (textClues.length < 10) {
+          textClues.push(nestedRelative);
+        }
+        continue;
+      }
+
+      if (BINARY_ASSET_EXTENSIONS.has(extension) && sampleAssets.length < 12) {
+        sampleAssets.push(nestedRelative);
+      }
+    }
+  }
+
+  await walk(dirPath, "");
+
+  const topExtensions = Array.from(extensionCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([extension, count]) => `${extension}:${count}`);
+
+  const summary = [
+    `Asset manifest for ${relativePath}: ${totalFiles} files totaling ${totalBytes} bytes.`,
+    topExtensions.length > 0 ? `Top extensions ${topExtensions.join(", ")}.` : "",
+    sampleAssets.length > 0 ? `Sample assets: ${sampleAssets.join(", ")}.` : "",
+    textClues.length > 0 ? `Embedded text/code clues: ${textClues.join(", ")}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return {
+    summary: summarize(summary, 900),
+    wordCount: summary.split(/\s+/).filter(Boolean).length,
+    bytes: totalBytes,
+    firstHeading: `Asset manifest: ${basename(relativePath)}`,
+  };
 }
 
 function extractHeading(content: string) {
@@ -439,10 +607,35 @@ async function collectDocsFromPath(
 
   for (const file of knowledgeFiles) {
     try {
-      const content = await readFile(file.absolutePath, "utf-8");
-      const summary = summarize(content);
-      const wordCount = content.split(/\s+/).filter(Boolean).length;
-      const bytes = Buffer.byteLength(content, "utf-8");
+      let summary = "";
+      let wordCount = 0;
+      let bytes = 0;
+      let firstHeading: string | undefined;
+
+      if (file.absolutePath.endsWith("#asset-manifest")) {
+        const manifest = await createAssetManifestSummary(
+          file.absolutePath.slice(0, -"#asset-manifest".length),
+          file.path.replace(/\/\.asset-manifest\.md$/, ""),
+        );
+        summary = manifest.summary;
+        wordCount = manifest.wordCount;
+        bytes = manifest.bytes;
+        firstHeading = manifest.firstHeading;
+      } else {
+        const content = await readFile(file.absolutePath, "utf-8");
+        bytes = Buffer.byteLength(content, "utf-8");
+        if (extname(file.absolutePath).toLowerCase() === ".ipynb") {
+          const notebook = createNotebookSummary(content);
+          summary = notebook.summary;
+          wordCount = notebook.wordCount;
+          firstHeading = notebook.firstHeading;
+        } else {
+          summary = summarize(content);
+          wordCount = content.split(/\s+/).filter(Boolean).length;
+          firstHeading = extractHeading(content);
+        }
+      }
+
       summaries.push({
         source,
         path: file.path,
@@ -450,7 +643,7 @@ async function collectDocsFromPath(
         summary,
         wordCount,
         bytes,
-        firstHeading: extractHeading(content),
+        firstHeading,
       });
     } catch (error) {
       await telemetry.warn("doc.read_failed", {

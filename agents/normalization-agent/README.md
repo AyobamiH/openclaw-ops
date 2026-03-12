@@ -7,6 +7,10 @@ Canonical contract: `agent.config.json` and `src/index.ts`
 ## Mission
 Standardize mixed input data into consistent formats for downstream automation.
 
+When explicit schemas are absent, the agent now performs conservative
+canonicalization so notebook metadata, asset inventories, and other rich
+extracted structures stay usable instead of collapsing into empty records.
+
 ## Contract
 
 ### Inputs

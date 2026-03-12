@@ -46,10 +46,14 @@ async function handleTask(task: Task): Promise<Result> {
 
 function normalizeRecord(record: any, schema: any): any {
   try {
+    if (!schema || Object.keys(schema).length === 0) {
+      return canonicalizeValue(record);
+    }
+
     const normalized: any = {};
     for (const [key, type] of Object.entries(schema || {})) {
       const value = record[key];
-      normalized[key] = convertType(value, type as string);
+      normalized[key] = convertType(value, type as string | Record<string, unknown>);
     }
     return normalized;
   } catch (error) {
@@ -57,8 +61,41 @@ function normalizeRecord(record: any, schema: any): any {
   }
 }
 
-function convertType(value: any, type: string): any {
+function canonicalizeValue(value: any): any {
+  if (Array.isArray(value)) {
+    return value.map((entry) => canonicalizeValue(entry));
+  }
+
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, canonicalizeValue(entry)]),
+    );
+  }
+
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+
+  return value;
+}
+
+function convertType(value: any, type: string | Record<string, unknown>): any {
   if (value === null || value === undefined) return null;
+  if (typeof type === 'object' && type !== null) {
+    if ((type as any).type === 'array') {
+      return Array.isArray(value) ? value.map((entry) => canonicalizeValue(entry)) : [canonicalizeValue(value)];
+    }
+
+    if ((type as any).type === 'object') {
+      const shape = ((type as any).shape ?? {}) as Record<string, string | Record<string, unknown>>;
+      return normalizeRecord(value, shape);
+    }
+
+    if (typeof (type as any).type === 'string') {
+      return convertType(value, String((type as any).type));
+    }
+  }
+
   switch (type) {
     case 'string': return String(value);
     case 'number': return parseInt(value) || 0;

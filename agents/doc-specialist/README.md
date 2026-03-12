@@ -15,8 +15,10 @@ Keep OpenClaw documentation synchronized with reality and generate fresh knowled
 - Optional escalation context from `orchestratorStatePath`
 
 The knowledge input policy is intentionally broader than markdown-only. The
-agent ingests curated text, code, and config clue files from the mirrored docs
-trees while excluding heavyweight media, notebook, and dataset paths.
+agent ingests curated text, code, config, notebook, and asset-manifest clues
+from the mirrored docs trees. Binary-heavy asset directories are not read as
+raw files, but they now contribute manifest summaries so example media and
+support artifacts remain visible to downstream agents.
 
 ### File Path Scope
 - `docsPath`

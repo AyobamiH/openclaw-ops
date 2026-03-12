@@ -24,6 +24,34 @@ interface AgentConfig {
 let agentConfig: AgentConfig;
 let executeSkillFn: ExecuteSkillFn | null = null;
 
+function inferFormatFromPath(filePath: string): string {
+  const normalized = filePath.toLowerCase();
+  if (normalized.endsWith('.ipynb')) return 'ipynb';
+  if (normalized.endsWith('.html') || normalized.endsWith('.htm')) return 'html';
+  if (normalized.endsWith('.csv')) return 'csv';
+  if (normalized.endsWith('.json')) return 'json';
+  if (normalized.endsWith('.pdf')) return 'pdf';
+  if (/\.(png|jpg|jpeg|gif|svg|webp|bmp|ico)$/.test(normalized)) return 'image';
+  if (/\.(mp3|wav|ogg|m4a|flac)$/.test(normalized)) return 'audio';
+  if (/\.(mp4|mov|webm|avi|mkv)$/.test(normalized)) return 'video';
+  return 'json';
+}
+
+function toStructuredExtraction(parseResult: any) {
+  if (parseResult?.data && typeof parseResult.data === 'object') {
+    return parseResult.data;
+  }
+
+  return {
+    kind: 'document',
+    format: parseResult?.format ?? 'unknown',
+    blocks: Array.isArray(parseResult?.blocks) ? parseResult.blocks : [],
+    tables: Array.isArray(parseResult?.tables) ? parseResult.tables : [],
+    entities: Array.isArray(parseResult?.entities) ? parseResult.entities : [],
+    metadata: parseResult?.metadata ?? {},
+  };
+}
+
 async function getExecuteSkill(): Promise<ExecuteSkillFn> {
   if (executeSkillFn) return executeSkillFn;
 
@@ -89,32 +117,38 @@ async function handleTask(task: any): Promise<any> {
           };
         }
 
+        const inferredFormat = file.format || inferFormatFromPath(String(file.path || ''));
         const parseResult = await executeSkill('documentParser', {
           filePath: file.path,
-          format: file.format || 'pdf',
+          format: inferredFormat,
           extractTables: true,
           extractEntities: true,
         }, agentId);
 
         if (parseResult.success) {
+          const extracted = toStructuredExtraction(parseResult);
           // Optionally normalize extracted data
           if (canUseSkill('normalizer') && input.normalize) {
             const normalizeResult = await executeSkill('normalizer', {
-              data: parseResult.data,
+              data: extracted,
               schema: input.schema || {},
               strict: false,
             }, agentId);
 
             results.push({
               file: file.path,
-              parsed: parseResult.data,
-              normalized: normalizeResult.data,
+              format: inferredFormat,
+              parsed: extracted,
+              normalized: normalizeResult.normalized ?? normalizeResult.data ?? null,
+              normalizationWarnings: normalizeResult.warnings ?? [],
+              normalizationErrors: normalizeResult.errors ?? [],
               success: normalizeResult.success,
             });
           } else {
             results.push({
               file: file.path,
-              parsed: parseResult.data,
+              format: inferredFormat,
+              parsed: extracted,
               success: true,
             });
           }
