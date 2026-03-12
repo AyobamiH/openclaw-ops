@@ -33,6 +33,7 @@ where it helps prevent drift.
 1. [start/architecture-overview.md](./start/architecture-overview.md)
 2. [concepts/architecture.md](./concepts/architecture.md)
 3. [reference/api.md](./reference/api.md)
+4. [architecture/PUBLIC_DECISION_INTELLIGENCE_BOUNDARY.md](./architecture/PUBLIC_DECISION_INTELLIGENCE_BOUNDARY.md)
 
 ## I Need To Work On The Milestone Pipeline
 
@@ -55,6 +56,12 @@ Sprint To Completion is the primary execution tracker for unfinished repository 
 2. [guides/configuration.md](./guides/configuration.md)
 3. [guides/running-agents.md](./guides/running-agents.md)
 4. [reference/api.md](./reference/api.md)
+
+## I Need To Work On The Incubated Decision Intelligence Product
+
+1. [architecture/PUBLIC_DECISION_INTELLIGENCE_BOUNDARY.md](./architecture/PUBLIC_DECISION_INTELLIGENCE_BOUNDARY.md)
+2. [../incubation/public-decision-intelligence/README.md](../incubation/public-decision-intelligence/README.md)
+3. [../incubation/public-decision-intelligence/docs/README.md](../incubation/public-decision-intelligence/docs/README.md)
 
 ## I Need Help Troubleshooting
 

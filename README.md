@@ -118,6 +118,7 @@ flowchart LR
 - `agents/`: the agent catalog. Each agent declares task bindings, permissions, model tier, state files, worker entrypoints, and usually a long-running service loop.
 - `skills/`: bounded skill definitions and executors used by spawned agents.
 - `openclawdbot/`: the public proof surface. Hono server, Devvit app, React client, signed ingest routes, and standalone proof runtime.
+- `incubation/public-decision-intelligence/`: bounded incubation area for a future extractable decision-intelligence application built on OpenClaw infrastructure.
 - `docs/`: workspace documentation and runbooks.
 - `governance/`: policy and invariant docs. Useful context, but not every file reflects current runtime truth.
 - `security/`: threat-model and trust-boundary docs.
@@ -569,6 +570,7 @@ Recommended starting points:
 - `docs/operations/orchestrator-status.md`
 - `agents/README.md`
 - `openclawdbot/README.md`
+- `docs/architecture/PUBLIC_DECISION_INTELLIGENCE_BOUNDARY.md`
 
 ## Contributing
 

@@ -69,10 +69,18 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | File | Purpose |
 |---|---|
 | [concepts/architecture.md](./concepts/architecture.md) | technical system explanation |
+| [architecture/PUBLIC_DECISION_INTELLIGENCE_BOUNDARY.md](./architecture/PUBLIC_DECISION_INTELLIGENCE_BOUNDARY.md) | incubation and extraction boundary for the decision-intelligence subsystem |
 | [reference/api.md](./reference/api.md) | API and code-facing reference |
 | [reference/task-types.md](./reference/task-types.md) | task allowlist reference |
 | [reference/state-schema.md](./reference/state-schema.md) | runtime state summary |
 | [WEBHOOK_SIGNING_CONTRACT.md](./WEBHOOK_SIGNING_CONTRACT.md) | webhook HMAC contract |
+
+## Incubated Applications
+
+| File | Purpose |
+|---|---|
+| [../incubation/public-decision-intelligence/README.md](../incubation/public-decision-intelligence/README.md) | bounded home for the incubated Public Decision Intelligence Platform |
+| [../incubation/public-decision-intelligence/docs/README.md](../incubation/public-decision-intelligence/docs/README.md) | domain-doc home for the incubated subsystem |
 
 ## Start And Troubleshooting
 

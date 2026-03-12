@@ -37,6 +37,11 @@ Documentation growth rule:
 - [Task Types](./reference/task-types.md)
 - [State Schema](./reference/state-schema.md)
 
+## Incubated Application Boundary
+
+- [Public Decision Intelligence Boundary](./architecture/PUBLIC_DECISION_INTELLIGENCE_BOUNDARY.md)
+- [../incubation/public-decision-intelligence/README.md](../incubation/public-decision-intelligence/README.md)
+
 ## Milestone Pipeline Docs
 
 - [CLAWDBOT Milestones](./CLAWDBOT_MILESTONES.md)
