@@ -523,6 +523,23 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expect(Array.isArray(detailPayload.incident?.ownershipHistory)).toBe(true);
     expect((detailPayload.incident?.remediationTasks ?? []).length).toBeGreaterThan(0);
     expect((detailPayload.incident?.history ?? []).length).toBeGreaterThan(0);
+
+    await waitForTaskHistoryRecord(String(remediationPayload.remediationTask?.taskId));
+    const historyPayload = await fetchProtected<{
+      remediationTasks?: Array<{
+        taskId?: string | null;
+        status?: string | null;
+        assignedAt?: string | null;
+        executionStartedAt?: string | null;
+        lastUpdatedAt?: string | null;
+      }>;
+    }>(`/api/incidents/${encodeURIComponent(String(incidentId))}/history`);
+    const remediationHistory = historyPayload.remediationTasks?.find(
+      (task) => task.taskId === remediationPayload.remediationTask?.taskId,
+    );
+    expect(remediationHistory?.assignedAt).toBeTruthy();
+    expect(remediationHistory?.lastUpdatedAt).toBeTruthy();
+    expect(remediationHistory?.status).toBeTruthy();
   });
 
   it('returns workflow summaries, workflow graph detail, and agent capability surfaces', async () => {
@@ -577,6 +594,11 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         counts?: { relationshipEdges?: number };
         edges?: Array<{ relationship?: string }>;
       };
+      relationshipHistory?: {
+        totalObservations?: number;
+        recent?: Array<{ relationship?: string; source?: string }>;
+        timeline?: Array<{ total?: number }>;
+      };
       agents?: Array<{
         id?: string;
         capability?: {
@@ -603,6 +625,9 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         (edge) => edge.relationship === 'feeds-agent' || edge.relationship === 'coordinates-agent',
       ),
     ).toBe(true);
+    expect(agentsPayload.relationshipHistory?.totalObservations ?? 0).toBeGreaterThan(0);
+    expect((agentsPayload.relationshipHistory?.recent ?? []).length).toBeGreaterThan(0);
+    expect(Array.isArray(agentsPayload.relationshipHistory?.timeline)).toBe(true);
   });
 
   it('exposes knowledge provenance, contradiction, and freshness graphs', async () => {

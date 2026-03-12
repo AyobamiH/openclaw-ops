@@ -2,6 +2,7 @@ import { loadConfig } from "./config.js";
 import { DocIndexer } from "./docIndexer.js";
 import { TaskQueue } from "./taskQueue.js";
 import {
+  appendRelationshipObservationRecord,
   appendWorkflowEventRecord,
   getRetryRecoveryDelayMs,
   loadState,
@@ -37,6 +38,9 @@ import {
   IncidentRemediationTaskRecord,
   IncidentRemediationTaskStatus,
   OrchestratorState,
+  RelationshipObservationRecord,
+  RelationshipObservationStatus,
+  RelationshipObservationType,
   Task,
   TaskRetryRecoveryRecord,
   ToolInvocation,
@@ -334,16 +338,7 @@ type RuntimeTruthLayers = {
 
 type TopologyNodeKind = "control-plane" | "task" | "agent" | "skill" | "surface";
 type TopologyNodeStatus = "declared" | "live" | "warning" | "degraded";
-type TopologyEdgeRelationship =
-  | "dispatches-task"
-  | "routes-to-agent"
-  | "uses-skill"
-  | "publishes-proof"
-  | "feeds-agent"
-  | "verifies-agent"
-  | "monitors-agent"
-  | "audits-agent"
-  | "coordinates-agent";
+type TopologyEdgeRelationship = RelationshipObservationType;
 type TopologyEdgeStatus = "declared" | "live" | "warning" | "degraded";
 
 type AgentTopologyNode = {
@@ -363,6 +358,9 @@ type AgentTopologyEdge = {
   status: TopologyEdgeStatus;
   detail: string;
   evidence: string[];
+  observedCount?: number;
+  lastObservedAt?: string | null;
+  sources?: string[];
 };
 
 type AgentTopology = {
@@ -380,11 +378,30 @@ type AgentTopology = {
     skillEdges: number;
     proofEdges: number;
     relationshipEdges: number;
+    observedEdges: number;
     totalEdges: number;
   };
   hotspots: string[];
   nodes: AgentTopologyNode[];
   edges: AgentTopologyEdge[];
+};
+
+type RelationshipHistoryBucket = {
+  bucketStart: string;
+  total: number;
+  byRelationship: Partial<Record<RelationshipObservationType, number>>;
+  byStatus: Partial<Record<RelationshipObservationStatus, number>>;
+};
+
+type RelationshipHistory = {
+  generatedAt: string;
+  windowHours: number;
+  totalObservations: number;
+  lastObservedAt: string | null;
+  byRelationship: Partial<Record<RelationshipObservationType, number>>;
+  byStatus: Partial<Record<RelationshipObservationStatus, number>>;
+  timeline: RelationshipHistoryBucket[];
+  recent: RelationshipObservationRecord[];
 };
 
 type RuntimeIncident = {
@@ -1556,6 +1573,15 @@ function buildAgentCapabilityReadiness(args: {
       (record) =>
         taskTypes.includes(record.type) && record.status === "success",
     ).length;
+  const countObservedRelationships = (
+    fromAgentId: string,
+    relationship: RelationshipObservationType,
+  ) =>
+    (state.relationshipObservations ?? []).filter(
+      (record) =>
+        record.from === `agent:${fromAgentId}` &&
+        record.relationship === relationship,
+    ).length;
 
   const pushEvidenceProfile = (profile: AgentCapabilityEvidenceProfile) => {
     evidenceProfiles.push({
@@ -1659,24 +1685,32 @@ function buildAgentCapabilityReadiness(args: {
       "drift-repair",
       "doc-sync",
     ]);
+    const feedSignals = countObservedRelationships("doc-specialist", "feeds-agent");
     pushEvidenceProfile({
       area: "truth-spine-depth",
       status:
-        docRepairCount > 0 && docSpecialistRuns > 0 && memoryHasRun
+        docRepairCount > 0 && docSpecialistRuns > 0 && memoryHasRun && feedSignals > 0
           ? "strong"
-          : docSpecialistRuns > 0 || memoryHasRun
+          : docSpecialistRuns > 0 || memoryHasRun || feedSignals > 0
             ? "partial"
             : "missing",
       summary:
-        docRepairCount > 0
-          ? `${docRepairCount} verified doc-drift repair(s) and ${docSpecialistRuns} successful doc-specialist aligned run(s) are recorded.`
+        docRepairCount > 0 || feedSignals > 0
+          ? `${docRepairCount} verified doc-drift repair(s), ${docSpecialistRuns} successful doc-specialist aligned run(s), and ${feedSignals} observed knowledge hand-off(s) are recorded.`
           : "doc-specialist has limited verified truth-spine evidence so far.",
       evidence: [
         `verified doc-drift repairs: ${docRepairCount}`,
         `successful doc-specialist aligned runs: ${docSpecialistRuns}`,
+        `observed feed relationships: ${feedSignals}`,
         memoryHasRun ? "memory-backed doc-specialist runs present" : "",
       ],
-      missing: docRepairCount > 0 ? [] : ["verified doc-drift repairs"],
+      missing:
+        docRepairCount > 0 && feedSignals > 0
+          ? []
+          : [
+              ...(docRepairCount > 0 ? [] : ["verified doc-drift repairs"]),
+              ...(feedSignals > 0 ? [] : ["observed knowledge hand-off relationships"]),
+            ],
     });
   }
 
@@ -1688,72 +1722,108 @@ function buildAgentCapabilityReadiness(args: {
     const proofSignals =
       state.milestoneDeliveries.length + state.demandSummaryDeliveries.length;
     const retrySignals = state.taskRetryRecoveries.length;
+    const monitorSignals = countObservedRelationships(
+      "system-monitor-agent",
+      "monitors-agent",
+    );
     pushEvidenceProfile({
       area: "trust-spine-depth",
       status:
-        systemMonitorRuns > 0 && proofSignals > 0
+        systemMonitorRuns > 0 && proofSignals > 0 && monitorSignals > 0
           ? "strong"
-          : systemMonitorRuns > 0 || retrySignals > 0
+          : systemMonitorRuns > 0 || retrySignals > 0 || monitorSignals > 0
             ? "partial"
             : "missing",
       summary:
-        proofSignals > 0
-          ? `system-monitor sees ${proofSignals} proof transport record(s) and ${retrySignals} retry recovery record(s).`
+        proofSignals > 0 || monitorSignals > 0
+          ? `system-monitor sees ${proofSignals} proof transport record(s), ${retrySignals} retry recovery record(s), and ${monitorSignals} observed monitoring relationship(s).`
           : "system-monitor has only shallow trust-spine evidence right now.",
       evidence: [
         `successful monitoring runs: ${systemMonitorRuns}`,
         `proof transport records: ${proofSignals}`,
         `retry recovery records: ${retrySignals}`,
+        `observed monitoring relationships: ${monitorSignals}`,
       ],
-      missing: proofSignals > 0 ? [] : ["proof transport visibility"],
+      missing:
+        proofSignals > 0 && monitorSignals > 0
+          ? []
+          : [
+              ...(proofSignals > 0 ? [] : ["proof transport visibility"]),
+              ...(monitorSignals > 0 ? [] : ["observed monitoring relationships"]),
+            ],
     });
   }
 
   if (agent.id === "security-agent") {
     const securityRuns = countSuccessfulExecutionsForTypes(["security-audit"]);
+    const auditSignals = countObservedRelationships("security-agent", "audits-agent");
     pushEvidenceProfile({
       area: "operational-maturity",
       status:
-        securityRuns > 0 && workerEvidence.lastToolGateMode === "execute"
+        securityRuns > 0 &&
+        workerEvidence.lastToolGateMode === "execute" &&
+        auditSignals > 0
           ? "strong"
-          : securityRuns > 0 || allowedSkills.length > 0
+          : securityRuns > 0 || allowedSkills.length > 0 || auditSignals > 0
             ? "partial"
             : "missing",
       summary:
-        securityRuns > 0
-          ? `${securityRuns} successful security audit run(s) and governed skill evidence are present.`
+        securityRuns > 0 || auditSignals > 0
+          ? `${securityRuns} successful security audit run(s), governed skill evidence, and ${auditSignals} observed audit relationship(s) are present.`
           : "security-agent has declared policy posture but limited successful audit evidence.",
       evidence: [
         `successful security runs: ${securityRuns}`,
+        `observed audit relationships: ${auditSignals}`,
         workerEvidence.lastToolGateMode
           ? `latest tool gate mode: ${workerEvidence.lastToolGateMode}`
           : "",
       ],
       missing:
-        securityRuns > 0 ? [] : ["successful security-audit execution evidence"],
+        securityRuns > 0 && auditSignals > 0
+          ? []
+          : [
+              ...(securityRuns > 0
+                ? []
+                : ["successful security-audit execution evidence"]),
+              ...(auditSignals > 0 ? [] : ["observed audit relationships"]),
+            ],
     });
   }
 
   if (agent.id === "qa-verification-agent") {
     const qaRuns = countSuccessfulExecutionsForTypes(["qa-verification"]);
+    const verificationSignals = countObservedRelationships(
+      "qa-verification-agent",
+      "verifies-agent",
+    );
     pushEvidenceProfile({
       area: "operational-maturity",
       status:
-        qaRuns > 0 && verifiedRepairCount > 0
+        qaRuns > 0 && verifiedRepairCount > 0 && verificationSignals > 0
           ? "strong"
-          : qaRuns > 0 || verifiedRepairCount > 0
+          : qaRuns > 0 || verifiedRepairCount > 0 || verificationSignals > 0
             ? "partial"
             : "missing",
       summary:
-        verifiedRepairCount > 0
-          ? `${verifiedRepairCount} repair-linked verification event(s) support qa-verification maturity.`
+        verifiedRepairCount > 0 || verificationSignals > 0
+          ? `${verifiedRepairCount} repair-linked verification event(s) and ${verificationSignals} observed verification relationship(s) support qa-verification maturity.`
           : "qa-verification has limited repair-linked evidence so far.",
       evidence: [
         `successful qa-verification runs: ${qaRuns}`,
         `verified repair-linked runs: ${verifiedRepairCount}`,
+        `observed verification relationships: ${verificationSignals}`,
       ],
       missing:
-        verifiedRepairCount > 0 ? [] : ["repair-linked verification evidence"],
+        verifiedRepairCount > 0 && verificationSignals > 0
+          ? []
+          : [
+              ...(verifiedRepairCount > 0
+                ? []
+                : ["repair-linked verification evidence"]),
+              ...(verificationSignals > 0
+                ? []
+                : ["observed verification relationships"]),
+            ],
     });
   }
 
@@ -1764,24 +1834,38 @@ function buildAgentCapabilityReadiness(args: {
     const coordinationSignals = state.workflowEvents.filter(
       (record) => record.stage === "agent" && record.type === "integration-workflow",
     ).length;
+    const coordinationEdges = countObservedRelationships(
+      "integration-agent",
+      "coordinates-agent",
+    );
     pushEvidenceProfile({
       area: "operational-maturity",
       status:
-        integrationRuns > 0 && coordinationSignals > 0
+        integrationRuns > 0 && coordinationSignals > 0 && coordinationEdges > 0
           ? "strong"
-          : integrationRuns > 0 || coordinationSignals > 0
+          : integrationRuns > 0 || coordinationSignals > 0 || coordinationEdges > 0
             ? "partial"
             : "missing",
       summary:
-        coordinationSignals > 0
-          ? `${coordinationSignals} workflow coordination signal(s) were emitted for integration-workflow runs.`
+        coordinationSignals > 0 || coordinationEdges > 0
+          ? `${coordinationSignals} workflow coordination signal(s) and ${coordinationEdges} observed coordination relationship(s) were emitted for integration-workflow runs.`
           : "integration-agent is still light on observed workflow-conductor evidence.",
       evidence: [
         `successful integration-workflow runs: ${integrationRuns}`,
         `workflow coordination signals: ${coordinationSignals}`,
+        `observed coordination relationships: ${coordinationEdges}`,
       ],
       missing:
-        coordinationSignals > 0 ? [] : ["observed workflow coordination signals"],
+        coordinationSignals > 0 && coordinationEdges > 0
+          ? []
+          : [
+              ...(coordinationSignals > 0
+                ? []
+                : ["observed workflow coordination signals"]),
+              ...(coordinationEdges > 0
+                ? []
+                : ["observed coordination relationships"]),
+            ],
     });
   }
 
@@ -3756,20 +3840,111 @@ function buildRuntimeTruthLayers({
 async function buildAgentTopology({
   agents,
   proofDelivery,
+  state,
 }: {
   agents: Awaited<ReturnType<typeof buildAgentOperationalOverview>>;
   proofDelivery: ProofDeliveryTelemetry;
+  state: OrchestratorState;
 }): Promise<AgentTopology> {
   const registry = await getAgentRegistry();
   const nodes = new Map<string, AgentTopologyNode>();
   const edges = new Map<string, AgentTopologyEdge>();
+  const edgeSeverityRank: Record<TopologyEdgeStatus, number> = {
+    declared: 0,
+    live: 1,
+    warning: 2,
+    degraded: 3,
+  };
 
   const addNode = (node: AgentTopologyNode) => {
     if (!nodes.has(node.id)) nodes.set(node.id, node);
   };
 
   const addEdge = (edge: AgentTopologyEdge) => {
-    if (!edges.has(edge.id)) edges.set(edge.id, edge);
+    const existing = edges.get(edge.id);
+    if (!existing) {
+      edges.set(edge.id, edge);
+      return;
+    }
+
+    const mergedEvidence = dedupeStrings(
+      [...existing.evidence, ...edge.evidence],
+      25,
+    );
+    const mergedSources = dedupeStrings(
+      [...(existing.sources ?? []), ...(edge.sources ?? [])],
+      12,
+    );
+    const status =
+      edgeSeverityRank[edge.status] >= edgeSeverityRank[existing.status]
+        ? edge.status
+        : existing.status;
+    const detail =
+      typeof edge.observedCount === "number" && edge.observedCount > 0
+        ? edge.detail
+        : existing.detail;
+    const observedCount =
+      (existing.observedCount ?? 0) + (edge.observedCount ?? 0) || undefined;
+    const lastObservedAt = [existing.lastObservedAt, edge.lastObservedAt]
+      .filter((value): value is string => typeof value === "string" && value.length > 0)
+      .sort((left, right) => Date.parse(right) - Date.parse(left))
+      .at(0) ?? null;
+
+    edges.set(edge.id, {
+      ...existing,
+      ...edge,
+      status,
+      detail,
+      evidence: mergedEvidence,
+      observedCount,
+      lastObservedAt,
+      sources: mergedSources,
+    });
+  };
+
+  const ensureObservedNode = (nodeId: string) => {
+    if (nodes.has(nodeId)) return;
+    if (nodeId.startsWith("agent:")) {
+      addNode({
+        id: nodeId,
+        kind: "agent",
+        label: nodeId.slice("agent:".length),
+        status: "warning",
+        detail: "Observed runtime relationship node.",
+        route: "/api/agents/overview",
+      });
+      return;
+    }
+    if (nodeId.startsWith("task:")) {
+      addNode({
+        id: nodeId,
+        kind: "task",
+        label: nodeId.slice("task:".length),
+        status: "warning",
+        detail: "Observed runtime task node.",
+        route: "/api/tasks/catalog",
+      });
+      return;
+    }
+    if (nodeId.startsWith("skill:")) {
+      addNode({
+        id: nodeId,
+        kind: "skill",
+        label: nodeId.slice("skill:".length),
+        status: "warning",
+        detail: "Observed runtime skill node.",
+      });
+      return;
+    }
+    if (nodeId.startsWith("surface:")) {
+      addNode({
+        id: nodeId,
+        kind: nodeId === "surface:orchestrator" ? "control-plane" : "surface",
+        label: nodeId.slice("surface:".length),
+        status: "warning",
+        detail: "Observed runtime surface node.",
+      });
+    }
   };
 
   const proofNodeStatus: TopologyNodeStatus =
@@ -3995,6 +4170,48 @@ async function buildAgentTopology({
     });
   }
 
+  const observationGroups = new Map<string, RelationshipObservationRecord[]>();
+  for (const observation of state.relationshipObservations ?? []) {
+    const key = `${observation.from}|${observation.to}|${observation.relationship}`;
+    const existing = observationGroups.get(key) ?? [];
+    existing.push(observation);
+    observationGroups.set(key, existing);
+  }
+
+  for (const [key, observations] of observationGroups.entries()) {
+    const latest = [...observations]
+      .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))
+      .at(0);
+    if (!latest) continue;
+
+    ensureObservedNode(latest.from);
+    ensureObservedNode(latest.to);
+    const topologyStatus: TopologyEdgeStatus =
+      latest.status === "degraded"
+        ? "degraded"
+        : latest.status === "warning"
+          ? "warning"
+          : "live";
+    addEdge({
+      id: `edge:${latest.from}:${latest.to}:${latest.relationship}`,
+      from: latest.from,
+      to: latest.to,
+      relationship: latest.relationship,
+      status: topologyStatus,
+      detail: `${latest.detail} (${observations.length} observed event${observations.length === 1 ? "" : "s"})`,
+      evidence: dedupeStrings(
+        observations.flatMap((observation) => observation.evidence ?? []),
+        25,
+      ),
+      observedCount: observations.length,
+      lastObservedAt: latest.timestamp,
+      sources: dedupeStrings(
+        observations.map((observation) => observation.source),
+        12,
+      ),
+    });
+  }
+
   const nodeList = Array.from(nodes.values());
   const edgeList = Array.from(edges.values());
   const hotspots: string[] = [];
@@ -4020,6 +4237,9 @@ async function buildAgentTopology({
     )
   ) {
     hotspots.push("One or more worker paths remain partial or not yet verified.");
+  }
+  if ((state.relationshipObservations ?? []).length === 0) {
+    hotspots.push("Runtime relationship observations have not accumulated yet.");
   }
 
   const status =
@@ -4052,11 +4272,73 @@ async function buildAgentTopology({
           "coordinates-agent",
         ].includes(edge.relationship),
       ).length,
+      observedEdges: edgeList.filter((edge) => (edge.observedCount ?? 0) > 0).length,
       totalEdges: edgeList.length,
     },
     hotspots,
     nodes: nodeList,
     edges: edgeList,
+  };
+}
+
+function buildRelationshipHistory(
+  state: OrchestratorState,
+  options: { windowHours?: number; recentLimit?: number } = {},
+): RelationshipHistory {
+  const windowHours =
+    Number.isFinite(options.windowHours) && Number(options.windowHours) > 0
+      ? Math.floor(Number(options.windowHours))
+      : 24;
+  const recentLimit =
+    Number.isFinite(options.recentLimit) && Number(options.recentLimit) > 0
+      ? Math.floor(Number(options.recentLimit))
+      : 60;
+  const observations = [...(state.relationshipObservations ?? [])].sort(
+    (left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp),
+  );
+  const byRelationship: Partial<Record<RelationshipObservationType, number>> = {};
+  const byStatus: Partial<Record<RelationshipObservationStatus, number>> = {};
+  const windowStart = Date.now() - windowHours * 60 * 60 * 1000;
+  const bucketMap = new Map<string, RelationshipHistoryBucket>();
+
+  for (const observation of observations) {
+    byRelationship[observation.relationship] =
+      (byRelationship[observation.relationship] ?? 0) + 1;
+    byStatus[observation.status] = (byStatus[observation.status] ?? 0) + 1;
+
+    const timestamp = Date.parse(observation.timestamp);
+    if (!Number.isFinite(timestamp) || timestamp < windowStart) {
+      continue;
+    }
+
+    const bucketDate = new Date(timestamp);
+    bucketDate.setMinutes(0, 0, 0);
+    const bucketStart = bucketDate.toISOString();
+    const existing = bucketMap.get(bucketStart) ?? {
+      bucketStart,
+      total: 0,
+      byRelationship: {},
+      byStatus: {},
+    };
+    existing.total += 1;
+    existing.byRelationship[observation.relationship] =
+      (existing.byRelationship[observation.relationship] ?? 0) + 1;
+    existing.byStatus[observation.status] =
+      (existing.byStatus[observation.status] ?? 0) + 1;
+    bucketMap.set(bucketStart, existing);
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    windowHours,
+    totalObservations: observations.length,
+    lastObservedAt: observations[0]?.timestamp ?? null,
+    byRelationship,
+    byStatus,
+    timeline: Array.from(bucketMap.values()).sort((left, right) =>
+      left.bucketStart.localeCompare(right.bucketStart),
+    ),
+    recent: observations.slice(0, recentLimit),
   };
 }
 
@@ -4151,10 +4433,37 @@ function appendIncidentHistoryEvent(
   return normalized;
 }
 
+function findIncidentRemediationTask(
+  state: OrchestratorState,
+  incidentId: string,
+  remediationId: string,
+) {
+  const incident = state.incidentLedger.find((record) => record.incidentId === incidentId);
+  if (!incident) {
+    return { incident: null, remediationTask: null };
+  }
+
+  const remediationTask =
+    incident.remediationTasks?.find((item) => item.remediationId === remediationId) ?? null;
+  return { incident, remediationTask };
+}
+
 function deriveIncidentRemediationTaskStatus(
   state: OrchestratorState,
   remediationTask: IncidentRemediationTaskRecord,
 ): IncidentRemediationTaskStatus {
+  if (remediationTask.resolvedAt) return "resolved";
+  if (remediationTask.verifiedAt) return "verified";
+  if (remediationTask.verificationStartedAt && !remediationTask.verificationCompletedAt) {
+    return "verifying";
+  }
+  if (remediationTask.executionStartedAt && !remediationTask.executionCompletedAt) {
+    return "running";
+  }
+  if (remediationTask.assignedAt && remediationTask.status === "assigned") {
+    return "assigned";
+  }
+
   const execution =
     state.taskExecutions.find(
       (record) =>
@@ -5312,6 +5621,34 @@ async function bootstrap() {
     });
   };
 
+  const appendTaskRelationshipObservation = (
+    task: Task,
+    from: string,
+    to: string,
+    relationship: RelationshipObservationType,
+    detail: string,
+    options?: {
+      source?: string;
+      status?: RelationshipObservationRecord["status"];
+      evidence?: string[];
+      timestamp?: string;
+    },
+  ) => {
+    appendRelationshipObservationRecord(state, {
+      observationId: randomUUID(),
+      timestamp: options?.timestamp ?? new Date().toISOString(),
+      from,
+      to,
+      relationship,
+      status: options?.status ?? "observed",
+      source: options?.source ?? "queue",
+      detail,
+      taskId: task.id,
+      runId: task.idempotencyKey ?? task.id,
+      evidence: dedupeStrings(options?.evidence ?? [], 12),
+    });
+  };
+
   const recordTaskResult = (
     task: Task,
     result: "ok" | "error",
@@ -5354,6 +5691,247 @@ async function bootstrap() {
 
   const findRepairRecordById = (repairId: string) =>
     state.repairRecords.find((record) => record.repairId === repairId) ?? null;
+
+  const refreshRuntimeIncidents = async () => {
+    const persistence = await PersistenceIntegration.healthCheck();
+    const agents = await buildAgentOperationalOverview(state);
+    const governance = summarizeGovernanceVisibility(state);
+    const knowledgeRuntime = buildKnowledgeRuntimeSignals({
+      summary: knowledgeIntegration.getSummary(),
+      config,
+      state,
+    });
+    const proofDelivery = buildProofDeliveryTelemetry(config, state);
+
+    return buildRuntimeIncidentModel({
+      config,
+      state,
+      fastStartMode,
+      persistence,
+      agents,
+      governance,
+      pendingApprovalsCount: listPendingApprovals(state).length,
+      proofDelivery,
+      knowledgeRuntime,
+    });
+  };
+
+  const syncIncidentRemediationOnTaskStart = (
+    task: Task,
+    idempotencyKey: string,
+  ) => {
+    const incidentId =
+      typeof task.payload.__incidentId === "string" ? task.payload.__incidentId : null;
+    const remediationId =
+      typeof task.payload.__remediationId === "string"
+        ? task.payload.__remediationId
+        : null;
+    if (!incidentId || !remediationId) {
+      return;
+    }
+
+    const { incident, remediationTask } = findIncidentRemediationTask(
+      state,
+      incidentId,
+      remediationId,
+    );
+    if (!incident || !remediationTask) {
+      return;
+    }
+
+    const startedAt = new Date().toISOString();
+    const actor = resolveTaskActor(task);
+    remediationTask.runId = idempotencyKey;
+    remediationTask.status = "running";
+    remediationTask.assignedTo = remediationTask.assignedTo ?? actor;
+    remediationTask.assignedAt = remediationTask.assignedAt ?? startedAt;
+    remediationTask.executionStartedAt =
+      remediationTask.executionStartedAt ?? startedAt;
+    remediationTask.lastUpdatedAt = startedAt;
+    remediationTask.blockers = [];
+
+    incident.remediation.status = "in-progress";
+    incident.remediation.owner = incident.owner ? "operator" : incident.remediation.owner;
+    incident.remediation.summary = `${remediationTask.taskType} remediation is executing.`;
+    incident.remediation.nextAction = `Wait for remediation task ${remediationTask.taskId} to complete.`;
+    incident.remediation.blockers = [];
+
+    appendIncidentHistoryEvent(incident, {
+      timestamp: startedAt,
+      type: "remediation-executing",
+      actor,
+      summary: `Remediation task ${remediationTask.taskType} started.`,
+      detail: `Remediation ${remediationTask.remediationId} is running under ${actor}.`,
+      evidence: [
+        remediationTask.remediationId,
+        remediationTask.taskId,
+        remediationTask.taskType,
+      ],
+    });
+  };
+
+  const syncIncidentRemediationOnTaskSuccess = async (
+    task: Task,
+    idempotencyKey: string,
+    message?: string,
+  ) => {
+    const incidentId =
+      typeof task.payload.__incidentId === "string" ? task.payload.__incidentId : null;
+    const remediationId =
+      typeof task.payload.__remediationId === "string"
+        ? task.payload.__remediationId
+        : null;
+    if (!incidentId || !remediationId) {
+      return;
+    }
+
+    const initial = findIncidentRemediationTask(state, incidentId, remediationId);
+    if (!initial.incident || !initial.remediationTask) {
+      return;
+    }
+
+    const verifyingAt = new Date().toISOString();
+    initial.remediationTask.runId = idempotencyKey;
+    initial.remediationTask.status = "verifying";
+    initial.remediationTask.executionCompletedAt = verifyingAt;
+    initial.remediationTask.verificationStartedAt = verifyingAt;
+    initial.remediationTask.lastUpdatedAt = verifyingAt;
+    initial.remediationTask.verificationSummary =
+      message ?? `Remediation task ${task.type} completed successfully.`;
+    initial.remediationTask.blockers = [];
+
+    initial.incident.remediation.status = "watching";
+    initial.incident.remediation.summary =
+      message ?? `Remediation task ${task.type} completed; verifying incident state.`;
+    initial.incident.remediation.nextAction =
+      "Reconcile runtime truth and confirm the incident condition cleared.";
+    initial.incident.remediation.blockers = [];
+
+    const incidentState = await refreshRuntimeIncidents();
+    if (incidentState.changed) {
+      await flushState();
+    }
+
+    const current = findIncidentRemediationTask(state, incidentId, remediationId);
+    if (!current.incident || !current.remediationTask) {
+      return;
+    }
+
+    const verifiedAt = new Date().toISOString();
+    current.remediationTask.verificationCompletedAt = verifiedAt;
+    current.remediationTask.lastUpdatedAt = verifiedAt;
+
+    if (current.incident.status === "resolved") {
+      current.remediationTask.status = "resolved";
+      current.remediationTask.verifiedAt = verifiedAt;
+      current.remediationTask.resolvedAt = verifiedAt;
+      current.remediationTask.resolutionSummary =
+        "Runtime reconciliation no longer reports the incident candidate.";
+      current.remediationTask.blockers = [];
+      current.incident.remediation.status = "resolved";
+      current.incident.remediation.summary =
+        "Remediation completed and the incident condition cleared.";
+      current.incident.remediation.nextAction =
+        "Keep watching runtime truth in case the condition reappears.";
+      current.incident.remediation.blockers = [];
+      appendIncidentHistoryEvent(current.incident, {
+        timestamp: verifiedAt,
+        type: "remediation-verified",
+        actor: resolveTaskActor(task),
+        summary: `Remediation ${current.remediationTask.remediationId} resolved the incident.`,
+        detail:
+          message ??
+          `Task ${task.type} completed and runtime reconciliation marked the incident resolved.`,
+        evidence: [
+          current.remediationTask.remediationId,
+          current.remediationTask.taskId,
+          current.incident.incidentId,
+        ],
+      });
+      return;
+    }
+
+    const blockers = dedupeStrings(
+      [
+        current.incident.summary,
+        ...current.incident.recommendedSteps,
+        ...current.incident.evidence,
+      ],
+      8,
+    );
+    current.remediationTask.status = "blocked";
+    current.remediationTask.verificationSummary =
+      message ??
+      "Remediation task completed but the incident condition is still present in runtime truth.";
+    current.remediationTask.blockers = blockers;
+    current.incident.remediation.status = "blocked";
+    current.incident.remediation.summary =
+      "Remediation task completed, but runtime truth still reports this incident.";
+    current.incident.remediation.nextAction =
+      current.incident.recommendedSteps[0] ??
+      "Review the incident evidence and escalate to the appropriate operator.";
+    current.incident.remediation.blockers = blockers;
+
+    appendIncidentHistoryEvent(current.incident, {
+      timestamp: verifiedAt,
+      type: "remediation-status-changed",
+      actor: resolveTaskActor(task),
+      summary: `Remediation ${current.remediationTask.remediationId} is blocked pending follow-up.`,
+      detail:
+        message ??
+        "The remediation task succeeded, but runtime reconciliation still reports the incident condition.",
+      evidence: blockers,
+    });
+  };
+
+  const syncIncidentRemediationOnTaskFailure = (
+    task: Task,
+    idempotencyKey: string,
+    err: Error,
+  ) => {
+    const incidentId =
+      typeof task.payload.__incidentId === "string" ? task.payload.__incidentId : null;
+    const remediationId =
+      typeof task.payload.__remediationId === "string"
+        ? task.payload.__remediationId
+        : null;
+    if (!incidentId || !remediationId) {
+      return;
+    }
+
+    const { incident, remediationTask } = findIncidentRemediationTask(
+      state,
+      incidentId,
+      remediationId,
+    );
+    if (!incident || !remediationTask) {
+      return;
+    }
+
+    const failedAt = new Date().toISOString();
+    remediationTask.runId = idempotencyKey;
+    remediationTask.status = "failed";
+    remediationTask.executionCompletedAt = failedAt;
+    remediationTask.lastUpdatedAt = failedAt;
+    remediationTask.verificationSummary = err.message;
+    remediationTask.blockers = dedupeStrings([err.message], 6);
+
+    incident.remediation.status = "blocked";
+    incident.remediation.summary = `Remediation task ${task.type} failed.`;
+    incident.remediation.nextAction =
+      incident.recommendedSteps[0] ??
+      "Inspect the remediation task failure and decide whether to retry or escalate.";
+    incident.remediation.blockers = dedupeStrings([err.message], 6);
+
+    appendIncidentHistoryEvent(incident, {
+      timestamp: failedAt,
+      type: "remediation-status-changed",
+      actor: resolveTaskActor(task),
+      summary: `Remediation task ${task.type} failed.`,
+      detail: err.message,
+      evidence: [remediationTask.remediationId, remediationTask.taskId, err.message],
+    });
+  };
 
   const syncRepairRecordOnTaskStart = (task: Task, idempotencyKey: string) => {
     const repairId =
@@ -5650,6 +6228,18 @@ async function bootstrap() {
         timestamp: new Date(task.createdAt).toISOString(),
       },
     );
+    appendTaskRelationshipObservation(
+      task,
+      "surface:orchestrator",
+      `task:${task.type}`,
+      "dispatches-task",
+      `Orchestrator accepted ${task.type} into the queue.`,
+      {
+        source: "queue",
+        evidence: [task.id, idempotencyKey, task.type],
+        timestamp: new Date(task.createdAt).toISOString(),
+      },
+    );
   });
 
   queue.onProcess(async (task) => {
@@ -5698,6 +6288,30 @@ async function bootstrap() {
           timestamp: execution.lastHandledAt,
         },
       );
+      appendTaskRelationshipObservation(
+        task,
+        `task:${task.type}`,
+        `agent:${taskRequirement.agentId}`,
+        "routes-to-agent",
+        `${task.type} routed to ${taskRequirement.agentId}.`,
+        {
+          source: "execution",
+          evidence: [taskRequirement.agentId, taskRequirement.skillId],
+          timestamp: execution.lastHandledAt,
+        },
+      );
+      appendTaskRelationshipObservation(
+        task,
+        `agent:${taskRequirement.agentId}`,
+        `skill:${taskRequirement.skillId}`,
+        "uses-skill",
+        `${taskRequirement.agentId} used ${taskRequirement.skillId} for ${task.type}.`,
+        {
+          source: "execution",
+          evidence: [taskRequirement.skillId, task.type],
+          timestamp: execution.lastHandledAt,
+        },
+      );
     }
     appendTaskWorkflowEvent(
       task,
@@ -5712,6 +6326,7 @@ async function bootstrap() {
       },
     );
     syncRepairRecordOnTaskStart(task, idempotencyKey);
+    syncIncidentRemediationOnTaskStart(task, idempotencyKey);
 
     const approval = assertApprovalIfRequired(task, state, config);
     if (!approval.allowed) {
@@ -5783,6 +6398,11 @@ async function bootstrap() {
       );
       failureTracker.track(task.type, message);
       syncRepairRecordOnTaskSuccess(
+        task,
+        idempotencyKey,
+        typeof message === "string" ? message : undefined,
+      );
+      await syncIncidentRemediationOnTaskSuccess(
         task,
         idempotencyKey,
         typeof message === "string" ? message : undefined,
@@ -5869,6 +6489,7 @@ async function bootstrap() {
         attempt,
         maxRetries,
       );
+      syncIncidentRemediationOnTaskFailure(task, idempotencyKey, err);
 
       recordTaskResult(task, "error", err.message);
       failureTracker.track(task.type, undefined, err);
@@ -6517,6 +7138,38 @@ async function bootstrap() {
     },
   );
 
+  app.get(
+    "/api/incidents/:id/history",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("viewer"),
+    auditProtectedAction("incident.history.read"),
+    async (_req: AuthenticatedRequest, res) => {
+      try {
+        const { id } = IncidentDetailParamsSchema.parse(_req.params);
+        const incident = state.incidentLedger.find((record) => record.incidentId === id);
+        if (!incident) {
+          return res.status(404).json({ error: `Incident not found: ${id}` });
+        }
+
+        return res.json({
+          generatedAt: new Date().toISOString(),
+          incidentId: id,
+          history: incident.history ?? [],
+          acknowledgements: incident.acknowledgements ?? [],
+          ownershipHistory: incident.ownershipHistory ?? [],
+          remediationTasks: (incident.remediationTasks ?? []).map((item) => ({
+            ...item,
+            status: deriveIncidentRemediationTaskStatus(state, item),
+          })),
+        });
+      } catch (error: any) {
+        return res.status(400).json({ error: error.message });
+      }
+    },
+  );
+
   app.post(
     "/api/incidents/:id/owner",
     authLimiter,
@@ -6578,23 +7231,39 @@ async function bootstrap() {
           note,
           overrideTaskType,
         );
+        const remediationId = randomUUID();
         const queuedTask = queue.enqueue(remediationSpec.taskType, {
           ...remediationSpec.payload,
+          __remediationId: remediationId,
           __role: req.auth?.role ?? "operator",
           __requestId: req.auth?.requestId ?? null,
         });
         const createdAt = new Date().toISOString();
         const remediationTask: IncidentRemediationTaskRecord = {
-          remediationId: randomUUID(),
+          remediationId,
           createdAt,
           createdBy: actor,
+          assignedTo: actor,
+          assignedAt: createdAt,
           taskType: remediationSpec.taskType,
           taskId: queuedTask.id,
           runId: queuedTask.idempotencyKey ?? queuedTask.id,
-          status: "queued",
+          status: "assigned",
           reason: remediationSpec.reason,
           note: note ?? null,
+          lastUpdatedAt: createdAt,
+          blockers: [],
         };
+
+        if (!incident.owner) {
+          assignIncidentOwner(
+            state,
+            incident.incidentId,
+            actor,
+            actor,
+            "Owner set automatically when remediation was assigned.",
+          );
+        }
 
         incident.remediationTasks = [
           ...(incident.remediationTasks ?? []),
@@ -6610,7 +7279,9 @@ async function bootstrap() {
         );
         incident.remediation.status = "in-progress";
         incident.remediation.summary = remediationSpec.reason;
-        incident.remediation.nextAction = `Monitor remediation task ${queuedTask.id} (${remediationSpec.taskType}).`;
+        incident.remediation.owner = "operator";
+        incident.remediation.nextAction = `Track assignment, execution, verification, and resolution for remediation task ${queuedTask.id}.`;
+        incident.remediation.blockers = [];
         appendIncidentHistoryEvent(incident, {
           timestamp: createdAt,
           type: "remediation-task-created",
@@ -6624,6 +7295,16 @@ async function bootstrap() {
             queuedTask.idempotencyKey ?? queuedTask.id,
             remediationSpec.taskType,
           ],
+        });
+        appendIncidentHistoryEvent(incident, {
+          timestamp: createdAt,
+          type: "remediation-assigned",
+          actor,
+          summary: `Remediation ${remediationId} assigned to ${actor}.`,
+          detail:
+            note ??
+            `Operator ${actor} assigned remediation task ${queuedTask.id} (${remediationSpec.taskType}).`,
+          evidence: [remediationId, queuedTask.id, actor],
         });
 
         await flushState();
@@ -6683,7 +7364,11 @@ async function bootstrap() {
           agents,
           proofDelivery,
         });
-        const topology = await buildAgentTopology({ agents, proofDelivery });
+        const topology = await buildAgentTopology({ agents, proofDelivery, state });
+        const relationshipHistory = buildRelationshipHistory(state, {
+          windowHours: 24,
+          recentLimit: 20,
+        });
         const incidentState = buildRuntimeIncidentModel({
           config,
           state,
@@ -6730,7 +7415,16 @@ async function bootstrap() {
           governance,
           truthLayers,
           proofDelivery,
-          topology,
+          topology: {
+            ...topology,
+            relationshipHistory: {
+              totalObservations: relationshipHistory.totalObservations,
+              lastObservedAt: relationshipHistory.lastObservedAt,
+              byRelationship: relationshipHistory.byRelationship,
+              byStatus: relationshipHistory.byStatus,
+              timeline: relationshipHistory.timeline,
+            },
+          },
           incidents,
           recentTasks: state.taskHistory.slice(-20),
         });
@@ -6751,12 +7445,17 @@ async function bootstrap() {
       try {
         const agents = await buildAgentOperationalOverview(state);
         const proofDelivery = buildProofDeliveryTelemetry(config, state);
-        const topology = await buildAgentTopology({ agents, proofDelivery });
+        const topology = await buildAgentTopology({ agents, proofDelivery, state });
+        const relationshipHistory = buildRelationshipHistory(state, {
+          windowHours: 48,
+          recentLimit: 80,
+        });
         res.json({
           generatedAt: new Date().toISOString(),
           count: agents.length,
           agents,
           topology,
+          relationshipHistory,
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -7176,7 +7875,11 @@ async function bootstrap() {
           agents,
           proofDelivery,
         });
-        const topology = await buildAgentTopology({ agents, proofDelivery });
+        const topology = await buildAgentTopology({ agents, proofDelivery, state });
+        const relationshipHistory = buildRelationshipHistory(state, {
+          windowHours: 24,
+          recentLimit: 20,
+        });
         const incidentState = buildRuntimeIncidentModel({
           config,
           state,
@@ -7248,6 +7951,13 @@ async function bootstrap() {
             status: topology.status,
             counts: topology.counts,
             hotspots: topology.hotspots,
+            relationshipHistory: {
+              totalObservations: relationshipHistory.totalObservations,
+              lastObservedAt: relationshipHistory.lastObservedAt,
+              byRelationship: relationshipHistory.byRelationship,
+              byStatus: relationshipHistory.byStatus,
+              timeline: relationshipHistory.timeline,
+            },
           },
           incidents,
         });

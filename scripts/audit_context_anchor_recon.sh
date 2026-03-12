@@ -36,7 +36,7 @@ cd "$REPO_ROOT"
 echo "STEP 0: anchors" >> "$REPORT_PATH"
 echo >> "$REPORT_PATH"
 run_cmd 'find . -name "OPENCLAW_CONTEXT_ANCHOR.md" -print'
-run_cmd 'for f in ./OPENCLAW_CONTEXT_ANCHOR.md ./workspace/OPENCLAW_CONTEXT_ANCHOR.md; do
+run_cmd 'for f in ./OPENCLAW_CONTEXT_ANCHOR.md; do
   [ -f "$f" ] || continue
   echo "== $f =="; sha256sum "$f" | awk '\''{print $1}'\'' | cut -c1-16
   echo "-- headings --"; grep -nE '\''^(#|##) '\'' "$f" || true; echo
@@ -45,42 +45,42 @@ done'
 echo "STEP 1: directory inventory" >> "$REPORT_PATH"
 echo >> "$REPORT_PATH"
 run_cmd 'echo "== ROOT DIRS =="; find . -maxdepth 1 -mindepth 1 -type d | sed '\''s#^\./##'\'' | sort'
-run_cmd 'echo "== WORKSPACE DIRS =="; find workspace -maxdepth 1 -mindepth 1 -type d | sed '\''s#^workspace/##'\'' | sort'
+run_cmd 'echo "== REPO DIRS =="; find . -maxdepth 1 -mindepth 1 -type d | sed '\''s#^\./##'\'' | sort'
 
 echo "STEP 2: evidence scans" >> "$REPORT_PATH"
 echo >> "$REPORT_PATH"
-run_cmd 'cat workspace/orchestrator_config.json'
-run_cmd 'ls -1 workspace/systemd'
-run_cmd 'grep -nE '\''WorkingDirectory=|ExecStart=|Environment='\'' workspace/systemd/*.service'
-run_cmd 'ls -1 workspace/.github/workflows'
-run_cmd 'grep -nE '\''^(on:|\s*schedule:|\s*workflow_dispatch:|\s*push:|\s*pull_request:) '\'' workspace/.github/workflows/*.yml'
+run_cmd 'cat orchestrator_config.json'
+run_cmd 'ls -1 systemd'
+run_cmd 'grep -nE '\''WorkingDirectory=|ExecStart=|Environment='\'' systemd/*.service'
+run_cmd 'ls -1 .github/workflows'
+run_cmd 'grep -nE '\''^(on:|\s*schedule:|\s*workflow_dispatch:|\s*push:|\s*pull_request:) '\'' .github/workflows/*.yml'
 run_cmd 'ls -l cron/jobs.json && sed -n '\''1,220p'\'' cron/jobs.json'
 run_cmd 'ls -l openclaw.json && sed -n '\''1,220p'\'' openclaw.json'
 
 echo "STEP 3: path usage in code/config" >> "$REPORT_PATH"
 echo >> "$REPORT_PATH"
 run_cmd 'grep -RInE '\''docsPath|cookbookPath|logsDir|stateFile|knowledgePackDir|redditDraftsPath|rssConfigPath|digestDir|indexRoots|findLatestKnowledgePack|orchestratorStatePath|serviceStatePath'\'' \
-  workspace/orchestrator/src workspace/agents/*/src workspace/agents/*/agent.config.json | sed -n '\''1,260p'\'''
+  orchestrator/src agents/*/src agents/*/agent.config.json | sed -n '\''1,260p'\'''
 
 echo "STEP 4: existence checks for anchor referenced paths" >> "$REPORT_PATH"
 echo >> "$REPORT_PATH"
 for p in \
-  workspace/systemd/orchestrator.service \
-  workspace/systemd/doc-specialist.service \
-  workspace/systemd/reddit-helper.service \
-  workspace/sync_docs_sources.sh \
-  workspace/sync_openclaw_docs.sh \
-  workspace/sync_openai_cookbook.sh \
-  workspace/orchestrator_config.json \
-  workspace/orchestrator/src/index.ts \
-  workspace/orchestrator/src/taskHandlers.ts \
-  workspace/docs/GOVERNANCE_REPO_HYGIENE.md \
-  workspace/orchestrator_state.json \
-  workspace/logs/knowledge-packs \
-  workspace/logs/reddit-drafts.jsonl \
-  workspace/logs/devvit-submissions.jsonl \
-  workspace/rss_filter_config.json \
-  workspace/logs/digests \
+  systemd/orchestrator.service \
+  systemd/doc-specialist.service \
+  systemd/reddit-helper.service \
+  sync_docs_sources.sh \
+  sync_openclaw_docs.sh \
+  sync_openai_cookbook.sh \
+  orchestrator_config.json \
+  orchestrator/src/index.ts \
+  orchestrator/src/taskHandlers.ts \
+  docs/GOVERNANCE_REPO_HYGIENE.md \
+  orchestrator_state.json \
+  logs/knowledge-packs \
+  logs/reddit-drafts.jsonl \
+  logs/devvit-submissions.jsonl \
+  rss_filter_config.json \
+  logs/digests \
   openclaw.json \
   memory/main.sqlite \
   .openclaw/memory/main.sqlite; do
@@ -117,11 +117,11 @@ if [ -e "openclaw.json" ] && [ ! -e ".openclaw/openclaw.json" ]; then
   echo "HINT: openclaw.json exists (and .openclaw/openclaw.json is missing)" >> "$REPORT_PATH"
 fi
 
-if grep -q '"digestDir"' workspace/orchestrator_config.json && [ ! -e "workspace/logs/digests" ]; then
-  echo "HINT: digestDir is configured but workspace/logs/digests may be missing until first write" >> "$REPORT_PATH"
+if grep -q '"digestDir"' orchestrator_config.json && [ ! -e "logs/digests" ]; then
+  echo "HINT: digestDir is configured but logs/digests may be missing until first write" >> "$REPORT_PATH"
 fi
 
-if grep -RInq 'workspace/node_modules/tsx' workspace/systemd/*.service; then
+if grep -RInq 'workspace/node_modules/tsx' systemd/*.service; then
   echo "HINT: systemd ExecStart uses tsx under workspace/node_modules (dependency surface)" >> "$REPORT_PATH"
 fi
 

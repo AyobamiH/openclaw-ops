@@ -3,11 +3,15 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { MilestoneEventSchema, type MilestoneEvent } from './schema.js';
 import { publishToFeed } from './feed-publisher.js';
-import { appendWorkflowEventRecord } from "../state.js";
+import {
+  appendRelationshipObservationRecord,
+  appendWorkflowEventRecord,
+} from "../state.js";
 import type {
   MilestoneDeliveryRecord,
   OrchestratorConfig,
   OrchestratorState,
+  RelationshipObservationStatus,
   WorkflowEventRecord,
 } from "../types.js";
 
@@ -101,6 +105,32 @@ function appendProofWorkflowEvent(args: {
   }
 }
 
+function appendProofRelationshipObservation(args: {
+  state: OrchestratorState;
+  recordId: string;
+  taskId?: string;
+  runId?: string;
+  source: string;
+  timestamp: string;
+  detail: string;
+  status: RelationshipObservationStatus;
+  evidence?: string[];
+}) {
+  appendRelationshipObservationRecord(args.state, {
+    observationId: `relationship:proof:milestone:${args.recordId}:${args.timestamp}`,
+    timestamp: args.timestamp,
+    from: "surface:orchestrator",
+    to: "surface:openclawdbot",
+    relationship: "publishes-proof",
+    status: args.status,
+    source: args.source,
+    detail: args.detail,
+    taskId: args.taskId ?? null,
+    runId: args.runId ?? null,
+    evidence: [...new Set((args.evidence ?? []).filter(Boolean))].slice(0, 12),
+  });
+}
+
 export class MilestoneEmitter {
   constructor(
     private config: OrchestratorConfig,
@@ -173,6 +203,20 @@ export class MilestoneEmitter {
         `target:${this.config.milestoneIngestUrl ?? "unconfigured"}`,
       ],
     });
+    appendProofRelationshipObservation({
+      state,
+      recordId: record.idempotencyKey,
+      taskId: context.sourceTaskId,
+      runId: context.sourceRunId,
+      source: "milestone-emitter",
+      timestamp: now,
+      status: "observed",
+      detail: `Milestone proof delivery queued for ${parsed.data.milestoneId}.`,
+      evidence: [
+        `milestone:${parsed.data.milestoneId}`,
+        `target:${this.config.milestoneIngestUrl ?? "unconfigured"}`,
+      ],
+    });
     await this.persistState();
 
     // Attempt immediate delivery; errors are non-fatal
@@ -220,6 +264,17 @@ export class MilestoneEmitter {
           `target:${ingestUrl}`,
         ],
       });
+      appendProofRelationshipObservation({
+        state,
+        recordId: record.idempotencyKey,
+        taskId: record.sourceTaskId,
+        runId: record.sourceRunId,
+        source: "milestone-emitter",
+        timestamp,
+        status: "observed",
+        detail: `Milestone proof delivery attempt ${record.attempts + 1} started for ${record.milestoneId}.`,
+        evidence: [`milestone:${record.milestoneId}`, `target:${ingestUrl}`],
+      });
 
       try {
         console.log(
@@ -258,6 +313,17 @@ export class MilestoneEmitter {
               `http:${res.status}`,
             ],
           });
+          appendProofRelationshipObservation({
+            state,
+            recordId: record.idempotencyKey,
+            taskId: record.sourceTaskId,
+            runId: record.sourceRunId,
+            source: "milestone-emitter",
+            timestamp,
+            status: "observed",
+            detail: `Milestone proof delivery ${record.status} for ${record.milestoneId}.`,
+            evidence: [`milestone:${record.milestoneId}`, `http:${res.status}`],
+          });
           console.log(
             `[milestones] deliver success milestoneId=${record.milestoneId} status=${record.status} http=${res.status}`,
           );
@@ -276,6 +342,21 @@ export class MilestoneEmitter {
             detail: `Milestone delivery rejected for ${record.milestoneId}.`,
             attempt: record.attempts,
             timestamp,
+            evidence: [
+              `milestone:${record.milestoneId}`,
+              `http:${res.status}`,
+              record.lastError,
+            ],
+          });
+          appendProofRelationshipObservation({
+            state,
+            recordId: record.idempotencyKey,
+            taskId: record.sourceTaskId,
+            runId: record.sourceRunId,
+            source: "milestone-emitter",
+            timestamp,
+            status: "degraded",
+            detail: `Milestone proof delivery rejected for ${record.milestoneId}.`,
             evidence: [
               `milestone:${record.milestoneId}`,
               `http:${res.status}`,
@@ -307,6 +388,20 @@ export class MilestoneEmitter {
               `http:${res.status}`,
             ],
           });
+          appendProofRelationshipObservation({
+            state,
+            recordId: record.idempotencyKey,
+            taskId: record.sourceTaskId,
+            runId: record.sourceRunId,
+            source: "milestone-emitter",
+            timestamp,
+            status: record.status === "dead-letter" ? "degraded" : "warning",
+            detail:
+              record.status === "dead-letter"
+                ? `Milestone delivery exhausted retries for ${record.milestoneId}.`
+                : `Milestone delivery degraded for ${record.milestoneId}; retry scheduled.`,
+            evidence: [`milestone:${record.milestoneId}`, `http:${res.status}`],
+          });
           console.warn(
             `[milestones] deliver retry milestoneId=${record.milestoneId} http=${res.status} attempts=${record.attempts}`,
           );
@@ -334,6 +429,20 @@ export class MilestoneEmitter {
             `milestone:${record.milestoneId}`,
             record.lastError,
           ],
+        });
+        appendProofRelationshipObservation({
+          state,
+          recordId: record.idempotencyKey,
+          taskId: record.sourceTaskId,
+          runId: record.sourceRunId,
+          source: "milestone-emitter",
+          timestamp,
+          status: record.status === "dead-letter" ? "degraded" : "warning",
+          detail:
+            record.status === "dead-letter"
+              ? `Milestone delivery exhausted retries for ${record.milestoneId}.`
+              : `Milestone delivery degraded for ${record.milestoneId}; retry scheduled.`,
+          evidence: [`milestone:${record.milestoneId}`, record.lastError],
         });
         console.warn(
           `[milestones] deliver error milestoneId=${record.milestoneId} attempts=${record.attempts} error=${(err as Error).message}`,

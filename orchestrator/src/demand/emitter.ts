@@ -1,9 +1,13 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
-import { appendWorkflowEventRecord } from "../state.js";
+import {
+  appendRelationshipObservationRecord,
+  appendWorkflowEventRecord,
+} from "../state.js";
 import type {
   DemandSummaryDeliveryRecord,
   OrchestratorConfig,
   OrchestratorState,
+  RelationshipObservationStatus,
   WorkflowEventRecord,
 } from "../types.js";
 import { buildDemandSummarySnapshot } from "./summary-builder.js";
@@ -96,6 +100,32 @@ function appendProofWorkflowEvent(args: {
   }
 }
 
+function appendProofRelationshipObservation(args: {
+  state: OrchestratorState;
+  recordId: string;
+  taskId?: string;
+  runId?: string;
+  source: string;
+  timestamp: string;
+  detail: string;
+  status: RelationshipObservationStatus;
+  evidence?: string[];
+}) {
+  appendRelationshipObservationRecord(args.state, {
+    observationId: `relationship:proof:demand:${args.recordId}:${args.timestamp}`,
+    timestamp: args.timestamp,
+    from: "surface:orchestrator",
+    to: "surface:openclawdbot",
+    relationship: "publishes-proof",
+    status: args.status,
+    source: args.source,
+    detail: args.detail,
+    taskId: args.taskId ?? null,
+    runId: args.runId ?? null,
+    evidence: [...new Set((args.evidence ?? []).filter(Boolean))].slice(0, 12),
+  });
+}
+
 export class DemandSummaryEmitter {
   constructor(
     private config: OrchestratorConfig,
@@ -144,6 +174,20 @@ export class DemandSummaryEmitter {
       detail: `Demand summary proof delivery queued for ${snapshot.summaryId}.`,
       attempt: 0,
       timestamp: now,
+      evidence: [
+        `summary:${snapshot.summaryId}`,
+        `target:${this.config.demandSummaryIngestUrl ?? "unconfigured"}`,
+      ],
+    });
+    appendProofRelationshipObservation({
+      state,
+      recordId: record.idempotencyKey,
+      taskId: context.sourceTaskId,
+      runId: context.sourceRunId,
+      source: "demandSummary-emitter",
+      timestamp: now,
+      status: "observed",
+      detail: `Demand summary proof delivery queued for ${snapshot.summaryId}.`,
       evidence: [
         `summary:${snapshot.summaryId}`,
         `target:${this.config.demandSummaryIngestUrl ?? "unconfigured"}`,
@@ -219,6 +263,17 @@ export class DemandSummaryEmitter {
           `target:${ingestUrl}`,
         ],
       });
+      appendProofRelationshipObservation({
+        state,
+        recordId: record.idempotencyKey,
+        taskId: record.sourceTaskId,
+        runId: record.sourceRunId,
+        source: "demandSummary-emitter",
+        timestamp,
+        status: "observed",
+        detail: `Demand summary delivery attempt ${record.attempts + 1} started for ${record.summaryId}.`,
+        evidence: [`summary:${record.summaryId}`, `target:${ingestUrl}`],
+      });
 
       try {
         const response = await fetch(ingestUrl, {
@@ -254,6 +309,17 @@ export class DemandSummaryEmitter {
               `http:${response.status}`,
             ],
           });
+          appendProofRelationshipObservation({
+            state,
+            recordId: record.idempotencyKey,
+            taskId: record.sourceTaskId,
+            runId: record.sourceRunId,
+            source: "demandSummary-emitter",
+            timestamp,
+            status: "observed",
+            detail: `Demand summary delivery ${record.status} for ${record.summaryId}.`,
+            evidence: [`summary:${record.summaryId}`, `http:${response.status}`],
+          });
           changed = true;
         } else if (response.status >= 400 && response.status < 500) {
           const body = await response.text().catch(() => "");
@@ -268,6 +334,21 @@ export class DemandSummaryEmitter {
             detail: `Demand summary delivery rejected for ${record.summaryId}.`,
             attempt: record.attempts,
             timestamp,
+            evidence: [
+              `summary:${record.summaryId}`,
+              `http:${response.status}`,
+              record.lastError,
+            ],
+          });
+          appendProofRelationshipObservation({
+            state,
+            recordId: record.idempotencyKey,
+            taskId: record.sourceTaskId,
+            runId: record.sourceRunId,
+            source: "demandSummary-emitter",
+            timestamp,
+            status: "degraded",
+            detail: `Demand summary delivery rejected for ${record.summaryId}.`,
             evidence: [
               `summary:${record.summaryId}`,
               `http:${response.status}`,
@@ -298,6 +379,20 @@ export class DemandSummaryEmitter {
               `http:${response.status}`,
             ],
           });
+          appendProofRelationshipObservation({
+            state,
+            recordId: record.idempotencyKey,
+            taskId: record.sourceTaskId,
+            runId: record.sourceRunId,
+            source: "demandSummary-emitter",
+            timestamp,
+            status: record.status === "dead-letter" ? "degraded" : "warning",
+            detail:
+              record.status === "dead-letter"
+                ? `Demand summary delivery exhausted retries for ${record.summaryId}.`
+                : `Demand summary delivery degraded for ${record.summaryId}; retry scheduled.`,
+            evidence: [`summary:${record.summaryId}`, `http:${response.status}`],
+          });
           changed = true;
         }
       } catch (error) {
@@ -322,6 +417,20 @@ export class DemandSummaryEmitter {
             `summary:${record.summaryId}`,
             record.lastError,
           ],
+        });
+        appendProofRelationshipObservation({
+          state,
+          recordId: record.idempotencyKey,
+          taskId: record.sourceTaskId,
+          runId: record.sourceRunId,
+          source: "demandSummary-emitter",
+          timestamp,
+          status: record.status === "dead-letter" ? "degraded" : "warning",
+          detail:
+            record.status === "dead-letter"
+              ? `Demand summary delivery exhausted retries for ${record.summaryId}.`
+              : `Demand summary delivery degraded for ${record.summaryId}; retry scheduled.`,
+          evidence: [`summary:${record.summaryId}`, record.lastError],
         });
         changed = true;
       }

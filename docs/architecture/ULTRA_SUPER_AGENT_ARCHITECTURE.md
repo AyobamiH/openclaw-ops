@@ -122,6 +122,31 @@ OpenClaw must provide:
 Without this platform layer, agent intelligence collapses back into prompt
 cleverness and tool invocation noise.
 
+## Current Runtime Progress
+
+The runtime has not reached the ultra target yet, but the current code now has
+real movement in that direction.
+
+- `doc-specialist` now includes runtime truth in its generated knowledge packs,
+  including task execution summaries, incident counts, proof transport posture,
+  and observed relationship counts.
+- `system-monitor-agent` now reads real orchestrator runtime state and per-agent
+  service-state files instead of generating synthetic health summaries.
+- `security-agent` now performs bounded repo/runtime checks for wildcard CORS,
+  committed secret-like literals, default-secret fallbacks, and incident-driven
+  service-runtime risk.
+- `integration-agent` now validates workflow dependencies against real agent
+  manifests, allowed skills, and dependency order instead of simulating success.
+- `qa-verification-agent` now returns verification output with runtime incident,
+  repair, workflow, and relationship evidence instead of reporting only test
+  runner results.
+- The orchestrator now persists runtime relationship observations for
+  `dispatches-task`, `routes-to-agent`, `uses-skill`, `publishes-proof`,
+  `feeds-agent`, `verifies-agent`, `monitors-agent`, `audits-agent`, and
+  `coordinates-agent`.
+- Incident remediation is now tracked across assignment, execution,
+  verification, blocking, and resolution in the persistent incident ledger.
+
 ## Agent Capability Targets
 
 ### doc-specialist

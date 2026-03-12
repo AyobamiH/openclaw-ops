@@ -10,6 +10,17 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import {
+  countByStatus,
+  loadRuntimeState,
+  normalizeAgentIdFromNode,
+  summarizeRelationshipObservations,
+  type RuntimeIncidentLedgerRecord,
+  type RuntimeRelationshipObservation,
+  type RuntimeRepairRecord,
+  type RuntimeStateSubset,
+  type RuntimeWorkflowEvent,
+} from '../../shared/runtime-evidence.js';
 
 type ExecuteSkillFn = (
   skillId: string,
@@ -25,6 +36,7 @@ const DEFAULT_DRY_RUN_COMMAND = 'build-verify';
 interface AgentConfig {
   id: string;
   name: string;
+  orchestratorStatePath?: string;
   permissions: any;
 }
 
@@ -33,6 +45,43 @@ interface QaRequest {
   testCommand?: string;
   timeout: number;
   collectCoverage: boolean;
+}
+
+interface RuntimeState extends RuntimeStateSubset {}
+
+interface VerificationContext {
+  incident: {
+    incidentId: string;
+    classification: string | null;
+    severity: string | null;
+    status: string | null;
+    owner: string | null;
+    remediationStatus: string | null;
+    remediationTaskStatuses: Record<string, number>;
+    summary: string | null;
+  } | null;
+  repairs: {
+    total: number;
+    byStatus: Record<string, number>;
+    latestCompletedAt: string | null;
+    latestVerifiedAt: string | null;
+  };
+  workflow: {
+    totalEvents: number;
+    latestEventAt: string | null;
+    byStage: Record<string, number>;
+    stopCodes: string[];
+  };
+  relationships: {
+    total: number;
+    lastObservedAt: string | null;
+    byRelationship: Record<string, number>;
+    targetAgentId: string | null;
+  };
+  affectedSurfaces: string[];
+  serviceIds: string[];
+  verificationSignals: string[];
+  evidence: string[];
 }
 
 let agentConfig: AgentConfig;
@@ -105,6 +154,307 @@ function mapSuiteToCommand(suite: unknown): string | undefined {
     default:
       return undefined;
   }
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function resolveTargetAgentId(task: any): string | null {
+  const input =
+    task.input && typeof task.input === 'object' ? task.input : {};
+  const constraints =
+    task.constraints && typeof task.constraints === 'object'
+      ? task.constraints
+      : {};
+
+  const explicitCandidate = [
+    input.targetAgentId,
+    task.targetAgentId,
+    constraints.targetAgentId,
+  ].find((value) => typeof value === 'string' && value.trim().length > 0);
+
+  if (typeof explicitCandidate === 'string') {
+    return explicitCandidate.trim();
+  }
+
+  const targetCandidate = [input.target, task.target, constraints.target].find(
+    (value) => typeof value === 'string' && value.trim().length > 0,
+  );
+  if (typeof targetCandidate === 'string' && targetCandidate.endsWith('-agent')) {
+    return targetCandidate.trim();
+  }
+
+  return null;
+}
+
+function sortIsoDescending(values: Array<string | null | undefined>) {
+  return values
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .sort((left, right) => Date.parse(right) - Date.parse(left));
+}
+
+function collectIncidentContext(
+  task: any,
+  state: RuntimeState,
+): {
+  incident: VerificationContext['incident'];
+  repairIds: string[];
+  runIds: string[];
+  serviceIds: string[];
+  affectedSurfaces: string[];
+} {
+  const incidentId =
+    typeof task.incidentId === 'string'
+      ? task.incidentId
+      : typeof task.input?.incidentId === 'string'
+        ? task.input.incidentId
+        : null;
+  const repairIds = [
+    ...asStringArray(task.repairIds),
+    ...asStringArray(task.input?.repairIds),
+  ];
+  const runIds = [
+    ...asStringArray(task.runIds),
+    ...asStringArray(task.input?.runIds),
+  ];
+  const serviceIds = [
+    ...asStringArray(task.serviceIds),
+    ...asStringArray(task.input?.serviceIds),
+  ];
+  const affectedSurfaces = [
+    ...asStringArray(task.affectedSurfaces),
+    ...asStringArray(task.input?.affectedSurfaces),
+  ];
+
+  const incidentRecord =
+    incidentId && Array.isArray(state.incidentLedger)
+      ? state.incidentLedger.find((incident) => incident.incidentId === incidentId) ?? null
+      : null;
+
+  if (!incidentRecord) {
+    return {
+      incident: incidentId
+        ? {
+            incidentId,
+            classification: null,
+            severity: null,
+            status: 'resolved-or-missing',
+            owner: null,
+            remediationStatus: null,
+            remediationTaskStatuses: {},
+            summary: 'Referenced incident is not currently active in runtime state.',
+          }
+        : null,
+      repairIds,
+      runIds,
+      serviceIds,
+      affectedSurfaces,
+    };
+  }
+
+  const remediationTaskStatuses = countByStatus(
+    (incidentRecord.remediationTasks ?? []).map((taskRecord) => ({
+      status: taskRecord.status,
+    })),
+  );
+
+  return {
+    incident: {
+      incidentId,
+      classification:
+        typeof incidentRecord.classification === 'string'
+          ? incidentRecord.classification
+          : null,
+      severity:
+        typeof incidentRecord.severity === 'string' ? incidentRecord.severity : null,
+      status:
+        typeof incidentRecord.status === 'string' ? incidentRecord.status : null,
+      owner:
+        typeof incidentRecord.owner === 'string' ? incidentRecord.owner : null,
+      remediationStatus:
+        typeof incidentRecord.remediation?.status === 'string'
+          ? incidentRecord.remediation.status
+          : null,
+      remediationTaskStatuses,
+      summary:
+        typeof incidentRecord.summary === 'string' ? incidentRecord.summary : null,
+    },
+    repairIds: repairIds.length > 0 ? repairIds : [],
+    runIds:
+      runIds.length > 0
+        ? runIds
+        : Array.isArray(incidentRecord.remediationTasks)
+          ? incidentRecord.remediationTasks
+              .map((taskRecord) =>
+                typeof taskRecord.runId === 'string' ? taskRecord.runId : null,
+              )
+              .filter((value): value is string => Boolean(value))
+          : [],
+    serviceIds:
+      serviceIds.length > 0
+        ? serviceIds
+        : Array.isArray(task.serviceIds)
+          ? asStringArray(task.serviceIds)
+          : [],
+    affectedSurfaces:
+      affectedSurfaces.length > 0
+        ? affectedSurfaces
+        : Array.isArray(task.affectedSurfaces)
+          ? asStringArray(task.affectedSurfaces)
+          : [],
+  };
+}
+
+function buildVerificationContext(task: any, state: RuntimeState): VerificationContext {
+  const targetAgentId = resolveTargetAgentId(task);
+  const incidentContext = collectIncidentContext(task, state);
+  const relatedRepairs = (state.repairRecords ?? []).filter((repair) => {
+    if (
+      incidentContext.repairIds.length > 0 &&
+      typeof repair.repairId === 'string' &&
+      incidentContext.repairIds.includes(repair.repairId)
+    ) {
+      return true;
+    }
+    if (
+      incidentContext.runIds.length > 0 &&
+      typeof repair.repairRunId === 'string' &&
+      incidentContext.runIds.includes(repair.repairRunId)
+    ) {
+      return true;
+    }
+    return false;
+  });
+  const relatedWorkflowEvents = (state.workflowEvents ?? []).filter((event) => {
+    if (
+      incidentContext.runIds.length > 0 &&
+      typeof event.runId === 'string' &&
+      incidentContext.runIds.includes(event.runId)
+    ) {
+      return true;
+    }
+    if (
+      typeof task.id === 'string' &&
+      typeof event.taskId === 'string' &&
+      event.taskId === task.id
+    ) {
+      return true;
+    }
+    return false;
+  });
+  const relatedRelationships = (state.relationshipObservations ?? []).filter((observation) => {
+    if (
+      targetAgentId &&
+      observation.relationship === 'verifies-agent' &&
+      normalizeAgentIdFromNode(observation.to) === targetAgentId
+    ) {
+      return true;
+    }
+    if (
+      incidentContext.runIds.length > 0 &&
+      typeof observation.runId === 'string' &&
+      incidentContext.runIds.includes(observation.runId)
+    ) {
+      return true;
+    }
+    return false;
+  });
+
+  const workflowByStage = relatedWorkflowEvents.reduce<Record<string, number>>(
+    (acc, event) => {
+      const stage = typeof event.stage === 'string' ? event.stage : 'unknown';
+      acc[stage] = (acc[stage] ?? 0) + 1;
+      return acc;
+    },
+    {},
+  );
+  const stopCodes = Array.from(
+    new Set(
+      relatedWorkflowEvents
+        .map((event) =>
+          typeof event.stopCode === 'string' && event.stopCode.length > 0
+            ? event.stopCode
+            : null,
+        )
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+  const relationshipSummary = summarizeRelationshipObservations(relatedRelationships);
+  const verificationSignals: string[] = [];
+  const evidence: string[] = [];
+
+  if (incidentContext.incident?.status === 'active') {
+    verificationSignals.push('Referenced incident remains active.');
+  }
+  if (incidentContext.incident?.severity === 'critical') {
+    verificationSignals.push('Referenced incident severity is critical.');
+  }
+  if ((relationshipSummary.total ?? 0) === 0 && targetAgentId) {
+    verificationSignals.push(
+      `No runtime verification relationship observed yet for ${targetAgentId}.`,
+    );
+  }
+  if (relatedWorkflowEvents.length === 0 && incidentContext.runIds.length > 0) {
+    verificationSignals.push('No workflow evidence matched the referenced run IDs.');
+  }
+  if (
+    relatedRepairs.some(
+      (repair) => repair.status === 'failed' || typeof repair.lastError === 'string',
+    )
+  ) {
+    verificationSignals.push('One or more related repairs remain failed or error-marked.');
+  }
+
+  if (incidentContext.incident?.incidentId) {
+    evidence.push(`incident:${incidentContext.incident.incidentId}`);
+  }
+  if (targetAgentId) {
+    evidence.push(`target-agent:${targetAgentId}`);
+  }
+  if (incidentContext.serviceIds.length > 0) {
+    evidence.push(`services:${incidentContext.serviceIds.join(',')}`);
+  }
+  if (incidentContext.affectedSurfaces.length > 0) {
+    evidence.push(`surfaces:${incidentContext.affectedSurfaces.join(',')}`);
+  }
+  if (stopCodes.length > 0) {
+    evidence.push(`workflow-stop-codes:${stopCodes.join(',')}`);
+  }
+
+  return {
+    incident: incidentContext.incident,
+    repairs: {
+      total: relatedRepairs.length,
+      byStatus: countByStatus(relatedRepairs),
+      latestCompletedAt:
+        sortIsoDescending(relatedRepairs.map((repair) => repair.completedAt)).at(0) ?? null,
+      latestVerifiedAt:
+        sortIsoDescending(relatedRepairs.map((repair) => repair.verifiedAt)).at(0) ?? null,
+    },
+    workflow: {
+      totalEvents: relatedWorkflowEvents.length,
+      latestEventAt:
+        sortIsoDescending(relatedWorkflowEvents.map((event) => event.timestamp)).at(0) ??
+        null,
+      byStage: workflowByStage,
+      stopCodes,
+    },
+    relationships: {
+      total: relationshipSummary.total,
+      lastObservedAt: relationshipSummary.lastObservedAt,
+      byRelationship: relationshipSummary.byRelationship,
+      targetAgentId,
+    },
+    affectedSurfaces: incidentContext.affectedSurfaces,
+    serviceIds: incidentContext.serviceIds,
+    verificationSignals,
+    evidence,
+  };
 }
 
 function buildRequest(task: any): QaRequest {
@@ -250,6 +600,11 @@ async function handleTask(task: any): Promise<any> {
   const agentId = agentConfig.id;
   const taskId = task.id || 'unknown';
   const request = buildRequest(task);
+  const runtimeState = await loadRuntimeState<RuntimeState>(
+    configPath,
+    agentConfig.orchestratorStatePath,
+  );
+  const initialVerificationContext = buildVerificationContext(task, runtimeState);
 
   console.log(`[${agentId}] Starting task: ${taskId}`);
 
@@ -301,7 +656,12 @@ async function handleTask(task: any): Promise<any> {
 
     const runnerData = testResult.data;
     if (runnerData.dryRun === true || request.mode === 'dry-run') {
-      return buildDryRunResult(taskId, agentId, request, runnerData);
+      return {
+        ...buildDryRunResult(taskId, agentId, request, runnerData),
+        runtimeContext: initialVerificationContext,
+        verificationSignals: initialVerificationContext.verificationSignals,
+        evidence: initialVerificationContext.evidence,
+      };
     }
 
     const summary =
@@ -330,6 +690,26 @@ async function handleTask(task: any): Promise<any> {
       };
     }
 
+    const postExecutionState = await loadRuntimeState<RuntimeState>(
+      configPath,
+      agentConfig.orchestratorStatePath,
+    );
+    const verificationContext = buildVerificationContext(task, postExecutionState);
+    const evidenceQuality =
+      verificationContext.workflow.totalEvents > 0 &&
+      verificationContext.relationships.total > 0
+        ? 'strong'
+        : verificationContext.workflow.totalEvents > 0 ||
+            verificationContext.repairs.total > 0
+          ? 'partial'
+          : 'minimal';
+    const reproducibility =
+      totalChecks > 0 && runnerData.passed === true
+        ? 'verified'
+        : totalChecks > 0
+          ? 'failed'
+          : 'unproven';
+
     return {
       taskId,
       success: runnerData.passed === true,
@@ -346,6 +726,13 @@ async function handleTask(task: any): Promise<any> {
       totalChecks,
       passedChecks,
       agentId,
+      runtimeContext: verificationContext,
+      verificationSignals: verificationContext.verificationSignals,
+      verification: {
+        evidenceQuality,
+        reproducibility,
+        policyFit: 'bounded-test-runner',
+      },
       report: {
         timestamp: new Date().toISOString(),
         taskId,
@@ -356,6 +743,12 @@ async function handleTask(task: any): Promise<any> {
           skipped: Number(summary.skipped ?? 0),
         },
         outcomeKind,
+        runtimeContext: {
+          incidentStatus: verificationContext.incident?.status ?? null,
+          repairCount: verificationContext.repairs.total,
+          workflowEvents: verificationContext.workflow.totalEvents,
+          relationshipEvents: verificationContext.relationships.total,
+        },
       },
       results: [
         {
@@ -365,6 +758,7 @@ async function handleTask(task: any): Promise<any> {
           duration: runnerData.duration,
         },
       ],
+      evidence: verificationContext.evidence,
       completedAt: new Date().toISOString(),
     };
   } catch (error: any) {

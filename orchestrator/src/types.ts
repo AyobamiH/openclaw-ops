@@ -109,6 +109,9 @@ export type IncidentHistoryEventType =
   | "acknowledged"
   | "owner-changed"
   | "remediation-task-created"
+  | "remediation-assigned"
+  | "remediation-executing"
+  | "remediation-verified"
   | "remediation-status-changed"
   | "resolved";
 
@@ -137,8 +140,13 @@ export interface IncidentOwnershipRecord {
 }
 
 export type IncidentRemediationTaskStatus =
+  | "assigned"
   | "queued"
   | "running"
+  | "verifying"
+  | "verified"
+  | "resolved"
+  | "blocked"
   | "completed"
   | "failed"
   | "unknown";
@@ -147,12 +155,24 @@ export interface IncidentRemediationTaskRecord {
   remediationId: string;
   createdAt: string;
   createdBy: string;
+  assignedTo?: string | null;
+  assignedAt?: string | null;
   taskType: string;
   taskId: string;
   runId?: string | null;
   status: IncidentRemediationTaskStatus;
   reason: string;
   note?: string | null;
+  executionStartedAt?: string | null;
+  executionCompletedAt?: string | null;
+  verificationStartedAt?: string | null;
+  verificationCompletedAt?: string | null;
+  verifiedAt?: string | null;
+  resolvedAt?: string | null;
+  lastUpdatedAt?: string | null;
+  verificationSummary?: string | null;
+  resolutionSummary?: string | null;
+  blockers?: string[];
 }
 
 export interface IncidentLedgerRecord {
@@ -212,6 +232,22 @@ export type WorkflowEventStage =
   | "proof"
   | "repair";
 
+export type RelationshipObservationType =
+  | "dispatches-task"
+  | "routes-to-agent"
+  | "uses-skill"
+  | "publishes-proof"
+  | "feeds-agent"
+  | "verifies-agent"
+  | "monitors-agent"
+  | "audits-agent"
+  | "coordinates-agent";
+
+export type RelationshipObservationStatus =
+  | "observed"
+  | "warning"
+  | "degraded";
+
 export interface WorkflowEventRecord {
   eventId: string;
   runId: string;
@@ -228,6 +264,20 @@ export interface WorkflowEventRecord {
   attempt?: number;
   relatedNodeIds?: string[];
   stopCode?: string | null;
+}
+
+export interface RelationshipObservationRecord {
+  observationId: string;
+  timestamp: string;
+  from: string;
+  to: string;
+  relationship: RelationshipObservationType;
+  status: RelationshipObservationStatus;
+  source: string;
+  detail: string;
+  taskId?: string | null;
+  runId?: string | null;
+  evidence: string[];
 }
 
 export interface TaskRetryRecoveryRecord {
@@ -480,6 +530,7 @@ export interface OrchestratorState {
   demandSummaryDeliveries: DemandSummaryDeliveryRecord[];
   incidentLedger: IncidentLedgerRecord[];
   workflowEvents: WorkflowEventRecord[];
+  relationshipObservations: RelationshipObservationRecord[];
   lastDriftRepairAt: string | null;
   lastRedditResponseAt: string | null;
   lastAgentDeployAt: string | null;

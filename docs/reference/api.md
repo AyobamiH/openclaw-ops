@@ -32,6 +32,7 @@ Protected operator routes (bearer token):
 - `POST /api/approvals/:id/decision`
 - `GET /api/incidents`
 - `GET /api/incidents/:id`
+- `GET /api/incidents/:id/history`
 - `POST /api/incidents/:id/acknowledge`
 - `POST /api/incidents/:id/owner`
 - `POST /api/incidents/:id/remediate`
@@ -136,6 +137,8 @@ Safe leaf fields to render:
   `topology.counts.totalNodes`,
   `topology.counts.totalEdges`,
   `topology.counts.relationshipEdges`,
+  `topology.relationshipHistory.totalObservations`,
+  `topology.relationshipHistory.lastObservedAt`,
   `topology.hotspots[]`,
   `incidents.overallStatus`,
   `incidents.openCount`,
@@ -197,6 +200,8 @@ Safe leaf fields to render:
   `topology.counts.routeEdges`,
   `topology.counts.skillEdges`,
   `topology.counts.proofEdges`,
+  `topology.relationshipHistory.totalObservations`,
+  `topology.relationshipHistory.lastObservedAt`,
   `topology.hotspots[]`,
   `incidents.overallStatus`,
   `incidents.openCount`,
@@ -250,6 +255,10 @@ Safe leaf fields to render:
   `history[]`, `acknowledgements[]`, `ownershipHistory[]`,
   `remediationTasks[]`, linked service/task/run/proof references, and
   current remediation guidance
+- `/api/incidents/:id/history`: isolated incident history stream with
+  `history[]`, `acknowledgements[]`, `ownershipHistory[]`, and remediation
+  task lifecycle records including assignment/execution/verification/resolution
+  timestamps
 - `/api/approvals/pending`: `impact.riskLevel`, `impact.approvalReason`,
   `impact.dependencyClass`, `impact.affectedSurfaces`,
   `impact.dependencyRequirements`, `impact.caveats`,
@@ -270,7 +279,13 @@ Safe leaf fields to render:
   `capability.targetCapabilities[]`, `capability.evidence[]`,
   `capability.presentCapabilities[]`, `capability.missingCapabilities[]`,
   `capability.evidenceProfiles[]`, `capability.ultraGapSummary`,
-  `topology.edges[].relationship`
+  `topology.edges[].relationship`,
+  `relationshipHistory.totalObservations`,
+  `relationshipHistory.lastObservedAt`,
+  `relationshipHistory.byRelationship`,
+  `relationshipHistory.byStatus`,
+  `relationshipHistory.timeline[]`,
+  `relationshipHistory.recent[]`
 - `/health`: `status`, `timestamp`
 
 Auth persistence requirement:
@@ -322,6 +337,9 @@ Interpretation note from the `2026-03-07` repair follow-up:
   detail/history views from the persistent ledger, including acknowledgement
   history, explicit ownership lifecycle history, and linked remediation task
   records.
+- `GET /api/incidents/:id/history` now provides the incident lifecycle stream as
+  a dedicated route so operators can inspect acknowledgement, ownership, and
+  remediation progression without re-fetching the full incident detail object.
 - `POST /api/incidents/:id/remediate` now creates a linked remediation task
   using an allowlisted remediation mapping (`drift-repair`, `qa-verification`,
   or `system-monitor`) and persists that linkage back into the incident ledger.
@@ -337,6 +355,11 @@ Interpretation note from the `2026-03-07` repair follow-up:
   `monitors-agent`, `audits-agent`, `coordinates-agent`). This is derived from
   manifests, task/skill contracts, declared ultra-agent roles, and current
   runtime evidence.
+- `GET /api/agents/overview` now also exposes `relationshipHistory`, a bounded
+  history view of observed delegation, tool-use, verification, monitoring, and
+  proof-delivery edges over time. `topology` remains the current graph shape;
+  `relationshipHistory` preserves the underlying observed events and their
+  hourly aggregation window for operator replay.
 - `GET /api/dashboard/overview` and `GET /api/health/extended` now expose
   `truthLayers` and `proofDelivery` so frontends can distinguish declared
   control-plane intent, current runtime configuration, observed operator state,

@@ -2,6 +2,12 @@ import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
 import { basename, dirname, extname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Telemetry } from "../../shared/telemetry.js";
+import {
+  loadRuntimeState,
+  summarizeProofTransport,
+  summarizeTaskExecutions,
+  type RuntimeStateSubset,
+} from "../../shared/runtime-evidence.js";
 
 interface DriftRepairPayload {
   id: string;
@@ -15,9 +21,25 @@ interface AgentConfig {
   docsPath: string;
   cookbookPath?: string;
   knowledgePackDir: string;
+  stateFile?: string;
+  orchestratorStatePath?: string;
   agentsRootPath?: string;
   orchestratorConfigPath?: string;
 }
+
+interface RuntimeTruthSummary {
+  generatedAt: string;
+  taskExecutions: ReturnType<typeof summarizeTaskExecutions>;
+  openIncidentCount: number;
+  criticalIncidentCount: number;
+  relationshipObservationCount: number;
+  proofDelivery: {
+    milestone: ReturnType<typeof summarizeProofTransport>;
+    demandSummary: ReturnType<typeof summarizeProofTransport>;
+  };
+}
+
+interface RuntimeState extends RuntimeStateSubset {}
 
 interface ConfigAuditIssue {
   severity: "critical" | "warning";
@@ -126,6 +148,7 @@ async function loadAgentConfig(): Promise<AgentConfig> {
     docsPath: resolve(dirname(configPath), parsed.docsPath),
     cookbookPath: parsed.cookbookPath ? resolve(dirname(configPath), parsed.cookbookPath) : undefined,
     knowledgePackDir: resolve(dirname(configPath), parsed.knowledgePackDir),
+    stateFile: parsed.stateFile ? resolve(dirname(configPath), parsed.stateFile) : undefined,
     agentsRootPath: resolve(dirname(configPath), parsed.agentsRootPath || "../../agents"),
     orchestratorConfigPath: resolve(
       dirname(configPath),
@@ -434,6 +457,10 @@ function dedupeSummaries(summaries: ProcessedDocSummary[]): ProcessedDocSummary[
 async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConfig) {
   await telemetry.info("pack.start", { files: task.docPaths.length, useDualSources: !!config.cookbookPath });
   const configAudit = await runConfigAudit(task, config);
+  const runtimeState = await loadRuntimeState<RuntimeState>(
+    resolve(__dirname, "../agent.config.json"),
+    config.stateFile ?? config.orchestratorStatePath,
+  );
   const targetedDocs =
     task.docPaths && task.docPaths.length > 0
       ? await collectDocSummaries(task.docPaths, config.docsPath)
@@ -458,6 +485,21 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
     requestedBy: task.requestedBy,
     targetAgents: task.targetAgents,
     configAudit,
+    runtimeTruth: {
+      generatedAt: new Date().toISOString(),
+      taskExecutions: summarizeTaskExecutions(runtimeState.taskExecutions ?? []),
+      openIncidentCount: (runtimeState.incidentLedger ?? []).filter(
+        (incident) => incident.status !== "resolved",
+      ).length,
+      criticalIncidentCount: (runtimeState.incidentLedger ?? []).filter(
+        (incident) => incident.status !== "resolved" && incident.severity === "critical",
+      ).length,
+      relationshipObservationCount: (runtimeState.relationshipObservations ?? []).length,
+      proofDelivery: {
+        milestone: summarizeProofTransport(runtimeState.milestoneDeliveries ?? []),
+        demandSummary: summarizeProofTransport(runtimeState.demandSummaryDeliveries ?? []),
+      },
+    } satisfies RuntimeTruthSummary,
     docs: summaries,
   };
 
@@ -486,6 +528,7 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
           docsProcessed: summaries.length,
           sourceBreakdown,
           configAuditSummary: configAudit.summary,
+          runtimeTruth: payload.runtimeTruth,
         },
         null,
         2
@@ -494,7 +537,14 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
     );
   }
 
-  return { packPath, packId, docsProcessed: summaries.length, sourceBreakdown, configAudit };
+  return {
+    packPath,
+    packId,
+    docsProcessed: summaries.length,
+    sourceBreakdown,
+    configAudit,
+    runtimeTruth: payload.runtimeTruth,
+  };
 }
 
 async function run() {
@@ -526,6 +576,8 @@ async function run() {
     docsProcessed: pack.docsProcessed,
     configAuditIssues: pack.configAudit.summary.totalIssues,
     configAuditCriticalIssues: pack.configAudit.summary.criticalIssues,
+    openIncidents: pack.runtimeTruth.openIncidentCount,
+    relationshipObservationCount: pack.runtimeTruth.relationshipObservationCount,
     targets: task.targetAgents,
     requestedBy: task.requestedBy,
   });

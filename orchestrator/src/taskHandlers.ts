@@ -18,6 +18,8 @@ import {
   AgentDeploymentRecord,
   DriftRepairRecord,
   RepairRecord,
+  RelationshipObservationRecord,
+  RelationshipObservationType,
   RedditReplyRecord,
   RedditQueueItem,
   RssDraftRecord,
@@ -28,7 +30,11 @@ import {
 import { sendNotification, buildNotifierConfig } from "./notifier.js";
 import { getAgentRegistry } from "./agentRegistry.js";
 import { getToolGate } from "./toolGate.js";
-import { upsertRepairRecord, updateRepairRecord } from "./state.js";
+import {
+  appendRelationshipObservationRecord,
+  upsertRepairRecord,
+  updateRepairRecord,
+} from "./state.js";
 import { getMilestoneEmitter } from "./milestones/emitter.js";
 import type { MilestoneEvent } from "./milestones/schema.js";
 import { getDemandSummaryEmitter } from "./demand/emitter.js";
@@ -216,6 +222,36 @@ function buildProofEmissionContext(
     sourceRunId: task.idempotencyKey,
     actor: actor ?? "orchestrator",
   };
+}
+
+function observeRuntimeRelationship(args: {
+  context: TaskHandlerContext;
+  task: Task;
+  from: string;
+  to: string;
+  relationship: RelationshipObservationType;
+  detail: string;
+  source: string;
+  status?: RelationshipObservationRecord["status"];
+  evidence?: string[];
+}) {
+  appendRelationshipObservationRecord(args.context.state, {
+    observationId: randomUUID(),
+    timestamp: new Date().toISOString(),
+    from: args.from,
+    to: args.to,
+    relationship: args.relationship,
+    status: args.status ?? "observed",
+    source: args.source,
+    detail: args.detail,
+    taskId: args.task.id,
+    runId: taskRunId(args.task),
+    evidence: [...new Set((args.evidence ?? []).filter(Boolean))].slice(0, 12),
+  });
+}
+
+function taskRunId(task: Task) {
+  return task.idempotencyKey ?? task.id;
 }
 
 function emitMilestoneSafely(
@@ -996,7 +1032,11 @@ async function tryReadSpawnedAgentResult(resultPath: string) {
   }
 }
 
-async function assertToolGatePermission(taskType: AllowedTaskType) {
+async function assertToolGatePermission(
+  task: Task,
+  context: TaskHandlerContext,
+  taskType: AllowedTaskType,
+) {
   const requirement = SPAWNED_AGENT_PERMISSION_REQUIREMENTS[taskType];
   if (!requirement) return;
 
@@ -1022,6 +1062,17 @@ async function assertToolGatePermission(taskType: AllowedTaskType) {
       `toolgate denied ${requirement.agentId} for skill ${requirement.skillId}: ${permissionResult.error}`,
     );
   }
+
+  observeRuntimeRelationship({
+    context,
+    task,
+    from: `agent:${requirement.agentId}`,
+    to: `skill:${requirement.skillId}`,
+    relationship: "uses-skill",
+    detail: `${requirement.agentId} preflighted ${requirement.skillId} for ${taskType}.`,
+    source: "toolgate",
+    evidence: [taskType, requirement.skillId],
+  });
 }
 
 function parseRssEntries(xml: string) {
@@ -1313,6 +1364,21 @@ const driftRepairHandler: TaskHandler = async (task, context) => {
   context.state.driftRepairs.push(record);
   context.state.lastDriftRepairAt = record.completedAt;
 
+  if (docSpecResult?.packPath) {
+    for (const targetAgent of targets) {
+      observeRuntimeRelationship({
+        context,
+        task,
+        from: "agent:doc-specialist",
+        to: `agent:${targetAgent}`,
+        relationship: "feeds-agent",
+        detail: `doc-specialist refreshed knowledge for ${targetAgent} via ${docSpecResult.packId}.`,
+        source: "doc-specialist",
+        evidence: [docSpecResult.packId, docSpecResult.packPath],
+      });
+    }
+  }
+
   updateRepairRecord(context.state, repairId, (existing) => ({
     ...existing,
     status: verified ? "verified" : "failed",
@@ -1472,7 +1538,7 @@ const redditResponseHandler: TaskHandler = async (task, context) => {
 };
 
 const securityAuditHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission("security-audit");
+  await assertToolGatePermission(task, context, "security-audit");
   const payload = {
     id: randomUUID(),
     type: String(task.payload.type ?? "scan"),
@@ -1487,6 +1553,28 @@ const securityAuditHandler: TaskHandler = async (task, context) => {
       context.logger,
     );
     assertSpawnedAgentReportedSuccess(result, "security audit");
+    const auditedAgents = Array.isArray(result.auditedAgents)
+      ? result.auditedAgents.filter(
+          (agentId): agentId is string => typeof agentId === "string" && agentId.length > 0,
+        )
+      : [];
+    for (const agentId of auditedAgents) {
+      observeRuntimeRelationship({
+        context,
+        task,
+        from: "agent:security-agent",
+        to: `agent:${agentId}`,
+        relationship: "audits-agent",
+        detail: `security-agent audited ${agentId} during ${payload.type}.`,
+        source: "security-agent",
+        evidence: [
+          `scope:${payload.scope}`,
+          `findings:${
+            Array.isArray(result.findings) ? result.findings.length : 0
+          }`,
+        ],
+      });
+    }
     const summary =
       (result.summary as Record<string, unknown> | undefined) ?? {};
     const critical = Number(summary.critical ?? 0);
@@ -1498,7 +1586,7 @@ const securityAuditHandler: TaskHandler = async (task, context) => {
 };
 
 const summarizeContentHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission("summarize-content");
+  await assertToolGatePermission(task, context, "summarize-content");
   const sourceType = String(task.payload.sourceType ?? "document") as
     | "document"
     | "transcript"
@@ -1541,7 +1629,7 @@ const summarizeContentHandler: TaskHandler = async (task, context) => {
 };
 
 const systemMonitorHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission("system-monitor");
+  await assertToolGatePermission(task, context, "system-monitor");
   const payload = {
     id: randomUUID(),
     type: String(task.payload.type ?? "health"),
@@ -1560,6 +1648,22 @@ const systemMonitorHandler: TaskHandler = async (task, context) => {
     assertSpawnedAgentReportedSuccess(result, "system monitor");
     const metrics =
       (result.metrics as Record<string, unknown> | undefined) ?? {};
+    const agentHealth =
+      metrics.agentHealth && typeof metrics.agentHealth === "object"
+        ? (metrics.agentHealth as Record<string, unknown>)
+        : {};
+    for (const agentId of Object.keys(agentHealth)) {
+      observeRuntimeRelationship({
+        context,
+        task,
+        from: "agent:system-monitor-agent",
+        to: `agent:${agentId}`,
+        relationship: "monitors-agent",
+        detail: `system-monitor-agent evaluated ${agentId} health from runtime evidence.`,
+        source: "system-monitor-agent",
+        evidence: [`agent:${agentId}`],
+      });
+    }
     const alerts = Array.isArray(metrics.alerts) ? metrics.alerts.length : 0;
     return `system monitor complete (${alerts} alerts)`;
   } catch (error) {
@@ -1568,7 +1672,7 @@ const systemMonitorHandler: TaskHandler = async (task, context) => {
 };
 
 const buildRefactorHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission("build-refactor");
+  await assertToolGatePermission(task, context, "build-refactor");
   const payload = {
     id: randomUUID(),
     type: String(task.payload.type ?? "refactor"),
@@ -1599,7 +1703,7 @@ const buildRefactorHandler: TaskHandler = async (task, context) => {
 };
 
 const contentGenerateHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission("content-generate");
+  await assertToolGatePermission(task, context, "content-generate");
   const payload = {
     id: randomUUID(),
     type: String(task.payload.type ?? "readme"),
@@ -1630,7 +1734,7 @@ const contentGenerateHandler: TaskHandler = async (task, context) => {
 };
 
 const integrationWorkflowHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission("integration-workflow");
+  await assertToolGatePermission(task, context, "integration-workflow");
   const payload = {
     id: randomUUID(),
     type: String(task.payload.type ?? "workflow"),
@@ -1647,11 +1751,46 @@ const integrationWorkflowHandler: TaskHandler = async (task, context) => {
       context.logger,
     );
 
+    const relationships = Array.isArray(result.relationships)
+      ? result.relationships.filter(
+          (item): item is {
+            from: string;
+            to: string;
+            relationship: RelationshipObservationType;
+            detail?: string;
+            evidence?: string[];
+          } =>
+            Boolean(
+              item &&
+                typeof item === "object" &&
+                typeof item.from === "string" &&
+                typeof item.to === "string" &&
+                typeof item.relationship === "string",
+            ),
+        )
+      : [];
+    for (const relationship of relationships) {
+      observeRuntimeRelationship({
+        context,
+        task,
+        from: relationship.from,
+        to: relationship.to,
+        relationship: relationship.relationship,
+        detail:
+          relationship.detail ??
+          `${relationship.from} ${relationship.relationship} ${relationship.to}.`,
+        source: "integration-agent",
+        evidence: relationship.evidence ?? [],
+      });
+    }
+
     const steps = Array.isArray(result.steps) ? result.steps.length : 0;
     if (result.success !== true) {
       const reason =
-        typeof result.error === "string"
-          ? result.error
+        typeof result.stopReason === "string"
+          ? result.stopReason
+          : typeof result.error === "string"
+            ? result.error
           : "agent returned unsuccessful result";
       throw new Error(`integration workflow failed: ${reason}`);
     }
@@ -1662,7 +1801,7 @@ const integrationWorkflowHandler: TaskHandler = async (task, context) => {
 };
 
 const normalizeDataHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission("normalize-data");
+  await assertToolGatePermission(task, context, "normalize-data");
   const payload = {
     id: randomUUID(),
     type: String(task.payload.type ?? "normalize"),
@@ -1692,7 +1831,7 @@ const normalizeDataHandler: TaskHandler = async (task, context) => {
 };
 
 const marketResearchHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission("market-research");
+  await assertToolGatePermission(task, context, "market-research");
   const payload = {
     id: randomUUID(),
     query: String(task.payload.query ?? "market research"),
@@ -1723,7 +1862,7 @@ const marketResearchHandler: TaskHandler = async (task, context) => {
 };
 
 const dataExtractionHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission("data-extraction");
+  await assertToolGatePermission(task, context, "data-extraction");
   const payload = {
     id: randomUUID(),
     source:
@@ -1753,7 +1892,7 @@ const dataExtractionHandler: TaskHandler = async (task, context) => {
 };
 
 const qaVerificationHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission("qa-verification");
+  await assertToolGatePermission(task, context, "qa-verification");
   const payload = {
     id: randomUUID(),
     target: String(task.payload.target ?? "workspace"),
@@ -1815,6 +1954,28 @@ const qaVerificationHandler: TaskHandler = async (task, context) => {
       result.executedCommand.length > 0
         ? ` via ${result.executedCommand}`
         : "";
+    const targetAgentId =
+      typeof task.payload.target === "string" &&
+      task.payload.target.endsWith("-agent")
+        ? task.payload.target
+        : typeof task.payload.targetAgentId === "string"
+          ? task.payload.targetAgentId
+          : null;
+    if (targetAgentId) {
+      observeRuntimeRelationship({
+        context,
+        task,
+        from: "agent:qa-verification-agent",
+        to: `agent:${targetAgentId}`,
+        relationship: "verifies-agent",
+        detail: `qa-verification-agent verified ${targetAgentId}.`,
+        source: "qa-verification-agent",
+        evidence: [
+          typeof result.executedCommand === "string" ? result.executedCommand : "no-command",
+          typeof result.outcomeSummary === "string" ? result.outcomeSummary : outcomeKind,
+        ],
+      });
+    }
     return `qa verification complete (${passedChecks}/${totalChecks} ${unitLabel} passed${commandNote})`;
   } catch (error) {
     throwTaskFailure("qa verification", error);
@@ -1822,7 +1983,7 @@ const qaVerificationHandler: TaskHandler = async (task, context) => {
 };
 
 const skillAuditHandler: TaskHandler = async (task, context) => {
-  await assertToolGatePermission("skill-audit");
+  await assertToolGatePermission(task, context, "skill-audit");
   const payload = {
     id: randomUUID(),
     skillIds: Array.isArray(task.payload.skillIds)

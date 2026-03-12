@@ -1,85 +1,349 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import { readFileSync } from "node:fs";
+import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
+import { dirname, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  loadRuntimeState,
+  type RuntimeStateSubset,
+} from "../../shared/runtime-evidence.js";
 
-interface AgentConfig { id: string; name: string; model: string; permissions: any; }
-interface SecurityTask { id: string; type: 'scan' | 'compliance' | 'incident' | 'secrets'; scope: string; }
+interface AgentConfig {
+  id: string;
+  name: string;
+  orchestratorStatePath: string;
+  permissions: {
+    skills?: Record<string, { allowed?: boolean }>;
+  };
+}
+
+interface SecurityTask {
+  id: string;
+  type: "scan" | "compliance" | "incident" | "secrets";
+  scope: string;
+}
+
+interface SecurityFinding {
+  id: string;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  cwe?: string;
+  cvss?: number;
+  description: string;
+  location: string;
+  remediation: string;
+}
+
 interface SecurityResult {
   success: boolean;
-  findings: Array<{
-    id: string;
-    severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-    cwe?: string;
-    cvss?: number;
-    description: string;
-    location: string;
-    remediation: string;
-  }>;
-  summary: { total: number; critical: number; exploitable: boolean; compliance: string }
+  findings: SecurityFinding[];
+  summary: {
+    total: number;
+    critical: number;
+    exploitable: boolean;
+    compliance: string;
+  };
+  auditedAgents: string[];
+  evidence: string[];
   executionTime: number;
 }
 
+interface RuntimeState extends RuntimeStateSubset {}
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const configPath = resolve(__dirname, "../agent.config.json");
+const workspaceRoot = resolve(__dirname, "../../..");
+
 function loadConfig(): AgentConfig {
-  const configPath = path.join(__dirname, '../agent.config.json');
-  return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  return JSON.parse(readFileSync(configPath, "utf-8")) as AgentConfig;
 }
 
 function canUseSkill(skillId: string): boolean {
   const config = loadConfig();
-  return config.permissions.skills[skillId]?.allowed === true;
+  return config.permissions.skills?.[skillId]?.allowed === true;
+}
+
+async function pathTextIfExists(targetPath: string) {
+  try {
+    return await readFile(targetPath, "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+function redactFindingId(prefix: string) {
+  return `${prefix}-${Date.now().toString(36)}`;
+}
+
+function isPlaceholderValue(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized.includes("change_me") ||
+    normalized.includes("example") ||
+    normalized.includes("placeholder") ||
+    normalized.includes("test-") ||
+    normalized.includes("sample")
+  );
+}
+
+function parseEnvLines(raw: string) {
+  return raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
+}
+
+async function scanTrackedFilesForSecrets(): Promise<SecurityFinding[]> {
+  const candidateRoots = [
+    "README.md",
+    "docs",
+    "orchestrator/src",
+    "openclawdbot/src",
+    "systemd",
+  ];
+  const findings: SecurityFinding[] = [];
+  const tokenPatterns: Array<{ pattern: RegExp; description: string }> = [
+    {
+      pattern: /Bearer\s+[A-Za-z0-9\-_]{24,}/,
+      description: "bearer token-like literal",
+    },
+    {
+      pattern: /cloudflared\s+tunnel\s+run\s+--token\s+[A-Za-z0-9._-]{20,}/,
+      description: "cloudflared tunnel token literal",
+    },
+    {
+      pattern: /\bsk-[A-Za-z0-9]{20,}\b/,
+      description: "OpenAI-style API key literal",
+    },
+  ];
+
+  async function walk(target: string): Promise<void> {
+    const absolutePath = resolve(workspaceRoot, target);
+    let entries;
+    try {
+      entries = await readdir(absolutePath, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (entry.name.startsWith(".git")) continue;
+      const child = resolve(absolutePath, entry.name);
+      const relativePath = relative(workspaceRoot, child);
+      if (entry.isDirectory()) {
+        await walk(relativePath);
+        continue;
+      }
+      if (!/\.(md|ts|tsx|js|cjs|mjs|json|service|sh|txt|yml|yaml)$/i.test(entry.name)) {
+        continue;
+      }
+      const raw = await pathTextIfExists(child);
+      if (!raw) continue;
+      for (const { pattern, description } of tokenPatterns) {
+        if (pattern.test(raw)) {
+          findings.push({
+            id: redactFindingId("tracked-secret"),
+            severity: "CRITICAL",
+            description: `Tracked ${description} detected in repository content.`,
+            location: relativePath,
+            remediation: "Remove the literal from tracked content and rotate the secret.",
+          });
+          break;
+        }
+      }
+    }
+  }
+
+  for (const root of candidateRoots) {
+    const absoluteRoot = resolve(workspaceRoot, root);
+    const raw = await pathTextIfExists(absoluteRoot);
+    if (raw !== null) {
+      for (const { pattern, description } of tokenPatterns) {
+        if (pattern.test(raw)) {
+          findings.push({
+            id: redactFindingId("tracked-secret"),
+            severity: "CRITICAL",
+            description: `Tracked ${description} detected in repository content.`,
+            location: root,
+            remediation: "Remove the literal from tracked content and rotate the secret.",
+          });
+          break;
+        }
+      }
+      continue;
+    }
+    await walk(root);
+  }
+
+  return findings;
+}
+
+async function buildFindings(task: SecurityTask, state: RuntimeState): Promise<{
+  findings: SecurityFinding[];
+  auditedAgents: string[];
+  evidence: string[];
+}> {
+  const findings: SecurityFinding[] = [];
+  const evidence: string[] = [];
+
+  const envExamplePath = resolve(workspaceRoot, "orchestrator/.env.example");
+  const envExampleRaw = await pathTextIfExists(envExamplePath);
+  if (envExampleRaw) {
+    const envLines = parseEnvLines(envExampleRaw);
+    for (const line of envLines) {
+      const separatorIndex = line.indexOf("=");
+      if (separatorIndex <= 0) continue;
+      const key = line.slice(0, separatorIndex);
+      const value = line.slice(separatorIndex + 1);
+      if (!value || isPlaceholderValue(value)) {
+        continue;
+      }
+      findings.push({
+        id: redactFindingId("env-example"),
+        severity: "HIGH",
+        description: `${key} in orchestrator/.env.example is not a placeholder value.`,
+        location: "orchestrator/.env.example",
+        remediation:
+          "Replace the committed example value with a placeholder and rotate the real credential if it was ever used.",
+      });
+    }
+    evidence.push(`env-example-lines:${envLines.length}`);
+  }
+
+  const orchestratorConfigRaw = await pathTextIfExists(
+    resolve(workspaceRoot, "orchestrator_config.json"),
+  );
+  if (orchestratorConfigRaw) {
+    try {
+      const orchestratorConfig = JSON.parse(orchestratorConfigRaw) as {
+        corsAllowedOrigins?: string[];
+      };
+      if (
+        Array.isArray(orchestratorConfig.corsAllowedOrigins) &&
+        orchestratorConfig.corsAllowedOrigins.includes("*")
+      ) {
+        findings.push({
+          id: redactFindingId("cors"),
+          severity: "HIGH",
+          description: "Wildcard CORS origin detected in orchestrator_config.json.",
+          location: "orchestrator_config.json",
+          remediation: "Replace wildcard origins with an explicit allowlist.",
+        });
+      }
+    } catch {
+      findings.push({
+        id: redactFindingId("config-parse"),
+        severity: "LOW",
+        description: "Unable to parse orchestrator_config.json during security audit.",
+        location: "orchestrator_config.json",
+        remediation: "Repair JSON syntax so runtime policy can be audited deterministically.",
+      });
+    }
+  }
+
+  const openclawbotFiles = [
+    "openclawdbot/src/server/routes/forms.ts",
+    "openclawdbot/src/server/routes/menu.ts",
+    "openclawdbot/src/server/routes/scheduler.ts",
+    "openclawdbot/src/server/routes/triggers.ts",
+    "openclawdbot/src/server/index.ts",
+  ];
+  for (const file of openclawbotFiles) {
+    const raw = await pathTextIfExists(resolve(workspaceRoot, file));
+    if (!raw) continue;
+    if (/default-secret|dev-secret|fallback-secret/i.test(raw)) {
+      findings.push({
+        id: redactFindingId("default-secret"),
+        severity: "CRITICAL",
+        description: "Code-known signing secret fallback detected in proof boundary code.",
+        location: file,
+        remediation: "Remove the fallback and require explicit secret configuration.",
+      });
+    }
+  }
+
+  findings.push(...(await scanTrackedFilesForSecrets()));
+
+  const auditedAgents = Array.from(
+    new Set(
+      (state.relationshipObservations ?? [])
+        .map((entry) => entry.to)
+        .filter((entry): entry is string => typeof entry === "string")
+        .filter((entry) => entry.startsWith("agent:"))
+        .map((entry) => entry.slice("agent:".length)),
+    ),
+  );
+
+  if (task.type === "incident") {
+    const openIncidents = (state.incidentLedger ?? []).filter(
+      (incident) => incident.status !== "resolved",
+    );
+    if (openIncidents.some((incident) => incident.classification === "service-runtime")) {
+      findings.push({
+        id: redactFindingId("service-runtime"),
+        severity: "MEDIUM",
+        description: "Open service-runtime incident(s) indicate degraded trust boundaries or missing host service coverage.",
+        location: "orchestrator_state.json",
+        remediation: "Restore the affected service runtime and verify the related incident resolves.",
+      });
+    }
+    evidence.push(`open-incidents:${openIncidents.length}`);
+  }
+
+  if ((state.taskExecutions ?? []).some((entry) => entry.type === "security-audit")) {
+    evidence.push(
+      `tracked-security-runs:${
+        (state.taskExecutions ?? []).filter((entry) => entry.type === "security-audit").length
+      }`,
+    );
+  }
+
+  return { findings, auditedAgents, evidence };
 }
 
 async function handleTask(task: SecurityTask): Promise<SecurityResult> {
   const startTime = Date.now();
 
   try {
-    if (!canUseSkill('documentParser')) {
+    if (!canUseSkill("documentParser")) {
       return {
         success: false,
         findings: [],
-        summary: { total: 0, critical: 0, exploitable: false, compliance: 'UNKNOWN' },
+        summary: { total: 0, critical: 0, exploitable: false, compliance: "UNKNOWN" },
+        auditedAgents: [],
+        evidence: [],
         executionTime: Date.now() - startTime,
       };
     }
 
-    const findings: any[] = [];
-
-    // Simulated security scan
-    if (task.type === 'scan') {
-      findings.push({
-        id: 'sql-inj-001',
-        severity: 'CRITICAL',
-        cwe: 'CWE-89',
-        cvss: 9.8,
-        description: 'SQL Injection vulnerability in user lookup',
-        location: 'src/database.ts:87',
-        remediation: 'Use parameterized queries: db.query($1, $2) instead of template literals',
-      });
-    } else if (task.type === 'secrets') {
-      findings.push({
-        id: 'secret-001',
-        severity: 'CRITICAL',
-        description: 'AWS API key exposed in .env.example',
-        location: '.env.example:5',
-        remediation: 'Remove credential, rotate key, use AWS Secrets Manager',
-      });
-    }
+    const config = loadConfig();
+    const state = await loadRuntimeState<RuntimeState>(
+      configPath,
+      config.orchestratorStatePath,
+    );
+    const { findings, auditedAgents, evidence } = await buildFindings(task, state);
 
     return {
       success: true,
       findings,
       summary: {
         total: findings.length,
-        critical: findings.filter(f => f.severity === 'CRITICAL').length,
-        exploitable: findings.some(f => f.cvss >= 8.0),
-        compliance: findings.length === 0 ? 'PASS' : 'REVIEW_REQUIRED',
+        critical: findings.filter((finding) => finding.severity === "CRITICAL").length,
+        exploitable: findings.some(
+          (finding) => finding.severity === "CRITICAL" || (finding.cvss ?? 0) >= 8,
+        ),
+        compliance: findings.length === 0 ? "PASS" : "REVIEW_REQUIRED",
       },
+      auditedAgents,
+      evidence,
       executionTime: Date.now() - startTime,
     };
-  } catch (error) {
+  } catch {
     return {
       success: false,
       findings: [],
-      summary: { total: 0, critical: 0, exploitable: false, compliance: 'ERROR' },
+      summary: { total: 0, critical: 0, exploitable: false, compliance: "ERROR" },
+      auditedAgents: [],
+      evidence: [],
       executionTime: Date.now() - startTime,
     };
   }
@@ -93,14 +357,14 @@ async function main() {
     return;
   }
 
-  const raw = fs.readFileSync(payloadPath, 'utf-8');
+  const raw = await readFile(payloadPath, "utf-8");
   const payload = JSON.parse(raw) as SecurityTask;
   const result = await handleTask(payload);
 
   const resultFile = process.env.SECURITY_AGENT_RESULT_FILE;
   if (resultFile) {
-    fs.mkdirSync(path.dirname(resultFile), { recursive: true });
-    fs.writeFileSync(resultFile, JSON.stringify(result, null, 2), 'utf-8');
+    await mkdir(dirname(resultFile), { recursive: true });
+    await writeFile(resultFile, JSON.stringify(result, null, 2), "utf-8");
   } else {
     process.stdout.write(JSON.stringify(result));
   }

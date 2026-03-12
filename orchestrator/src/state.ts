@@ -10,6 +10,7 @@ import {
   IncidentRemediationTaskRecord,
   OrchestratorState,
   RepairRecord,
+  RelationshipObservationRecord,
   TaskRetryRecoveryRecord,
   WorkflowEventRecord,
 } from "./types.js";
@@ -29,6 +30,7 @@ const MILESTONE_DELIVERY_LIMIT = 200;
 const DEMAND_SUMMARY_DELIVERY_LIMIT = 200;
 const INCIDENT_LEDGER_LIMIT = 1000;
 const WORKFLOW_EVENT_LIMIT = 20000;
+const RELATIONSHIP_OBSERVATION_LIMIT = 20000;
 
 type StateRetentionOptions = {
   taskHistoryLimit?: number;
@@ -120,12 +122,71 @@ function normalizeIncidentRemediationTask(
     remediationId: raw.remediationId,
     createdAt: raw.createdAt,
     createdBy: raw.createdBy,
+    assignedTo: typeof raw.assignedTo === "string" ? raw.assignedTo : null,
+    assignedAt: typeof raw.assignedAt === "string" ? raw.assignedAt : null,
     taskType: raw.taskType,
     taskId: raw.taskId,
     runId: typeof raw.runId === "string" ? raw.runId : null,
     status: raw.status as IncidentRemediationTaskRecord["status"],
     reason: raw.reason,
     note: typeof raw.note === "string" ? raw.note : null,
+    executionStartedAt:
+      typeof raw.executionStartedAt === "string" ? raw.executionStartedAt : null,
+    executionCompletedAt:
+      typeof raw.executionCompletedAt === "string"
+        ? raw.executionCompletedAt
+        : null,
+    verificationStartedAt:
+      typeof raw.verificationStartedAt === "string"
+        ? raw.verificationStartedAt
+        : null,
+    verificationCompletedAt:
+      typeof raw.verificationCompletedAt === "string"
+        ? raw.verificationCompletedAt
+        : null,
+    verifiedAt: typeof raw.verifiedAt === "string" ? raw.verifiedAt : null,
+    resolvedAt: typeof raw.resolvedAt === "string" ? raw.resolvedAt : null,
+    lastUpdatedAt:
+      typeof raw.lastUpdatedAt === "string" ? raw.lastUpdatedAt : null,
+    verificationSummary:
+      typeof raw.verificationSummary === "string"
+        ? raw.verificationSummary
+        : null,
+    resolutionSummary:
+      typeof raw.resolutionSummary === "string" ? raw.resolutionSummary : null,
+    blockers: normalizeStringArray(raw.blockers, 25),
+  };
+}
+
+function normalizeRelationshipObservation(
+  value: unknown,
+): RelationshipObservationRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<RelationshipObservationRecord>;
+  if (
+    typeof raw.observationId !== "string" ||
+    typeof raw.timestamp !== "string" ||
+    typeof raw.from !== "string" ||
+    typeof raw.to !== "string" ||
+    typeof raw.relationship !== "string" ||
+    typeof raw.status !== "string" ||
+    typeof raw.source !== "string" ||
+    typeof raw.detail !== "string"
+  ) {
+    return null;
+  }
+  return {
+    observationId: raw.observationId,
+    timestamp: raw.timestamp,
+    from: raw.from,
+    to: raw.to,
+    relationship: raw.relationship,
+    status: raw.status,
+    source: raw.source,
+    detail: raw.detail,
+    taskId: typeof raw.taskId === "string" ? raw.taskId : null,
+    runId: typeof raw.runId === "string" ? raw.runId : null,
+    evidence: normalizeStringArray(raw.evidence, 25),
   };
 }
 
@@ -212,6 +273,12 @@ export async function loadState(
           .map(normalizeIncidentLedgerRecord) ?? [],
       workflowEvents:
         parsed.workflowEvents?.slice(-WORKFLOW_EVENT_LIMIT) ?? [],
+      relationshipObservations:
+        parsed.relationshipObservations
+          ?.slice(-RELATIONSHIP_OBSERVATION_LIMIT)
+          .map(normalizeRelationshipObservation)
+          .filter((item): item is RelationshipObservationRecord => item !== null) ??
+        [],
     };
   } catch (error) {
     console.warn(
@@ -257,6 +324,9 @@ export async function saveStateWithOptions(
     ),
     incidentLedger: state.incidentLedger.slice(-INCIDENT_LEDGER_LIMIT),
     workflowEvents: state.workflowEvents.slice(-WORKFLOW_EVENT_LIMIT),
+    relationshipObservations: state.relationshipObservations.slice(
+      -RELATIONSHIP_OBSERVATION_LIMIT,
+    ),
     updatedAt: new Date().toISOString(),
   };
 
@@ -286,6 +356,7 @@ export function createDefaultState(): OrchestratorState {
     demandSummaryDeliveries: [],
     incidentLedger: [],
     workflowEvents: [],
+    relationshipObservations: [],
     lastMilestoneDeliveryAt: null,
     lastDemandSummaryDeliveryAt: null,
     lastDriftRepairAt: null,
@@ -312,6 +383,18 @@ export function appendIncidentLedgerRecord(
   state.incidentLedger.push(record);
   if (state.incidentLedger.length > INCIDENT_LEDGER_LIMIT) {
     state.incidentLedger = state.incidentLedger.slice(-INCIDENT_LEDGER_LIMIT);
+  }
+}
+
+export function appendRelationshipObservationRecord(
+  state: OrchestratorState,
+  record: RelationshipObservationRecord,
+) {
+  state.relationshipObservations.push(record);
+  if (state.relationshipObservations.length > RELATIONSHIP_OBSERVATION_LIMIT) {
+    state.relationshipObservations = state.relationshipObservations.slice(
+      -RELATIONSHIP_OBSERVATION_LIMIT,
+    );
   }
 }
 
