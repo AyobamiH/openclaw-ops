@@ -468,9 +468,15 @@ describe('Runtime Integration: Live Middleware Chain', () => {
 
   it('exposes incident history views and linked remediation task creation', async () => {
     const overview = await fetchProtected<{
-      incidents?: { incidents?: Array<{ id?: string }> };
+      incidents?: {
+        incidents?: Array<{ id?: string; linkedRunIds?: string[] }>;
+      };
     }>('/api/dashboard/overview');
-    const incidentId = overview.incidents?.incidents?.[0]?.id;
+    const incidentId =
+      overview.incidents?.incidents?.find(
+        (incident) => (incident.linkedRunIds ?? []).length > 0,
+      )?.id ??
+      overview.incidents?.incidents?.[0]?.id;
     expect(incidentId).toBeTruthy();
 
     const listPayload = await fetchProtected<{
@@ -513,18 +519,22 @@ describe('Runtime Integration: Live Middleware Chain', () => {
 
     const detailPayload = await fetchProtected<{
       incident?: {
+        policyExecutions?: Array<{ action?: string; result?: string; taskId?: string | null }>;
         acknowledgements?: unknown[];
         ownershipHistory?: unknown[];
         remediationTasks?: Array<{ taskId?: string | null }>;
         history?: Array<{ type?: string }>;
       };
     }>(`/api/incidents/${encodeURIComponent(String(incidentId))}`);
+    expect(Array.isArray(detailPayload.incident?.policyExecutions)).toBe(true);
+    expect((detailPayload.incident?.policyExecutions ?? []).length).toBeGreaterThan(0);
     expect(Array.isArray(detailPayload.incident?.acknowledgements)).toBe(true);
     expect(Array.isArray(detailPayload.incident?.ownershipHistory)).toBe(true);
     expect((detailPayload.incident?.remediationTasks ?? []).length).toBeGreaterThan(0);
     expect((detailPayload.incident?.history ?? []).length).toBeGreaterThan(0);
 
     await waitForTaskHistoryRecord(String(remediationPayload.remediationTask?.taskId));
+    const remediationRun = await waitForTaskRun(String(remediationPayload.remediationTask?.taskId));
     const historyPayload = await fetchProtected<{
       remediationTasks?: Array<{
         taskId?: string | null;
@@ -540,6 +550,27 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expect(remediationHistory?.assignedAt).toBeTruthy();
     expect(remediationHistory?.lastUpdatedAt).toBeTruthy();
     expect(remediationHistory?.status).toBeTruthy();
+
+    const remediationRunDetail = await fetchProtected<{
+      run?: {
+        workflowGraph?: {
+          crossRunLinks?: Array<{ relationship?: string }>;
+          relatedRuns?: Array<{ runId?: string }>;
+          dependencySummary?: {
+            dependencyLinkCount?: number;
+            handoffLinkCount?: number;
+          };
+        };
+      };
+    }>(`/api/tasks/runs/${encodeURIComponent(String(remediationRun.runId))}`);
+    expect((remediationRunDetail.run?.workflowGraph?.crossRunLinks ?? []).length).toBeGreaterThan(
+      0,
+    );
+    expect((remediationRunDetail.run?.workflowGraph?.relatedRuns ?? []).length).toBeGreaterThan(0);
+    expect(
+      (remediationRunDetail.run?.workflowGraph?.dependencySummary?.dependencyLinkCount ?? 0) +
+        (remediationRunDetail.run?.workflowGraph?.dependencySummary?.handoffLinkCount ?? 0),
+    ).toBeGreaterThan(0);
   });
 
   it('returns workflow summaries, workflow graph detail, and agent capability surfaces', async () => {
@@ -580,6 +611,12 @@ describe('Runtime Integration: Live Middleware Chain', () => {
           nodes?: unknown[];
           edges?: unknown[];
           events?: unknown[];
+          crossRunLinks?: unknown[];
+          relatedRuns?: unknown[];
+          dependencySummary?: {
+            dependencyLinkCount?: number;
+            handoffLinkCount?: number;
+          };
         };
       };
     }>(`/api/tasks/runs/${encodeURIComponent(String(run.runId))}`);
@@ -588,6 +625,9 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expect((detailPayload.run?.workflowGraph?.nodes ?? []).length).toBeGreaterThan(0);
     expect((detailPayload.run?.workflowGraph?.edges ?? []).length).toBeGreaterThan(0);
     expect((detailPayload.run?.workflowGraph?.events ?? []).length).toBeGreaterThan(0);
+    expect(Array.isArray(detailPayload.run?.workflowGraph?.crossRunLinks)).toBe(true);
+    expect(Array.isArray(detailPayload.run?.workflowGraph?.relatedRuns)).toBe(true);
+    expect(detailPayload.run?.workflowGraph?.dependencySummary).toBeTruthy();
 
     const agentsPayload = await fetchProtected<{
       topology?: {

@@ -106,6 +106,7 @@ export type IncidentHistoryEventType =
   | "status-changed"
   | "severity-changed"
   | "summary-updated"
+  | "policy-executed"
   | "escalated"
   | "acknowledged"
   | "owner-changed"
@@ -182,10 +183,46 @@ export interface IncidentRemediationPolicy {
   preferredOwner: string;
   autoAssignOwner: boolean;
   autoRemediateOnCreate: boolean;
+  autoRetryBlockedRemediation: boolean;
+  maxAutoRemediationAttempts: number;
+  autoEscalateOnBreach: boolean;
   remediationTaskType: "drift-repair" | "qa-verification" | "system-monitor";
   verifierTaskType: "qa-verification" | null;
+  escalationTaskType: "qa-verification" | "system-monitor" | null;
   targetSlaMinutes: number;
   escalationMinutes: number;
+}
+
+export type IncidentPolicyExecutionTrigger =
+  | "reconcile"
+  | "policy-create"
+  | "policy-retry"
+  | "policy-verification"
+  | "policy-escalation";
+
+export type IncidentPolicyExecutionAction =
+  | "auto-owner-assigned"
+  | "auto-remediation-created"
+  | "auto-remediation-retried"
+  | "auto-verification-created"
+  | "auto-escalation-created";
+
+export type IncidentPolicyExecutionResult = "executed" | "blocked" | "skipped";
+
+export interface IncidentPolicyExecutionRecord {
+  executionId: string;
+  executedAt: string;
+  actor: string;
+  policyId: string;
+  trigger: IncidentPolicyExecutionTrigger;
+  action: IncidentPolicyExecutionAction;
+  result: IncidentPolicyExecutionResult;
+  summary: string;
+  detail?: string | null;
+  remediationId?: string | null;
+  taskId?: string | null;
+  runId?: string | null;
+  evidence: string[];
 }
 
 export interface IncidentEscalationState {
@@ -210,6 +247,7 @@ export interface IncidentVerificationState {
 
 export interface IncidentRemediationTaskRecord {
   remediationId: string;
+  lane: "primary" | "verification" | "escalation";
   createdAt: string;
   createdBy: string;
   assignedTo?: string | null;
@@ -268,6 +306,7 @@ export interface IncidentLedgerRecord {
   remediationPlan: IncidentRemediationPlanStep[];
   verification: IncidentVerificationState;
   history: IncidentHistoryEvent[];
+  policyExecutions: IncidentPolicyExecutionRecord[];
   acknowledgements: IncidentAcknowledgementRecord[];
   ownershipHistory: IncidentOwnershipRecord[];
   remediationTasks: IncidentRemediationTaskRecord[];

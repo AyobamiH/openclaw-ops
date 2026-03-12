@@ -34,6 +34,7 @@ import {
   IncidentLedgerSeverity,
   IncidentLedgerTruthLayer,
   IncidentOwnershipRecord,
+  IncidentPolicyExecutionRecord,
   IncidentRemediationOwner,
   IncidentRemediationPlanStep,
   IncidentRemediationPolicy,
@@ -484,6 +485,7 @@ type RuntimeIncident = {
   remediationPlan: IncidentRemediationPlanStep[];
   verification: IncidentVerificationState;
   history: IncidentHistoryEvent[];
+  policyExecutions: IncidentPolicyExecutionRecord[];
   acknowledgements: IncidentAcknowledgementRecord[];
   ownershipHistory: IncidentOwnershipRecord[];
   remediationTasks: IncidentRemediationTaskRecord[];
@@ -596,6 +598,30 @@ type WorkflowGraph = {
     detail: string;
     evidence: string[];
   }>;
+  crossRunLinks: Array<{
+    id: string;
+    fromRunId: string;
+    toRunId: string;
+    relationship: "depends-on-run" | "cross-run-handoff";
+    source: "workflow-event" | "relationship-observation";
+    detail: string;
+    timestamp: string | null;
+    evidence: string[];
+  }>;
+  relatedRuns: Array<{
+    runId: string;
+    direction: "upstream" | "downstream";
+    relationship: "depends-on-run" | "cross-run-handoff";
+    sources: Array<"workflow-event" | "relationship-observation">;
+    count: number;
+    lastObservedAt: string | null;
+  }>;
+  dependencySummary: {
+    upstreamRunCount: number;
+    downstreamRunCount: number;
+    dependencyLinkCount: number;
+    handoffLinkCount: number;
+  };
   proofLinks: Array<{
     id: string;
     type: "milestone" | "demandSummary";
@@ -2853,9 +2879,15 @@ function buildWorkflowGraph(args: {
   const supplementalNodes = new Map<string, WorkflowGraphNode>();
   const supplementalEdges: WorkflowGraphEdge[] = [];
   const causalLinks: WorkflowGraph["causalLinks"] = [];
+  const crossRunLinks: WorkflowGraph["crossRunLinks"] = [];
+  const relatedRuns = new Map<
+    string,
+    WorkflowGraph["relatedRuns"][number] & { sourceSet: Set<"workflow-event" | "relationship-observation"> }
+  >();
   const sortedRelationships = [...relatedRelationships].sort(
     (left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp),
   );
+  const currentRunId = execution.idempotencyKey;
 
   const ensureSupplementalNode = (node: WorkflowGraphNode) => {
     if (!supplementalNodes.has(node.id)) {
@@ -2863,6 +2895,144 @@ function buildWorkflowGraph(args: {
     }
     return supplementalNodes.get(node.id)!;
   };
+
+  const registerCrossRunLink = (args: {
+    fromRunId: string;
+    toRunId: string;
+    relationship: "depends-on-run" | "cross-run-handoff";
+    source: "workflow-event" | "relationship-observation";
+    detail: string;
+    timestamp: string | null;
+    evidence: string[];
+  }) => {
+    if (!args.fromRunId || !args.toRunId || args.fromRunId === args.toRunId) {
+      return;
+    }
+    const id = createHash("sha1")
+      .update(
+        [
+          args.fromRunId,
+          args.toRunId,
+          args.relationship,
+          args.source,
+          args.detail,
+          args.timestamp ?? "no-ts",
+        ].join("|"),
+      )
+      .digest("hex")
+      .slice(0, 12);
+    if (!crossRunLinks.some((link) => link.id === `cross-run:${id}`)) {
+      crossRunLinks.push({
+        id: `cross-run:${id}`,
+        fromRunId: args.fromRunId,
+        toRunId: args.toRunId,
+        relationship: args.relationship,
+        source: args.source,
+        detail: args.detail,
+        timestamp: args.timestamp,
+        evidence: summarizeEvidence(args.evidence),
+      });
+    }
+
+    const relatedRunId =
+      args.fromRunId === currentRunId ? args.toRunId : args.fromRunId;
+    const direction =
+      args.toRunId === currentRunId ? "upstream" : "downstream";
+    const existing = relatedRuns.get(relatedRunId);
+    if (!existing) {
+      relatedRuns.set(relatedRunId, {
+        runId: relatedRunId,
+        direction,
+        relationship: args.relationship,
+        sources: [args.source],
+        sourceSet: new Set([args.source]),
+        count: 1,
+        lastObservedAt: args.timestamp,
+      });
+      return;
+    }
+
+    existing.count += 1;
+    existing.relationship =
+      existing.relationship === "cross-run-handoff" || args.relationship === "cross-run-handoff"
+        ? "cross-run-handoff"
+        : "depends-on-run";
+    existing.direction = direction;
+    existing.sourceSet.add(args.source);
+    existing.sources = [...existing.sourceSet];
+    if (
+      args.timestamp &&
+      (!existing.lastObservedAt || args.timestamp > existing.lastObservedAt)
+    ) {
+      existing.lastObservedAt = args.timestamp;
+    }
+  };
+
+  const registerEventDependency = (
+    upstreamRunId: string,
+    relationship: "depends-on-run" | "cross-run-handoff",
+    event: WorkflowEventRecord,
+  ) => {
+    if (!upstreamRunId || upstreamRunId === currentRunId) return;
+    const dependencyNodeId = `workflow-dependency:${upstreamRunId}`;
+    ensureSupplementalNode({
+      id: dependencyNodeId,
+      kind: "dependency",
+      stage: event.stage,
+      label: upstreamRunId,
+      status: relationship === "cross-run-handoff" ? "active" : "completed",
+      timestamp: event.timestamp,
+      detail: event.detail,
+      evidence: summarizeEvidence(event.evidence ?? []),
+    });
+    const targetNodeId = `workflow-event:${event.eventId}`;
+    supplementalEdges.push({
+      id: `workflow-edge:${dependencyNodeId}:${targetNodeId}:${relationship}:${event.eventId}`,
+      from: dependencyNodeId,
+      to: targetNodeId,
+      status:
+        blockedStage === event.stage
+          ? "blocked"
+          : currentStage === event.stage
+            ? "active"
+            : "completed",
+      detail: event.detail,
+      relationship,
+    });
+    causalLinks.push({
+      id: `causal:event:${event.eventId}:${upstreamRunId}:${relationship}`,
+      from: dependencyNodeId,
+      to: targetNodeId,
+      relationship,
+      detail: event.detail,
+      evidence: summarizeEvidence(event.evidence ?? []),
+    });
+    registerCrossRunLink({
+      fromRunId: upstreamRunId,
+      toRunId: currentRunId,
+      relationship,
+      source: "workflow-event",
+      detail: event.detail,
+      timestamp: event.timestamp,
+      evidence: event.evidence ?? [],
+    });
+  };
+
+  for (const event of workflowEvents) {
+    for (const dependencyRunId of event.dependencyRunIds ?? []) {
+      registerEventDependency(dependencyRunId, "depends-on-run", event);
+    }
+    if (event.relatedRunId) {
+      registerEventDependency(
+        event.relatedRunId,
+        event.classification === "incident-remediation" ||
+          event.state.includes("handoff")
+          ? "cross-run-handoff"
+          : "depends-on-run",
+        event,
+      );
+    }
+  }
 
   for (const relationship of sortedRelationships) {
     let targetNodeId: string | null = null;
@@ -2934,17 +3104,49 @@ function buildWorkflowGraph(args: {
       continue;
     }
 
-    const sourceNodeId =
+    let sourceNodeId =
       relationship.relationship === "transitions-proof"
         ? "workflow-node:proof"
         : relationship.relationship === "verifies-agent"
           ? "workflow-node:repair"
           : "workflow-node:agent";
+    let destinationNodeId = targetNodeId;
+
+    if (
+      (relationship.relationship === "depends-on-run" ||
+        relationship.relationship === "cross-run-handoff") &&
+      relationship.targetRunId &&
+      relationship.runId
+    ) {
+      registerCrossRunLink({
+        fromRunId: relationship.runId,
+        toRunId: relationship.targetRunId,
+        relationship: relationship.relationship,
+        source: "relationship-observation",
+        detail: relationship.detail,
+        timestamp: relationship.timestamp,
+        evidence: relationship.evidence ?? [],
+      });
+
+      if (relationship.targetRunId === currentRunId) {
+        sourceNodeId = targetNodeId;
+        destinationNodeId =
+          relationship.relationship === "cross-run-handoff"
+            ? "workflow-node:repair"
+            : "workflow-node:agent";
+      } else if (relationship.runId === currentRunId) {
+        sourceNodeId =
+          relationship.relationship === "cross-run-handoff"
+            ? "workflow-node:result"
+            : "workflow-node:agent";
+        destinationNodeId = targetNodeId;
+      }
+    }
 
     supplementalEdges.push({
-      id: `workflow-edge:${sourceNodeId}:${targetNodeId}:${relationship.relationship}`,
+      id: `workflow-edge:${sourceNodeId}:${destinationNodeId}:${relationship.relationship}`,
       from: sourceNodeId,
-      to: targetNodeId,
+      to: destinationNodeId,
       status:
         relationship.status === "degraded"
           ? "blocked"
@@ -2957,9 +3159,9 @@ function buildWorkflowGraph(args: {
     causalLinks.push({
       id:
         relationship.observationId ??
-        `causal:${relationship.relationship}:${sourceNodeId}:${targetNodeId}`,
+        `causal:${relationship.relationship}:${sourceNodeId}:${destinationNodeId}`,
       from: sourceNodeId,
-      to: targetNodeId,
+      to: destinationNodeId,
       relationship: relationship.relationship,
       detail: relationship.detail,
       evidence: summarizeEvidence(relationship.evidence ?? []),
@@ -2988,6 +3190,28 @@ function buildWorkflowGraph(args: {
     edges: allEdges,
     events: workflowEvents,
     causalLinks,
+    crossRunLinks,
+    relatedRuns: [...relatedRuns.values()]
+      .map(({ sourceSet, ...entry }) => entry)
+      .sort((left, right) => {
+        const leftTs = left.lastObservedAt ?? "";
+        const rightTs = right.lastObservedAt ?? "";
+        return rightTs.localeCompare(leftTs);
+      }),
+    dependencySummary: {
+      upstreamRunCount: [...relatedRuns.values()].filter(
+        (entry) => entry.direction === "upstream",
+      ).length,
+      downstreamRunCount: [...relatedRuns.values()].filter(
+        (entry) => entry.direction === "downstream",
+      ).length,
+      dependencyLinkCount: crossRunLinks.filter(
+        (link) => link.relationship === "depends-on-run",
+      ).length,
+      handoffLinkCount: crossRunLinks.filter(
+        (link) => link.relationship === "cross-run-handoff",
+      ).length,
+    },
     proofLinks,
   };
 }
@@ -4873,6 +5097,65 @@ function appendIncidentHistoryEvent(
   return normalized;
 }
 
+function appendIncidentPolicyExecution(
+  record: IncidentLedgerRecord,
+  execution: Omit<IncidentPolicyExecutionRecord, "executionId" | "evidence"> & {
+    evidence?: string[];
+  },
+) {
+  const normalized: IncidentPolicyExecutionRecord = {
+    executionId: randomUUID(),
+    executedAt: execution.executedAt,
+    actor: execution.actor,
+    policyId: execution.policyId,
+    trigger: execution.trigger,
+    action: execution.action,
+    result: execution.result,
+    summary: execution.summary,
+    detail:
+      typeof execution.detail === "string" && execution.detail.trim().length > 0
+        ? execution.detail.trim()
+        : null,
+    remediationId:
+      typeof execution.remediationId === "string" &&
+      execution.remediationId.length > 0
+        ? execution.remediationId
+        : null,
+    taskId:
+      typeof execution.taskId === "string" && execution.taskId.length > 0
+        ? execution.taskId
+        : null,
+    runId:
+      typeof execution.runId === "string" && execution.runId.length > 0
+        ? execution.runId
+        : null,
+    evidence: dedupeStrings(execution.evidence ?? [], 25),
+  };
+  record.policyExecutions = [...(record.policyExecutions ?? []), normalized].slice(-100);
+  appendIncidentHistoryEvent(record, {
+    timestamp: normalized.executedAt,
+    type: "policy-executed",
+    actor: normalized.actor,
+    summary: normalized.summary,
+    detail:
+      normalized.detail ??
+      `${normalized.action} ${normalized.result} via ${normalized.policyId}.`,
+    evidence: dedupeStrings(
+      [
+        normalized.policyId,
+        normalized.action,
+        normalized.result,
+        normalized.taskId,
+        normalized.runId,
+        normalized.remediationId,
+        ...normalized.evidence,
+      ],
+      25,
+    ),
+  });
+  return normalized;
+}
+
 function addMinutesIso(baseIso: string, minutes: number) {
   const base = Date.parse(baseIso);
   if (!Number.isFinite(base)) return null;
@@ -4890,8 +5173,12 @@ function resolveIncidentRemediationPolicy(
         preferredOwner: "doc-specialist",
         autoAssignOwner: true,
         autoRemediateOnCreate: true,
+        autoRetryBlockedRemediation: true,
+        maxAutoRemediationAttempts: 2,
+        autoEscalateOnBreach: true,
         remediationTaskType: "drift-repair",
         verifierTaskType: "qa-verification",
+        escalationTaskType: "system-monitor",
         targetSlaMinutes: 180,
         escalationMinutes: 360,
       },
@@ -4900,8 +5187,12 @@ function resolveIncidentRemediationPolicy(
         preferredOwner: "qa-verification-agent",
         autoAssignOwner: true,
         autoRemediateOnCreate: false,
+        autoRetryBlockedRemediation: true,
+        maxAutoRemediationAttempts: 2,
+        autoEscalateOnBreach: true,
         remediationTaskType: "qa-verification",
         verifierTaskType: "qa-verification",
+        escalationTaskType: "qa-verification",
         targetSlaMinutes: 90,
         escalationMinutes: 180,
       },
@@ -4910,8 +5201,12 @@ function resolveIncidentRemediationPolicy(
         preferredOwner: "integration-agent",
         autoAssignOwner: true,
         autoRemediateOnCreate: true,
+        autoRetryBlockedRemediation: true,
+        maxAutoRemediationAttempts: 3,
+        autoEscalateOnBreach: true,
         remediationTaskType: "qa-verification",
         verifierTaskType: "qa-verification",
+        escalationTaskType: "system-monitor",
         targetSlaMinutes: 60,
         escalationMinutes: 120,
       },
@@ -4920,8 +5215,12 @@ function resolveIncidentRemediationPolicy(
         preferredOwner: "operator",
         autoAssignOwner: true,
         autoRemediateOnCreate: false,
+        autoRetryBlockedRemediation: false,
+        maxAutoRemediationAttempts: 1,
+        autoEscalateOnBreach: true,
         remediationTaskType: "system-monitor",
         verifierTaskType: "qa-verification",
+        escalationTaskType: "system-monitor",
         targetSlaMinutes: 120,
         escalationMinutes: 240,
       },
@@ -4930,8 +5229,12 @@ function resolveIncidentRemediationPolicy(
         preferredOwner: "system-monitor-agent",
         autoAssignOwner: true,
         autoRemediateOnCreate: true,
+        autoRetryBlockedRemediation: true,
+        maxAutoRemediationAttempts: 3,
+        autoEscalateOnBreach: true,
         remediationTaskType: "system-monitor",
         verifierTaskType: "qa-verification",
+        escalationTaskType: "system-monitor",
         targetSlaMinutes: 45,
         escalationMinutes: 90,
       },
@@ -4940,8 +5243,12 @@ function resolveIncidentRemediationPolicy(
         preferredOwner: "system-monitor-agent",
         autoAssignOwner: true,
         autoRemediateOnCreate: true,
+        autoRetryBlockedRemediation: true,
+        maxAutoRemediationAttempts: 3,
+        autoEscalateOnBreach: true,
         remediationTaskType: "system-monitor",
         verifierTaskType: "qa-verification",
+        escalationTaskType: "system-monitor",
         targetSlaMinutes: 60,
         escalationMinutes: 180,
       },
@@ -4950,8 +5257,12 @@ function resolveIncidentRemediationPolicy(
         preferredOwner: "system-monitor-agent",
         autoAssignOwner: true,
         autoRemediateOnCreate: true,
+        autoRetryBlockedRemediation: true,
+        maxAutoRemediationAttempts: 2,
+        autoEscalateOnBreach: true,
         remediationTaskType: "system-monitor",
         verifierTaskType: "qa-verification",
+        escalationTaskType: "system-monitor",
         targetSlaMinutes: 120,
         escalationMinutes: 240,
       },
@@ -4960,8 +5271,12 @@ function resolveIncidentRemediationPolicy(
         preferredOwner: "operator",
         autoAssignOwner: true,
         autoRemediateOnCreate: false,
+        autoRetryBlockedRemediation: false,
+        maxAutoRemediationAttempts: 1,
+        autoEscalateOnBreach: true,
         remediationTaskType: "system-monitor",
         verifierTaskType: null,
+        escalationTaskType: "system-monitor",
         targetSlaMinutes: 240,
         escalationMinutes: 480,
       },
@@ -4997,7 +5312,10 @@ function buildIncidentVerificationState(
 
   const verificationTask =
     [...(record.remediationTasks ?? [])]
-      .filter((task) => task.taskType === policy.verifierTaskType)
+      .filter(
+        (task) =>
+          task.lane === "verification" || task.taskType === policy.verifierTaskType,
+      )
       .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0] ??
     null;
 
@@ -5147,13 +5465,13 @@ function buildIncidentRemediationPlan(
 ): IncidentRemediationPlanStep[] {
   const remediationTasks = record.remediationTasks ?? [];
   const primaryTasks = remediationTasks.filter(
-    (task) => task.taskType === policy.remediationTaskType,
+    (task) => task.lane !== "verification" && task.lane !== "escalation",
   );
   const latestPrimary = primaryTasks.sort(
     (left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt),
   )[0];
   const latestVerification = remediationTasks
-    .filter((task) => task.taskType === policy.verifierTaskType)
+    .filter((task) => task.lane === "verification")
     .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
 
   const diagnoseStatus: IncidentRemediationPlanStep["status"] =
@@ -5349,6 +5667,7 @@ function materializeIncident(
   remediationPlan: record.remediationPlan ?? [],
   verification: record.verification,
   history: record.history ?? [],
+  policyExecutions: record.policyExecutions ?? [],
   acknowledgements: record.acknowledgements ?? [],
   ownershipHistory: record.ownershipHistory ?? [],
     remediationTasks: (record.remediationTasks ?? []).map((item) => ({
@@ -5504,6 +5823,17 @@ function refreshIncidentOperationalMetadata(
         note: "Owner assigned automatically from remediation policy.",
       },
     ].slice(-50);
+    appendIncidentPolicyExecution(record, {
+      executedAt: nowIso,
+      actor: "system:auto-owner",
+      policyId: record.policy.policyId,
+      trigger: "reconcile",
+      action: "auto-owner-assigned",
+      result: "executed",
+      summary: `Policy ${record.policy.policyId} assigned incident ownership to ${record.policy.preferredOwner}.`,
+      detail: "Owner assigned automatically from remediation policy.",
+      evidence: [record.incidentId, record.policy.preferredOwner],
+    });
   }
   record.verification = buildIncidentVerificationState(record, record.policy);
   record.escalation = buildIncidentEscalationState(record, record.policy, nowIso);
@@ -5637,6 +5967,7 @@ function reconcileRuntimeIncidentLedger(
           verifiedAt: null,
         },
         history: [],
+        policyExecutions: [],
         acknowledgements: [],
         ownershipHistory: [],
         remediationTasks: [],
@@ -5659,6 +5990,7 @@ function reconcileRuntimeIncidentLedger(
     }
 
     existing.history = existing.history ?? [];
+    existing.policyExecutions = existing.policyExecutions ?? [];
     existing.acknowledgements = existing.acknowledgements ?? [];
     existing.ownershipHistory = existing.ownershipHistory ?? [];
     existing.remediationTasks = existing.remediationTasks ?? [];
@@ -5699,6 +6031,7 @@ function reconcileRuntimeIncidentLedger(
       remediationPlan: existing.remediationPlan,
       verification: existing.verification,
       history: existing.history,
+      policyExecutions: existing.policyExecutions,
       acknowledgements: existing.acknowledgements,
       ownershipHistory: existing.ownershipHistory,
       remediationTasks: existing.remediationTasks,
@@ -6686,6 +7019,48 @@ async function bootstrap() {
     });
   };
 
+  const appendCrossRunRelationshipObservation = (args: {
+    fromRunId: string;
+    toRunId: string;
+    relationship: "depends-on-run" | "cross-run-handoff";
+    detail: string;
+    source: string;
+    taskId?: string | null;
+    targetTaskId?: string | null;
+    classification?: string | null;
+    timestamp?: string;
+    evidence?: string[];
+  }) => {
+    if (!args.fromRunId || !args.toRunId || args.fromRunId === args.toRunId) {
+      return null;
+    }
+    const timestamp = args.timestamp ?? new Date().toISOString();
+    const observation: RelationshipObservationRecord = {
+      observationId: randomUUID(),
+      timestamp,
+      from: `run:${args.fromRunId}`,
+      to: `run:${args.toRunId}`,
+      relationship: args.relationship,
+      status: "observed",
+      source: args.source,
+      detail: args.detail,
+      taskId: args.taskId ?? null,
+      runId: args.fromRunId,
+      targetTaskId: args.targetTaskId ?? null,
+      targetRunId: args.toRunId,
+      classification: args.classification ?? null,
+      evidence: dedupeStrings(args.evidence ?? [], 12),
+    };
+    appendRelationshipObservationRecord(state, observation);
+    return observation;
+  };
+
+  const countRemediationAttempts = (
+    incident: IncidentLedgerRecord,
+    lane: IncidentRemediationTaskRecord["lane"],
+  ) =>
+    (incident.remediationTasks ?? []).filter((task) => task.lane === lane).length;
+
   const recordTaskResult = (
     task: Task,
     result: "ok" | "error",
@@ -6735,7 +7110,12 @@ async function bootstrap() {
       actor: string;
       note?: string;
       overrideTaskType?: "drift-repair" | "qa-verification" | "system-monitor";
-      trigger: "manual" | "policy-create" | "policy-verification";
+      trigger:
+        | "manual"
+        | "policy-create"
+        | "policy-retry"
+        | "policy-verification"
+        | "policy-escalation";
     },
   ) => {
     const actor = options.actor.trim().length > 0 ? options.actor.trim() : "system";
@@ -6745,8 +7125,16 @@ async function bootstrap() {
       options.note,
       options.overrideTaskType,
     );
+    const lane: IncidentRemediationTaskRecord["lane"] =
+      options.trigger === "policy-verification"
+        ? "verification"
+        : options.trigger === "policy-escalation"
+          ? "escalation"
+          : "primary";
     const existingOpenTask = (incident.remediationTasks ?? []).find((item) => {
-      if (item.taskType !== remediationSpec.taskType) return false;
+      if (item.taskType !== remediationSpec.taskType || item.lane !== lane) {
+        return false;
+      }
       const status = deriveIncidentRemediationTaskStatus(state, item);
       return !["resolved", "failed", "blocked"].includes(status);
     });
@@ -6770,6 +7158,7 @@ async function bootstrap() {
       options.trigger === "manual" ? actor : incident.policy.preferredOwner;
     const remediationTask: IncidentRemediationTaskRecord = {
       remediationId,
+      lane,
       createdAt,
       createdBy: actor,
       assignedTo,
@@ -6808,10 +7197,18 @@ async function bootstrap() {
       [...incident.linkedRunIds, queuedTask.idempotencyKey ?? queuedTask.id],
       50,
     );
+    const upstreamRunIds = dedupeStrings(
+      incident.linkedRunIds.filter(
+        (runId) => runId !== (queuedTask.idempotencyKey ?? queuedTask.id),
+      ),
+      25,
+    );
     incident.remediation.status = "in-progress";
     incident.remediation.summary =
       options.trigger === "policy-verification"
         ? `Verifier lane ${remediationSpec.taskType} queued automatically.`
+        : options.trigger === "policy-escalation"
+          ? `Escalation lane ${remediationSpec.taskType} queued automatically.`
         : remediationSpec.reason;
     incident.remediation.owner = incident.owner ? "operator" : incident.remediation.owner;
     incident.remediation.nextAction = `Track assignment, execution, verification, and resolution for remediation task ${queuedTask.id}.`;
@@ -6840,6 +7237,77 @@ async function bootstrap() {
         `${options.trigger === "manual" ? "Operator" : "Policy"} assigned remediation task ${queuedTask.id} (${remediationSpec.taskType}).`,
       evidence: [remediationId, queuedTask.id, assignedTo],
     });
+    if (upstreamRunIds.length > 0) {
+      appendWorkflowEvent({
+        state,
+        runId: queuedTask.idempotencyKey ?? queuedTask.id,
+        taskId: queuedTask.id,
+        type: queuedTask.type,
+        stage: lane === "verification" || lane === "escalation" ? "repair" : "agent",
+        stateLabel:
+          lane === "verification"
+            ? "verification-handoff"
+            : lane === "escalation"
+              ? "escalation-handoff"
+              : "dependency-linked",
+        source: "repair",
+        actor,
+        nodeId: remediationId,
+        detail: `Remediation run linked to ${upstreamRunIds.length} upstream run(s).`,
+        evidence: [incident.incidentId, remediationId, queuedTask.id],
+        timestamp: createdAt,
+        relatedRunId: upstreamRunIds[0] ?? null,
+        dependencyRunIds: upstreamRunIds,
+        classification: "incident-remediation",
+      });
+      for (const sourceRunId of upstreamRunIds) {
+        appendCrossRunRelationshipObservation({
+          fromRunId: sourceRunId,
+          toRunId: queuedTask.idempotencyKey ?? queuedTask.id,
+          relationship: "cross-run-handoff",
+          detail: `Incident ${incident.incidentId} handed off ${sourceRunId} into remediation run ${queuedTask.idempotencyKey ?? queuedTask.id}.`,
+          source: "repair",
+          taskId: incident.linkedTaskIds[0] ?? null,
+          targetTaskId: queuedTask.id,
+          classification: "incident-remediation",
+          timestamp: createdAt,
+          evidence: [incident.incidentId, remediationId, queuedTask.id],
+        });
+      }
+    }
+    if (options.trigger !== "manual") {
+      const action =
+        options.trigger === "policy-create"
+          ? "auto-remediation-created"
+          : options.trigger === "policy-retry"
+            ? "auto-remediation-retried"
+            : options.trigger === "policy-verification"
+              ? "auto-verification-created"
+              : "auto-escalation-created";
+      appendIncidentPolicyExecution(incident, {
+        executedAt: createdAt,
+        actor,
+        policyId: incident.policy.policyId,
+        trigger: options.trigger,
+        action,
+        result: "executed",
+        summary:
+          options.trigger === "policy-retry"
+            ? `Policy ${incident.policy.policyId} retried remediation automatically.`
+            : options.trigger === "policy-verification"
+              ? `Policy ${incident.policy.policyId} queued a verifier lane automatically.`
+              : options.trigger === "policy-escalation"
+                ? `Policy ${incident.policy.policyId} escalated the incident automatically.`
+                : `Policy ${incident.policy.policyId} queued an automatic remediation lane.`,
+        detail:
+          options.note ??
+          `${queuedTask.id} queued as ${lane} remediation using ${remediationSpec.taskType}.`,
+        remediationId,
+        taskId: queuedTask.id,
+        runId: queuedTask.idempotencyKey ?? queuedTask.id,
+        evidence: [queuedTask.id, remediationSpec.taskType, assignedTo],
+      });
+    }
 
     return { created: true as const, remediationTask, queuedTaskId: queuedTask.id };
   };
@@ -6851,11 +7319,12 @@ async function bootstrap() {
 
       const primaryTaskType = incident.policy.remediationTaskType;
       const latestPrimary = [...(incident.remediationTasks ?? [])]
-        .filter((item) => item.taskType === primaryTaskType)
+        .filter((item) => item.lane === "primary" && item.taskType === primaryTaskType)
         .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
       const latestPrimaryStatus = latestPrimary
         ? deriveIncidentRemediationTaskStatus(state, latestPrimary)
         : null;
+      const primaryAttemptCount = countRemediationAttempts(incident, "primary");
 
       if (incident.policy.autoRemediateOnCreate && !latestPrimary) {
         const result = createIncidentRemediationTask(incident, {
@@ -6864,6 +7333,24 @@ async function bootstrap() {
         });
         if (result.created) created += 1;
         continue;
+      }
+
+      if (
+        incident.policy.autoRetryBlockedRemediation &&
+        latestPrimaryStatus &&
+        ["failed", "blocked"].includes(latestPrimaryStatus) &&
+        primaryAttemptCount < incident.policy.maxAutoRemediationAttempts
+      ) {
+        const result = createIncidentRemediationTask(incident, {
+          actor: "system:auto-remediation",
+          note: `Retrying blocked remediation automatically after ${latestPrimaryStatus} status.`,
+          overrideTaskType: primaryTaskType,
+          trigger: "policy-retry",
+        });
+        if (result.created) {
+          created += 1;
+          continue;
+        }
       }
 
       const verifierTaskType = incident.policy.verifierTaskType;
@@ -6881,6 +7368,30 @@ async function bootstrap() {
           trigger: "policy-verification",
         });
         if (result.created) created += 1;
+      }
+
+      const latestEscalation = [...(incident.remediationTasks ?? [])]
+        .filter((item) => item.lane === "escalation")
+        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
+      const latestEscalationStatus = latestEscalation
+        ? deriveIncidentRemediationTaskStatus(state, latestEscalation)
+        : null;
+      if (
+        incident.policy.autoEscalateOnBreach &&
+        incident.policy.escalationTaskType &&
+        incident.escalation.level === "breached" &&
+        !latestEscalationStatus
+      ) {
+        const result = createIncidentRemediationTask(incident, {
+          actor: "system:auto-escalation",
+          note: "Escalation lane queued automatically after SLA breach.",
+          overrideTaskType: incident.policy.escalationTaskType,
+          trigger: "policy-escalation",
+        });
+        if (result.created) {
+          created += 1;
+          continue;
+        }
       }
     }
     return created;

@@ -8,6 +8,7 @@ import {
   IncidentHistoryEvent,
   IncidentLedgerRecord,
   IncidentOwnershipRecord,
+  IncidentPolicyExecutionRecord,
   IncidentRemediationPlanStep,
   IncidentRemediationPolicy,
   IncidentRemediationTaskRecord,
@@ -106,6 +107,41 @@ function normalizeIncidentOwnership(
   };
 }
 
+function normalizeIncidentPolicyExecution(
+  value: unknown,
+): IncidentPolicyExecutionRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<IncidentPolicyExecutionRecord>;
+  if (
+    typeof raw.executionId !== "string" ||
+    typeof raw.executedAt !== "string" ||
+    typeof raw.actor !== "string" ||
+    typeof raw.policyId !== "string" ||
+    typeof raw.trigger !== "string" ||
+    typeof raw.action !== "string" ||
+    typeof raw.result !== "string" ||
+    typeof raw.summary !== "string"
+  ) {
+    return null;
+  }
+  return {
+    executionId: raw.executionId,
+    executedAt: raw.executedAt,
+    actor: raw.actor,
+    policyId: raw.policyId,
+    trigger: raw.trigger as IncidentPolicyExecutionRecord["trigger"],
+    action: raw.action as IncidentPolicyExecutionRecord["action"],
+    result: raw.result as IncidentPolicyExecutionRecord["result"],
+    summary: raw.summary,
+    detail: typeof raw.detail === "string" ? raw.detail : null,
+    remediationId:
+      typeof raw.remediationId === "string" ? raw.remediationId : null,
+    taskId: typeof raw.taskId === "string" ? raw.taskId : null,
+    runId: typeof raw.runId === "string" ? raw.runId : null,
+    evidence: normalizeStringArray(raw.evidence, 25),
+  };
+}
+
 function normalizeIncidentRemediationTask(
   value: unknown,
 ): IncidentRemediationTaskRecord | null {
@@ -124,6 +160,10 @@ function normalizeIncidentRemediationTask(
   }
   return {
     remediationId: raw.remediationId,
+    lane:
+      raw.lane === "verification" || raw.lane === "escalation"
+        ? raw.lane
+        : "primary",
     createdAt: raw.createdAt,
     createdBy: raw.createdBy,
     assignedTo: typeof raw.assignedTo === "string" ? raw.assignedTo : null,
@@ -180,6 +220,13 @@ function normalizeIncidentRemediationPolicy(
         : "operator",
     autoAssignOwner: raw.autoAssignOwner === true,
     autoRemediateOnCreate: raw.autoRemediateOnCreate === true,
+    autoRetryBlockedRemediation: raw.autoRetryBlockedRemediation !== false,
+    maxAutoRemediationAttempts:
+      typeof raw.maxAutoRemediationAttempts === "number" &&
+      Number.isFinite(raw.maxAutoRemediationAttempts)
+        ? Math.max(1, Math.floor(raw.maxAutoRemediationAttempts))
+        : 2,
+    autoEscalateOnBreach: raw.autoEscalateOnBreach !== false,
     remediationTaskType:
       raw.remediationTaskType === "drift-repair" ||
       raw.remediationTaskType === "qa-verification" ||
@@ -188,6 +235,11 @@ function normalizeIncidentRemediationPolicy(
         : "system-monitor",
     verifierTaskType:
       raw.verifierTaskType === "qa-verification" ? raw.verifierTaskType : null,
+    escalationTaskType:
+      raw.escalationTaskType === "qa-verification" ||
+      raw.escalationTaskType === "system-monitor"
+        ? raw.escalationTaskType
+        : null,
     targetSlaMinutes:
       typeof raw.targetSlaMinutes === "number" &&
       Number.isFinite(raw.targetSlaMinutes)
@@ -366,6 +418,12 @@ function normalizeIncidentLedgerRecord(record: IncidentLedgerRecord) {
       ? record.history
           .map(normalizeIncidentHistoryEvent)
           .filter((item): item is IncidentHistoryEvent => item !== null)
+          .slice(-100)
+      : [],
+    policyExecutions: Array.isArray(record.policyExecutions)
+      ? record.policyExecutions
+          .map(normalizeIncidentPolicyExecution)
+          .filter((item): item is IncidentPolicyExecutionRecord => item !== null)
           .slice(-100)
       : [],
     acknowledgements: Array.isArray(record.acknowledgements)

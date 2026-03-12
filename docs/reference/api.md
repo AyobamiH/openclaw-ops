@@ -238,8 +238,12 @@ Safe leaf fields to render:
   `incidents.incidents[].linkedProofDeliveries[]`,
   `incidents.incidents[].recommendedSteps[]`,
   `incidents.incidents[].policy.policyId`,
+  `incidents.incidents[].policy.autoRetryBlockedRemediation`,
+  `incidents.incidents[].policy.maxAutoRemediationAttempts`,
+  `incidents.incidents[].policy.autoEscalateOnBreach`,
   `incidents.incidents[].policy.remediationTaskType`,
   `incidents.incidents[].policy.verifierTaskType`,
+  `incidents.incidents[].policy.escalationTaskType`,
   `incidents.incidents[].policy.targetSlaMinutes`,
   `incidents.incidents[].escalation.level`,
   `incidents.incidents[].escalation.summary`,
@@ -252,6 +256,7 @@ Safe leaf fields to render:
   `incidents.incidents[].remediation.nextAction`,
   `incidents.incidents[].remediation.blockers[]`,
   `incidents.incidents[].remediationPlan[]`,
+  `incidents.incidents[].policyExecutions[]`,
   `recentTasks[].handledAt`, `recentTasks[].type`, `recentTasks[].result`,
   `recentTasks[].message`
   Approval payloads can now include review-gated Reddit lead promotions:
@@ -268,13 +273,17 @@ Safe leaf fields to render:
   `workflow.stageDurations`, `workflow.timingBreakdown`,
   `workflow.nodeCount`, `workflow.edgeCount`,
   `workflowGraph.causalLinks[]`,
+  `workflowGraph.crossRunLinks[]`,
+  `workflowGraph.relatedRuns[]`,
+  `workflowGraph.dependencySummary`,
   `approval.required`, `approval.status`, `approval.requestedAt`,
   `approval.decidedAt`, `events[]`, `proofLinks[]`, and
   `workflowGraph.{nodes,edges,events,proofLinks,stopClassification,timingBreakdown}`
-  when present
+  plus `workflowGraph.{crossRunLinks,relatedRuns,dependencySummary}` when
+  present
 - `/api/incidents` and `/api/incidents/:id`: stable incident IDs,
   first/last-seen timestamps, acknowledgement state, owner,
-  `history[]`, `acknowledgements[]`, `ownershipHistory[]`,
+  `history[]`, `policyExecutions[]`, `acknowledgements[]`, `ownershipHistory[]`,
   `remediationTasks[]`, linked service/task/run/proof references, and
   current remediation guidance, policy, escalation, verification, and
   remediation plan state
@@ -346,6 +355,11 @@ Interpretation note from the `2026-03-07` repair follow-up:
   `proofLinks[]` and canonical `workflowGraph` payloads so the operator console
   can show where execution stopped across ingress, queue, approval, agent,
   result, and proof delivery.
+- `GET /api/tasks/runs` and `GET /api/tasks/runs/:runId` now also expose
+  `workflowGraph.crossRunLinks[]`, `workflowGraph.relatedRuns[]`, and
+  `workflowGraph.dependencySummary` so consumers can inspect upstream/downstream
+  remediation handoffs and run dependencies instead of inferring them from
+  stage events alone.
 - `GET /api/approvals/pending` now includes `impact` and `payloadPreview`
   metadata so approval review UIs can surface risk, affected surfaces, and
   replay semantics without reconstructing those fields on the client.
@@ -364,14 +378,19 @@ Interpretation note from the `2026-03-07` repair follow-up:
   remediation steps.
 - `GET /api/incidents` and `GET /api/incidents/:id` now expose incident list and
   detail/history views from the persistent ledger, including acknowledgement
-  history, explicit ownership lifecycle history, and linked remediation task
-  records.
+  history, explicit ownership lifecycle history, policy execution history, and
+  linked remediation task records.
 - `GET /api/incidents/:id/history` now provides the incident lifecycle stream as
   a dedicated route so operators can inspect acknowledgement, ownership, and
   remediation progression without re-fetching the full incident detail object.
 - `POST /api/incidents/:id/remediate` now creates a linked remediation task
   using an allowlisted remediation mapping (`drift-repair`, `qa-verification`,
   or `system-monitor`) and persists that linkage back into the incident ledger.
+- Incident remediation policy is now operational rather than descriptive:
+  policy records include automatic retry / escalation controls, and
+  `policyExecutions[]` captures when the orchestrator automatically assigned an
+  owner, queued a primary remediation lane, retried a blocked remediation,
+  queued a verifier lane, or escalated a breached incident.
 - `GET /api/agents/overview` now also exposes capability readiness derived from
   real runtime evidence. It distinguishes declared/foundation/operational/
   advanced readiness and reports remaining capability gaps instead of labeling
