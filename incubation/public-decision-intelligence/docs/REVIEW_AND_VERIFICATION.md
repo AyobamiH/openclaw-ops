@@ -53,3 +53,19 @@ Verification may apply to:
 
 Nothing should become public-facing unless its review state and evidence posture
 support publication.
+
+## Current Incubation Implementation
+
+The current Phase 4 implementation provides:
+
+- a review queue spanning claims, relationships, events, and decision chains
+- persistent review records with reviewer, notes, prior state, and resulting
+  state
+- explicit dispositions:
+  - `verify`
+  - `challenge`
+  - `reject`
+  - `publish`
+- publication gating on decision chains
+- a public browse mode that prefers published chains but can fall back to
+  transparent preview mode when nothing has been published yet

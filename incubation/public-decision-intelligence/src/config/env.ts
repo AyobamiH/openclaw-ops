@@ -21,7 +21,8 @@ const envSchema = z.object({
   MAX_SOURCE_FILE_MB: z.coerce.number().int().positive().default(250),
   OCR_FALLBACK_ENABLED: z.coerce.boolean().default(true),
   REVIEW_REQUIRED_FOR_PUBLISH: z.coerce.boolean().default(true),
-  PUBLIC_API_ENABLED: z.coerce.boolean().default(false)
+  PUBLIC_API_ENABLED: z.coerce.boolean().default(true),
+  PUBLIC_API_ALLOWED_ORIGINS: z.string().default("*")
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

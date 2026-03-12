@@ -4,11 +4,13 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { AppEnv } from "../config/env.js";
 import type { EvidenceLedgerStore } from "./ledger-store.js";
-import type { DocumentRecord, IngestionAuditRecord } from "../types/domain.js";
+import type { DocumentRecord, EntityRecord, IngestionAuditRecord } from "../types/domain.js";
 import { DomainError } from "../common/errors.js";
 import { makeId, shortHash, slugKey } from "./ids.js";
 import { inferFormat, parseSourceFile } from "./file-parser.js";
 import { buildChunksAndCitations } from "./chunker.js";
+import { extractStructuredIntelligence } from "./phase2-extractor.js";
+import { rebuildDecisionChains } from "./decision-chains.js";
 
 export const ingestRequestSchema = z.object({
   sourcePath: z.string().min(1),
@@ -76,6 +78,14 @@ export async function ingestDocument(
         document: versionCandidate,
         chunks: state.chunks.filter((chunk) => chunk.documentId === versionCandidate.documentId),
         citations: state.citations.filter((citation) => citation.documentId === versionCandidate.documentId),
+        entities: state.entities.filter((entity) => entity.documentIds.includes(versionCandidate.documentId)),
+        mentions: state.mentions.filter((mention) => mention.documentId === versionCandidate.documentId),
+        events: state.events.filter((event) => event.documentId === versionCandidate.documentId),
+        claims: state.claims.filter((claim) => claim.documentId === versionCandidate.documentId),
+        relationships: state.relationships.filter((relationship) => relationship.documentId === versionCandidate.documentId),
+        decisionChains: state.decisionChains.filter((chain) =>
+          chain.documentIds.includes(versionCandidate.documentId)
+        ),
         ingest: audit
       };
     }
@@ -93,6 +103,12 @@ export async function ingestDocument(
       ocrFallbackEnabled: options.env.OCR_FALLBACK_ENABLED
     });
     const { chunks, citations } = buildChunksAndCitations(documentId, parse.blocks);
+    const structured = extractStructuredIntelligence({
+      documentId,
+      chunks,
+      citations,
+      existingEntities: state.entities
+    });
 
     const document: DocumentRecord = {
       documentId,
@@ -130,6 +146,12 @@ export async function ingestDocument(
     state.documents.push(document);
     state.chunks.push(...chunks);
     state.citations.push(...citations);
+    state.entities = mergeEntities(state.entities, structured.entities);
+    state.mentions.push(...structured.mentions);
+    state.events.push(...structured.events);
+    state.claims.push(...structured.claims);
+    state.relationships.push(...structured.relationships);
+    state.decisionChains = rebuildDecisionChains(state);
     state.ingests.push(audit);
 
     return {
@@ -137,6 +159,14 @@ export async function ingestDocument(
       document,
       chunks,
       citations,
+      entities: structured.entities,
+      mentions: structured.mentions,
+      events: structured.events,
+      claims: structured.claims,
+      relationships: structured.relationships,
+      decisionChains: state.decisionChains.filter((chain) =>
+        chain.documentIds.includes(documentId) || chain.sourceCollection === request.sourceCollection
+      ),
       ingest: audit
     };
   });
@@ -175,3 +205,21 @@ const BunLike = {
     return Buffer.from(await readFile(filePath));
   }
 };
+
+function mergeEntities(existing: EntityRecord[], incoming: EntityRecord[]) {
+  const merged = new Map(existing.map((entity) => [entity.canonicalKey, entity]));
+  for (const entity of incoming) {
+    const current = merged.get(entity.canonicalKey);
+    if (!current) {
+      merged.set(entity.canonicalKey, entity);
+      continue;
+    }
+    current.mentionCount = Math.max(current.mentionCount, entity.mentionCount);
+    for (const documentId of entity.documentIds) {
+      if (!current.documentIds.includes(documentId)) {
+        current.documentIds.push(documentId);
+      }
+    }
+  }
+  return [...merged.values()];
+}

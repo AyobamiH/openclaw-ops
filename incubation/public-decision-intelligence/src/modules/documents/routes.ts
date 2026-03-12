@@ -14,7 +14,12 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       document: result.document,
       ingest: result.ingest,
       chunkCount: result.chunks.length,
-      citationCount: result.citations.length
+      citationCount: result.citations.length,
+      entityCount: result.entities.length,
+      eventCount: result.events.length,
+      claimCount: result.claims.length,
+      relationshipCount: result.relationships.length,
+      decisionChainCount: result.decisionChains.length
     });
   });
 
@@ -45,6 +50,12 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       document,
       chunks: ledger.chunks.filter((chunk) => chunk.documentId === documentId),
       citations: ledger.citations.filter((citation) => citation.documentId === documentId),
+      entities: ledger.entities.filter((entity) => entity.documentIds.includes(documentId)),
+      mentions: ledger.mentions.filter((mention) => mention.documentId === documentId),
+      events: ledger.events.filter((event) => event.documentId === documentId),
+      claims: ledger.claims.filter((claim) => claim.documentId === documentId),
+      relationships: ledger.relationships.filter((relationship) => relationship.documentId === documentId),
+      decisionChains: ledger.decisionChains.filter((chain) => chain.documentIds.includes(documentId)),
       lineage,
       intent: "Return one document with chunks, citations, and ingest lineage."
     };

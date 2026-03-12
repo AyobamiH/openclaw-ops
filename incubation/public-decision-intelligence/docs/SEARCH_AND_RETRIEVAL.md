@@ -51,3 +51,13 @@ Every result should carry enough metadata for later frontend use:
 - citation excerpt or support count
 - document/date context
 - review/evidence status
+
+Current Phase 2 implementation:
+
+- `POST /api/v1/search` is live and groups results into documents, entities,
+  events, claims, and relationships
+- grouped results include primary evidence context instead of only raw matches
+- date filtering is currently applied to event dates where the extracted event
+  date can be normalized from source text
+- decision-chain retrieval remains a later phase once structured decision
+  assembly exists

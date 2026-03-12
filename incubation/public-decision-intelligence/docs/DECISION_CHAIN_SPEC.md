@@ -72,3 +72,25 @@ Review should be possible at:
 - whole-chain level
 - individual step level
 - linkage or ordering level
+
+## Current Incubation Implementation
+
+The current Phase 3 implementation assembles deterministic chains from:
+
+- extracted events
+- extracted claims
+- extracted relationships
+- source collection boundaries
+- subject-entity weighting
+
+Each assembled chain now carries:
+
+- stage buckets
+- gaps
+- alternative interpretations
+- revision count
+- verification state
+- publication state
+
+The current implementation is designed to be explainable and reversible rather
+than fully automatic or probabilistic.

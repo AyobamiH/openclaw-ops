@@ -122,11 +122,73 @@ What exists now:
   - inline parsing for supported formats
   - stable chunk and citation persistence
   - document health/list/detail APIs
+- implemented Phase 2 runtime:
+  - entity extraction
+  - event extraction
+  - claim persistence
+  - relationship persistence
+  - grouped search APIs
+- implemented Phase 3 runtime:
+  - decision-chain assembly
+  - staged chain summaries
+  - gap detection
+  - alternative interpretations
+  - chain revision on new ingest
+- implemented Phase 4 runtime:
+  - review queue
+  - review history
+  - verification and publication state
+  - public read APIs
+  - thin public browse surface at `/browse`
+
+## Real Corpus Validation
+
+The incubation runtime has now been exercised against the first real
+Mandelson corpus file:
+
+- `V1_FINAL.pdf`
+- parse status: `complete`
+- OCR status: `not_needed`
+- extracted output from a clean runtime:
+  - `194` chunks
+  - `194` citations
+  - `463` entities
+  - `188` events
+  - `194` claims
+  - `1050` relationships
+  - `3` decision chains
+
+That means the subsystem is already useful for real corpus ingest and browse,
+not only synthetic fixtures. The current thin public surface stays in
+`previewMode` until review/publication state is advanced, but the evidence and
+decision-chain structures are now being derived from live source material.
+
+## Corpus Drop Workflow
+
+For the current incubation model, new corpus files can be placed directly under
+this subtree and ingested through the local API:
+
+1. place the source file under this subtree or another readable local path
+2. boot the service with `npm run dev` or a built `dist/index.js`
+3. call `POST /api/v1/documents/ingest` with:
+   - `sourcePath`
+   - `logicalSourceKey`
+   - `sourceType`
+   - `sourceCollection`
+   - `title`
+4. inspect:
+   - `/api/v1/documents`
+   - `/api/v1/decision-chains`
+   - `/public/api/overview`
+   - `/browse`
+
+This is the working loop intended for the early Mandelson batches while the
+workers and public browsing surface are still incubating.
 
 What does not exist yet:
 
-- background job orchestration beyond direct Phase 1 ingest
+- background job orchestration beyond direct ingest
 - extracted Postgres-backed storage
-- entity/event/claim/relationship services
-- real review workflows
-- public browsing frontend
+- analyst-grade review tooling beyond the API
+- collaborative workflows
+- a polished public frontend beyond the thin browse surface

@@ -8,7 +8,7 @@
 4. store original file in object storage
 5. create document record and ingest audit record
 6. enqueue parse job or run parse inline in the incubation runtime
-7. parse native text or invoke OCR fallback
+7. parse native text, extract PDF text where available, or invoke OCR fallback
 8. normalize text and page/anchor metadata
 9. chunk into citeable evidence fragments
 10. persist chunks and citations
@@ -41,8 +41,20 @@ OCR should only run when:
 OCR artifacts should be stored as derived objects, not treated as original
 source.
 
-In the current incubation runtime, unsupported OCR cases should be marked
-explicitly as `not_configured` rather than silently claiming OCR success.
+In the current incubation runtime:
+
+- text PDFs are extracted directly into per-page evidence blocks
+- image-only or extraction-failure cases should still be marked explicitly as
+  `not_configured` rather than silently claiming OCR success
+- the first real Mandelson volume (`V1_FINAL.pdf`) has been live-validated
+  through this path and currently yields:
+  - `194` chunks
+  - `194` citations
+  - `463` entities
+  - `188` events
+  - `194` claims
+  - `1050` relationships
+  - `3` decision chains after downstream extraction/rebuild
 
 ## Chunking Strategy
 

@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
+import { PDFParse } from "pdf-parse";
 
 export interface ParsedBlock {
   content: string;
@@ -77,23 +78,65 @@ export async function parseSourceFile(
   }
 
   if (format === "pdf") {
-    return {
-      format,
-      parseStatus: "partial",
-      ocrStatus: options.ocrFallbackEnabled ? "not_configured" : "not_needed",
-      warnings: [
-        "PDF parsing is not configured in the incubation runtime yet.",
-        options.ocrFallbackEnabled
-          ? "OCR fallback requested but no OCR engine is configured."
-          : "OCR fallback is disabled."
-      ],
-      blocks: [
-        {
-          content: `PDF source ${basename(filePath)} was ingested, but text extraction is not configured in this incubation runtime yet.`,
-          page: 1
-        }
-      ]
-    };
+    try {
+      const data = await readFile(filePath);
+      const parser = new PDFParse({ data });
+      const result = await parser.getText();
+      await parser.destroy();
+
+      const blocks = (result.pages ?? [])
+        .map((page) => ({
+          content: normalizePdfText(page.text ?? ""),
+          page: page.num ?? null
+        }))
+        .filter((block) => block.content.length > 0);
+
+      if (blocks.length === 0) {
+        return {
+          format,
+          parseStatus: "partial",
+          ocrStatus: options.ocrFallbackEnabled ? "not_configured" : "not_needed",
+          warnings: [
+            "PDF text extraction completed but did not yield readable page text.",
+            options.ocrFallbackEnabled
+              ? "OCR fallback requested but no OCR engine is configured."
+              : "OCR fallback is disabled."
+          ],
+          blocks: [
+            {
+              content: `PDF source ${basename(filePath)} was ingested, but readable text could not be extracted from the current pages.`,
+              page: 1
+            }
+          ]
+        };
+      }
+
+      if (blocks.length < (result.total ?? blocks.length)) {
+        warnings.push("Some PDF pages did not yield extractable text and were omitted from the page-block output.");
+      }
+
+      return {
+        format,
+        parseStatus: "complete",
+        ocrStatus: "not_needed",
+        warnings,
+        blocks
+      };
+    } catch (error) {
+      warnings.push(`PDF extraction failed: ${error instanceof Error ? error.message : "unknown parser error"}`);
+      return {
+        format,
+        parseStatus: "partial",
+        ocrStatus: options.ocrFallbackEnabled ? "not_configured" : "failed",
+        warnings,
+        blocks: [
+          {
+            content: `PDF source ${basename(filePath)} was ingested, but text extraction failed in the current runtime.`,
+            page: 1
+          }
+        ]
+      };
+    }
   }
 
   const content = await readFile(filePath, "utf8");
@@ -183,5 +226,16 @@ function stripHtml(value: string): string {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizePdfText(value: string): string {
+  return value
+    .replace(/\u0000/g, " ")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n")
     .trim();
 }
