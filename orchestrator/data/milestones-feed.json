@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-03-01T09:35:00.000Z",
+  "lastUpdated": "2026-03-12T23:00:01.134Z",
   "entries": [
     {
       "idempotencyKey": "orchestrator.started.2026-03-01T09:05:00.000Z",
@@ -147,6 +147,27 @@
         "source": "orchestrator"
       },
       "signature": "917759712b5d208bbdfb28f1820047b2613476ee0ac508354502c89dd7fbf572"
+    },
+    {
+      "idempotencyKey": "913bb2729dbe26151f9c97a28e3665ec",
+      "sentAtUtc": "2026-03-12T23:00:01.134Z",
+      "event": {
+        "milestoneId": "nightly.batch.c034ae19-beec-409a-ab2a-0c886c615ad0",
+        "timestampUtc": "2026-03-12T23:00:01.001Z",
+        "scope": "runtime",
+        "claim": "Nightly batch completed: 0 doc(s) synced, 0 priority item(s) selected for draft.",
+        "evidence": [
+          {
+            "type": "log",
+            "path": "/workspace/logs/digests/digest-2026-03-12.json",
+            "summary": "batch digest c034ae19-beec-409a-ab2a-0c886c615ad0"
+          }
+        ],
+        "riskStatus": "on-track",
+        "nextAction": "Queue is clear. Watch for the next high-intent lead.",
+        "source": "orchestrator"
+      },
+      "signature": "e0457c4c738d337049ce29f919fd050b8299829a2eb5e6c2db83d83778c617a7"
     }
   ]
 }
